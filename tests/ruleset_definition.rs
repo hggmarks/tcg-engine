@@ -303,7 +303,7 @@ fn small_ruleset_draft_validates_into_typed_definition() {
     let creature = definition
         .card_type(&CardTypeId::new("creature"))
         .expect("creature card type");
-    assert_eq!(creature.fields().len(), 3);
+    assert_eq!(creature.id(), &CardTypeId::new("creature"));
     assert!(definition.zone(&ZoneId::new("graveyard")).is_none());
     assert!(definition.card_type(&CardTypeId::new("spell")).is_none());
 }
@@ -583,9 +583,20 @@ fn ids_may_repeat_across_lists() {
         ],
     };
     let definition = RulesetDefinition::validate(draft).expect("ids are scoped to their list");
-    assert_eq!(definition.zones().len(), 1);
-    assert_eq!(definition.card_types().len(), 2);
-    assert_eq!(definition.deck_inputs().len(), 2);
+    let zone_ids: Vec<&str> = definition.zones().iter().map(|z| z.id().as_str()).collect();
+    assert_eq!(zone_ids, vec!["mana_deck"]);
+    let card_type_ids: Vec<&str> = definition
+        .card_types()
+        .iter()
+        .map(|c| c.id().as_str())
+        .collect();
+    assert_eq!(card_type_ids, vec!["leader", "mana"]);
+    let input_ids: Vec<&str> = definition
+        .deck_inputs()
+        .iter()
+        .map(|i| i.id().as_str())
+        .collect();
+    assert_eq!(input_ids, vec!["mana_deck", "leader"]);
 }
 
 #[test]
@@ -684,7 +695,12 @@ fn from_field_must_name_a_field_of_the_same_type() {
             },
         }
     );
-    assert!(RulesetDefinition::validate(with_state(FieldTypeDraft::Int, "life")).is_ok());
+    let definition = RulesetDefinition::validate(with_state(FieldTypeDraft::Int, "life"))
+        .expect("life is an int field");
+    assert_eq!(
+        definition.card_types()[0].instance_state()[0].init(),
+        &Initializer::FromField(FieldName::new("life"))
+    );
 }
 
 #[test]

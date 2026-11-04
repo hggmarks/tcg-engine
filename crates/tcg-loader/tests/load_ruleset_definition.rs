@@ -261,6 +261,31 @@ fn init_keeps_the_yaml_scalar_type() {
     }
 }
 
+#[test]
+fn enum_and_enum_set_type_names_are_unsupported() {
+    for (spelling, field_type) in [
+        ("enum", FieldTypeDraft::Enum),
+        ("enum_set", FieldTypeDraft::EnumSet),
+    ] {
+        let yaml = format!(
+            "{PREFIX}zones: []\ncard_types:\n  - id: c\n    fields:\n      - {{ name: f, type: {spelling} }}\n    instance_state: []\n    effects: false\ninputs: []\n"
+        );
+        assert_eq!(
+            definition_error(&yaml),
+            DefinitionError {
+                path: path()
+                    .key("card_types")
+                    .id("c")
+                    .key("fields")
+                    .id("f")
+                    .key("type"),
+                kind: DefinitionErrorKind::UnsupportedFieldType { field_type },
+            },
+            "type: {spelling}"
+        );
+    }
+}
+
 // ---- syntax errors
 
 #[test]
