@@ -1,30 +1,115 @@
-//! Seeded randomness (skeleton for the red test checkpoint of ticket #18).
+//! Seeded, portable randomness: the engine's only source of randomness.
+//!
+//! See ADR-0006. Nothing here reads the operating system, the clock or a
+//! hash seed, and everything is integer arithmetic, so a [`Seed`] gives the
+//! same numbers on every platform, build profile and compiler version.
 
 use std::num::NonZeroU64;
 
+/// The 64-bit value a [`RandomState`] is created from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Seed(pub u64);
 
+/// The engine's Random State: a plain value, stored in the GameState, that
+/// is advanced explicitly by `&mut self` calls.
+///
+/// Algorithms, all implemented in this repository:
+///
+/// - the generator is xoshiro256** 1.0 (Blackman and Vigna, "Scrambled
+///   Linear Pseudorandom Number Generators");
+/// - [`RandomState::from_seed`] fills its four state words with the first
+///   four outputs of SplitMix64 (Steele, Lea and Flood, 2014), which can
+///   never produce the all-zero state;
+/// - [`RandomState::next_below`] uses Lemire's nearly divisionless method
+///   (Lemire 2019, "Fast Random Integer Generation in an Interval") with 64
+///   bits and a rejection loop, so it is unbiased;
+/// - [`RandomState::shuffle`] is Fisher–Yates in Durstenfeld's form.
+///
+/// The output for a given [`Seed`] is pinned by ADR-0006 and by known-answer
+/// tests. It must never change silently.
+///
+/// It is deliberately not `Copy`: an accidental copy would replay the same
+/// numbers. Use `clone` when a copy is really wanted. It is unrelated to
+/// `std::hash::RandomState`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RandomState {
     state: [u64; 4],
 }
 
+/// One step of SplitMix64: advances `x` and returns the next output.
+fn splitmix64_next(x: &mut u64) -> u64 {
+    *x = x.wrapping_add(0x9e37_79b9_7f4a_7c15);
+    let mut z = *x;
+    z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+    z ^ (z >> 31)
+}
+
 impl RandomState {
-    pub fn from_seed(_seed: Seed) -> RandomState {
-        todo!()
+    /// Creates the Random State for `seed`.
+    pub fn from_seed(seed: Seed) -> RandomState {
+        let mut x = seed.0;
+        let mut state = [0; 4];
+        for word in &mut state {
+            *word = splitmix64_next(&mut x);
+        }
+        RandomState { state }
     }
 
+    /// Returns the next 64 uniformly distributed bits (xoshiro256** `next`).
     pub fn next_u64(&mut self) -> u64 {
-        todo!()
+        let [s0, s1, s2, s3] = self.state;
+        let result = s1.wrapping_mul(5).rotate_left(7).wrapping_mul(9);
+        let t = s1 << 17;
+        let s2 = s2 ^ s0;
+        let s3 = s3 ^ s1;
+        let s1 = s1 ^ s2;
+        let s0 = s0 ^ s3;
+        let s2 = s2 ^ t;
+        let s3 = s3.rotate_left(45);
+        self.state = [s0, s1, s2, s3];
+        result
     }
 
-    pub fn next_below(&mut self, _bound: NonZeroU64) -> u64 {
-        todo!()
+    /// Returns a uniformly distributed integer in `[0, bound)`.
+    ///
+    /// Always consumes at least one raw draw, including for a bound of 1.
+    pub fn next_below(&mut self, bound: NonZeroU64) -> u64 {
+        let s = bound.get();
+        let mut m = u128::from(self.next_u64()) * u128::from(s);
+        // Keeping the low 64 bits is the intent of this truncation.
+        let mut low = m as u64;
+        if low < s {
+            let threshold = s.wrapping_neg() % s;
+            while low < threshold {
+                m = u128::from(self.next_u64()) * u128::from(s);
+                low = m as u64;
+            }
+        }
+        // `m >> 64` is below `s`, so it always fits in 64 bits.
+        (m >> 64) as u64
     }
 
-    pub fn shuffle<T>(&mut self, _items: &mut [T]) {
-        todo!()
+    /// Shuffles `items` in place with Fisher–Yates (Durstenfeld's form):
+    /// for `i` from `len - 1` down to 1, swap `items[i]` with `items[j]`,
+    /// where `j` is drawn uniformly from `[0, i]`. Slices of fewer than two
+    /// items consume nothing.
+    pub fn shuffle<T>(&mut self, items: &mut [T]) {
+        for i in (1..items.len()).rev() {
+            let Some(j) = self.index_up_to(i) else {
+                // Unreachable on platforms whose `usize` is at most 64 bits.
+                return;
+            };
+            items.swap(i, j);
+        }
+    }
+
+    /// Draws an index uniformly from `[0, last]`; `None` only if the value
+    /// does not fit the platform's `usize` or `u64`.
+    fn index_up_to(&mut self, last: usize) -> Option<usize> {
+        let count = u64::try_from(last).ok()?.checked_add(1)?;
+        let bound = NonZeroU64::new(count)?;
+        usize::try_from(self.next_below(bound)).ok()
     }
 }
 
