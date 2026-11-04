@@ -1,0 +1,44 @@
+meta: { id: small, version: 1 }
+
+parameters:
+  players: 2
+  starting_player: 0
+
+zones:
+  - { id: deck,        visibility: hidden, ordered: true }
+  - { id: hand,        visibility: owner,  ordered: false }
+  - { id: field,       visibility: public, ordered: false }
+  - { id: trash,       visibility: public, ordered: true }   # topo = última carta
+  - { id: mana_deck,   visibility: hidden, ordered: true }
+  - { id: mana_zone,   visibility: public, ordered: false }
+  - { id: leader_zone, visibility: public, ordered: false }
+
+card_types:
+  - id: leader
+    fields:
+      - { name: name,  type: text }
+      - { name: power, type: int }
+      - { name: life,  type: int }
+    instance_state:
+      - { name: current_life, type: int,  init: { from_field: life } }
+      - { name: tapped,       type: bool, init: false }
+    effects: false
+  - id: creature
+    fields:
+      - { name: name,  type: text }
+      - { name: cost,  type: int }
+      - { name: power, type: int }
+    instance_state:
+      - { name: tapped,           type: bool, init: false }
+      - { name: recently_played,  type: bool, init: false }
+    effects: false
+  - id: mana
+    fields: []
+    instance_state:
+      - { name: tapped, type: bool, init: false }
+    effects: false
+
+inputs:
+  - { id: leader,    card_types: [leader],   size: 1,  zone: leader_zone }
+  - { id: main_deck, card_types: [creature], size: 50, max_copies: 4, zone: deck }
+  - { id: mana_deck, card_types: [mana],     size: 10, zone: mana_deck }
