@@ -175,6 +175,17 @@ fn state_path(card_type: &str, state: &str) -> DefinitionPath {
 
 // ---- the model
 
+/// A card type as (id, fields, instance state, allows effects).
+type DescribedCardType<'a> = (
+    &'a str,
+    Vec<(&'a str, FieldType)>,
+    Vec<(&'a str, FieldType, Initializer)>,
+    bool,
+);
+
+/// A deck input as (id, card types, size, max copies, zone).
+type DescribedInput<'a> = (&'a str, Vec<&'a str>, u32, Option<u32>, &'a str);
+
 #[test]
 fn small_ruleset_draft_validates_into_typed_definition() {
     let definition = RulesetDefinition::validate(small_ruleset_draft()).expect("valid draft");
@@ -202,12 +213,7 @@ fn small_ruleset_draft_validates_into_typed_definition() {
         ]
     );
 
-    let card_types: Vec<(
-        &str,
-        Vec<(&str, FieldType)>,
-        Vec<(&str, FieldType, Initializer)>,
-        bool,
-    )> = definition
+    let card_types: Vec<DescribedCardType> = definition
         .card_types()
         .iter()
         .map(|ct| {
@@ -268,7 +274,7 @@ fn small_ruleset_draft_validates_into_typed_definition() {
         ]
     );
 
-    let inputs: Vec<(&str, Vec<&str>, u32, Option<u32>, &str)> = definition
+    let inputs: Vec<DescribedInput> = definition
         .deck_inputs()
         .iter()
         .map(|i| {

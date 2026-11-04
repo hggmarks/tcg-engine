@@ -1,6 +1,7 @@
 # ADR-0004: Ruleset format and separation between ruleset and cards
 
 - Status: accepted
+- Decision 3's typed-model names are amended by ADR-0007 (`Ruleset` becomes `RulesetDefinition`).
 - Date: 2026-10-23
 
 ## Context
