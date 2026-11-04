@@ -24,7 +24,13 @@ A description of player or system intent, without execution logic.
 The ordered record of facts produced while an accepted Action changes a GameState.
 
 **Deterministic Execution**:
-Execution where the same initial GameState, random state, and Action sequence produce the same Event Trace and final GameState.
+Execution where the same initial GameState, **Random State**, and Action sequence produce the same Event Trace and final GameState.
+
+**Random State**:
+The seeded pseudo-random generator state held inside a GameState, and the engine's only source of randomness; it is a plain value advanced explicitly, never a hidden global.
+
+**Seed**:
+The 64-bit value from which a Random State is created; the same Seed always yields the same sequence.
 
 **Toy Ruleset**:
 The intentionally small, game-agnostic proving scenario used to validate the first Runtime increment.
