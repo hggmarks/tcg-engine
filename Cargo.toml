@@ -1,4 +1,5 @@
 [workspace]
+members = ["crates/tcg-loader"]
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
