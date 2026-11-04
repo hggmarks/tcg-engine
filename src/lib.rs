@@ -8,3 +8,4 @@
 //! environment access or I/O; seeded randomness only; no panics) are listed
 //! in the "Determinism rules" section of `CLAUDE.md`, and most are enforced
 //! by `clippy.toml` and `[workspace.lints]`.
+pub mod random;
