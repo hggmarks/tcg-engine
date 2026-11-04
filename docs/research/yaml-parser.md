@@ -13,7 +13,7 @@
   names the spike case that shows it (ids like `a1`, `f2`, see the output at the end).
 
 **Recommendation in one sentence:** load with `serde-saphyr` 2.1.0 (pinned exactly) into plain
-`serde::Deserialize` DTOs, using five strict options plus a small event-stream pass that rejects the
+`serde::Deserialize` DTOs, using six strict options plus a small event-stream pass that rejects the
 YAML core tags the options cannot; `marked-yaml` is the credible runner-up.
 
 ## 1. The candidates
@@ -23,7 +23,7 @@ YAML core tags the options cannot; `marked-yaml` is the credible runner-up.
   recommended for new code; kept in the table only as the ancestor.
 - `serde_yaml_ng` 0.10.0 (2024-05-26, MIT; repository last pushed 2025-09-14): maintained fork, three releases ever.
 - `serde_norway` 0.9.42 (2024-12-21): fork on its own `unsafe-libyaml-norway` 0.2.15. In the spike its output was
-  identical to `serde_yaml_ng` in 42 of 42 cases, so the two are treated as one below.
+  identical to `serde_yaml_ng` in 53 of 53 cases, so the two are treated as one below.
 - `serde_yml` 0.0.13: **avoid**. [RUSTSEC-2025-0068](https://github.com/rustsec/advisory-db/blob/main/crates/serde_yml/RUSTSEC-2025-0068.md)
   marks it unsound and unmaintained, the repository is archived, and [advisory-db#2395](https://github.com/rustsec/advisory-db/issues/2395)
   alleges undefined behaviour and AI-generated code. Its newest release (2026-05-27) is a shim forwarding to `noyalib`.
@@ -50,7 +50,7 @@ So **anchors and aliases cannot be rejected by validating the node tree**; they 
 
 **Dropped** (one line each): `libyaml-safer` 0.3.0 (events only, no serde); `yaml-spanned` 0.0.3 (0.0.x, 2 stars, builds
 on `libyaml-safer`); `serde_yaml_bw` 2.5.8 (libyaml fork by serde-saphyr's author, whose README recommends serde-saphyr);
-`noyalib` 0.0.58 (first release 2026-05-10, same author as `serde_yml`, has [RUSTSEC-2026-0333](https://github.com/rustsec/advisory-db/blob/main/crates/noyalib/RUSTSEC-2026-0333.md)).
+`noyalib` 0.0.58 (first release 2026-05-10, same author as `serde_yml`, had [RUSTSEC-2026-0333](https://github.com/rustsec/advisory-db/blob/main/crates/noyalib/RUSTSEC-2026-0333.md), patched in >= 0.0.53; the examined 0.0.58 is not affected, so the reason to drop it is age, not that advisory).
 
 ## 2. Comparison
 
@@ -62,7 +62,7 @@ Spike case ids are in brackets.
 | Anchors / aliases | as `ng` | accepted, aliases resolved [a1, a2] | **rejected** with `Budget { max_anchors: 0, max_aliases: 0 }`, line/col, even an unused anchor [a1, a2] | **rejected** by the loader, line:col [a1, a2] | resolved away in the tree: undetectable after load |
 | Tags | as `ng` | accepted and ignored; enum variants are *written as tags* (`!draw`) [i1-i3, enum2] | unknown tags rejected by `reject_unsupported_tags` [i2, enum2]; core tags `!!str`/`!!int` still accepted [i1, i3] | **all rejected**, line:col [i1-i3, enum2] | `yaml-rust2` drops all; `saphyr` keeps non-core only |
 | Merge keys `<<` | as `ng` | no merge; `<<` is an ordinary key, only rejected as an unknown field [h1] | **rejected** with `MergeKeyPolicy::Error` (default is to merge) [h1] | no merge; ordinary key, rejected only as unknown field [h1] | no merge |
-| Implicit typing | as `ng` | YAML 1.2 core: `yes`/`on` are not bools [b]; `1e3` rejected for ints [e]; but `~`, `null`, empty value become the literal strings `"~"`, `"null"`, `""` for `String` [c/d] | schema-driven. Default accepts YAML 1.1 bools [b]; `strict_booleans` rejects `yes`/`on` [b]; `~`/`null`/empty rejected for `String` [c/d]; `1e3` rejected for ints [e]; `no`/`on`/`1e3` stay literal text [c/d] | none: every scalar is text, typed by Rust `FromStr` [b, c/d, e]; `~` is `"~"`, an empty value is `""` | core schema resolved in the tree (`~` null, `1e3` float) |
+| Implicit typing | as `ng` | YAML 1.2 core: `yes`/`on` are not bools [b]; `1e3` rejected for ints [e]; but `~`, `null`, empty value become the literal strings `"~"`, `"null"`, `""` for `String` [c/d, c/d null] | schema-driven. Default accepts YAML 1.1 bools [b]; `strict_booleans` rejects `yes`/`on` [b]; `~`/`null`/empty rejected for `String` [c/d]; `1e3` rejected for ints [e]; `no`/`on`/`1e3` stay literal text [c/d] | none: every scalar is text, typed by Rust `FromStr` [b, c/d, e]; `~` is `"~"`, an empty value is `""` | core schema resolved in the tree (`~` null, `1e3` float) |
 | Duplicate keys, struct field | as `ng` | rejected, no location [f1] | rejected by default, line/col [f1] | rejected if `error_on_duplicate_keys(true)` (off by default), both positions [f1] | both parsers error |
 | Duplicate keys, map key | as `ng` | **silently keeps the last** [f2-f4] | rejected, also `k` vs `"k"` [f2-f4] | same option as above [f2-f4] | both parsers error |
 | Unknown fields | derive | serde `deny_unknown_fields` [g1] | serde `deny_unknown_fields` [g1] | serde `deny_unknown_fields` [g1] | n/a (no serde) |
@@ -82,8 +82,11 @@ Other results that matter for [05]:
 - The real `rulesets/small-ruleset/small-ruleset.yaml` passes the event pass and loads under the strict `serde-saphyr` setup and under `marked-yaml` [real file].
 - It writes enums as single-key maps (`- draw: { player: each, count: 5 }`) and unit variants as plain strings. That matches `serde-saphyr`
   and `marked-yaml` natively but not `ng` (enum1 vs enum3): the `ng` family would need a format-specific `with` attribute on every enum field, which leaks the YAML crate into the typed model.
-- The file also uses scalars whose type depends on data: `init: false` next to `init: { from_field: life }`, and `value: true`. An untagged `Bool | Int | Map` enum reads them under every serde-saphyr/ng backend
-  but fails under `marked-yaml` [shape4]. Under the brief's rule ("the target type decides, never the resolver") that enum is resolver-driven typing anyway; see rule (c) in section 4.
+- The file also has scalars whose type depends on data: `value: true`, and `init`, which is a scalar in `init: false` but a map in
+  `init: { from_field: life }` (lines 23-24). Scalar-only fields are easy (rule (c) in section 4). The **scalar-or-map** `init` has no
+  trivial DTO: `String` fails on the map form on every backend [init1]; `untagged { Lit(String) | FromField }` fails on `false` and `5`
+  on `serde-saphyr` and `ng`, and loads only on `marked-yaml` [init2]; a hand-written `Deserialize` loads on all four, but on `serde-saphyr`
+  it relies on `deserialize_any`, so the resolver decides (`0x1F` arrives as `"31"`) [init3]. See the open decision at the end of section 4.
 - `marked-yaml` also fails `#[serde(tag = "...")]` enums and `#[serde(flatten)]` with integers [shape2, shape3], silently ignores everything after the first `---` document, and does not strip a BOM [robust].
 - `serde-saphyr` rejects a second document by default, accepts a BOM, and reports "recursion limit exceeded" for 5000 nested `[` instead of overflowing the stack [robust]. `marked-yaml` also errors on deep nesting.
 - `serde` documents `deny_unknown_fields` as unsupported together with `flatten`. In the spike the outer attribute still rejected the unknown field, but the error lost its line/column [g2].
@@ -97,7 +100,8 @@ Other results that matter for [05]:
 | No custom tags (`!custom`, `!variant`) | parser configuration | `reject_unsupported_tags: true` | i2, enum2 |
 | No core tags (`!!str`, `!!int`) | **pre-mapping validation** | event pass over `serde_saphyr::granit_parser::Parser` (about 35 lines); the options cannot do it | i1, i3 |
 | No implicit typing | schema (the Rust target type) plus parser configuration | `strict_booleans: true`; null forms are already refused for `String`; `no_schema: true` additionally refuses unquoted `true`/`1e3`/`0x1F` for text | b, c/d, e |
-| Dynamic scalars (`init`, `value`, catalog values) | DTO design | deserialize as `String`, convert in stage 2 by the declared type | shape4 |
+| Always-scalar fields whose type is data-driven (`value`, catalog values) | DTO design | deserialize as `String`, convert in stage 2 by the declared type | init1 (bool form) |
+| Scalar-or-map fields (`init`) | open decision for [05] | see the end of section 4 | init1-init3, shape4 |
 | No duplicate keys (struct fields and map keys) | parser configuration | `duplicate_keys` defaults to `Error` | f1-f4 |
 | No unknown fields | **not by the parser**: serde derive on every DTO | `#[serde(deny_unknown_fields)]`, enforced by test and review | g1 |
 | One document per file | parser configuration | default of `from_str` | robust |
@@ -116,19 +120,25 @@ the ruleset's enums, and sits on an unmaintained C-translated parser with a wasm
 
 Why not `marked-yaml` (runner-up): its restrictions hold *by construction* and it is small, which is attractive. But it drops
 extra documents silently, does not support the serde shapes `tag`/`flatten`/`untagged`, and has been quiet for 17 months. Revisit
-if `serde-saphyr` churn becomes costly: the DTO rules below were chosen so the same DTOs load under both (spike enum1, shape1, loc1-loc4;
-only the `Spanned` type differs).
+if `serde-saphyr` churn becomes costly: the DTO rules below keep most DTOs loadable under both (spike enum1, shape1, loc1-loc4; only the `Spanned` type differs).
+The scalar-or-map `init` field is the exception, see the open decision below.
 
 **What [05] must build**
-1. One function returning the strict `Options` (the five knobs in the spike's `strict_opts`), with one test per knob copied from the spike cases. `Options` is `#[non_exhaustive]` and defaults can change in a major version: re-run the cases on every upgrade (3.0.0 is coming).
+1. One function returning the strict `Options` (the six in the spike's `strict_opts`: `strict_booleans`, `merge_keys: Error`, `reject_unsupported_tags` and `budget { max_anchors: 0, max_aliases: 0 }` enforce restrictions; `reject_tagged_field_names` additionally rejects a misplaced tag on a field name such as `!secret password: x`, which serde would otherwise drop silently, and is redundant once the event pass runs; `with_snippet: false` is cosmetic, one-line messages instead of rustc-style snippets; `duplicate_keys` is deliberately left at its default, `Error`), with one test per option copied from the spike cases. `Options` is `#[non_exhaustive]` and defaults can change in a major version: re-run the cases on every upgrade (3.0.0 is coming).
 2. The event pass (the spike's `prevalidate`) if core tags are to be banned; it also gives every restriction one uniform message. Skip it only if `!!str` and friends are accepted as harmless explicit typing.
 3. Path glue (about 8 lines): `with_deserializer_from_str_with_options` + `serde_path_to_error`, producing `file:line:col path: message`.
 4. DTO rules, enforced by test or lint:
    (a) `#[serde(deny_unknown_fields)]` on every DTO, no `#[serde(flatten)]`;
    (b) enums externally tagged: variants as single-key maps, unit variants as plain strings, never `!tag` syntax;
-   (c) any scalar whose type depends on data (ruleset `init`/`value`, catalog field values typed by the ruleset's card-type schema) is a `String` in the DTO and converted in stage 2 by the declared type; no `#[serde(untagged)]` over scalars;
+   (c) a field that is **always a scalar** and whose type depends on data (ruleset `value`, catalog field values typed by the ruleset's card-type schema) is a `String` in the DTO and converted in stage 2 by the declared type; no `#[serde(untagged)]` over scalars. This does not cover scalar-or-map fields (`init`): see the open decision below;
    (d) no `HashMap` in DTOs.
 5. Stage-2 (semantic) errors with locations: `serde_saphyr::Spanned<T>` on DTO leaf fields (works inside enum variants, not inside `flatten`, `untagged` or internally tagged enums). Keep it out of the engine's typed model; convert DTO to model.
+
+**Open decision for [05]: scalar-or-map fields.** `small-ruleset.yaml` has `init: false` and `init: { from_field: life }` for the same field. No `serde` derive shape loads both on the recommended backend [init1, init2]. Options:
+- (i) Hand-written `Deserialize` for that field (visitor with `visit_str`/`visit_bool`/`visit_i64`/`visit_map`). Loads all forms on every backend [init3]. Needs `deserialize_any`, so on `serde-saphyr` the YAML resolver decides how a scalar arrives (`0x1F` becomes `"31"` [init3]), which is the resolver-driven typing the ticket wants to avoid; harmless for `false`/small ints, lossy for text-like values.
+- (ii) Change the ruleset format so the field is always a map, e.g. `init: { value: false }` next to `init: { from_field: life }`. Then rule (c) and plain derives suffice and the DTO is backend-independent. This changes a public contract (`small-ruleset.md`/`.yaml`), so [05] must take it through stop-and-ask, not decide it alone.
+- (iii) Use `marked-yaml`, where `untagged { Lit(String) | FromField }` loads and the original spelling is kept (`0x1F` stays `"0x1F"`) [init2, init3]. Costs the `serde-saphyr` advantages above (extra documents silently dropped, quiet upstream).
+- Recommendation: (i) for now, restricted to fields that are scalar-or-map, with the visitor accepting only bool, integer and string scalars and a test pinning that `init` values are interpreted against the declared field type in stage 2; raise (ii) with the user as the cleaner long-term shape. Do not pick (iii) for this field alone.
 
 **Residual decisions for [05]** (not restrictions the options can express): `True`/`TRUE` are accepted as booleans (`strict_booleans` allows the YAML 1.2 core spellings) [b True]; integers accept `0x10`, `1_000` and `+1` but reject `010` and `1e3` [e], so parse integers from `String` in stage 2 if decimal-only is wanted; a text value that is literally `null` or `~` must be quoted, which is a good outcome; `no_schema: true` is optional.
 
@@ -137,8 +147,9 @@ ADR-0004 is achievable as written. No change to it is needed.
 ## 5. The spike
 
 Standalone, never in the repository: `/tmp/yaml-spike/spike/` (package `yaml-spike`, binaries `yaml-spike` and `tree`).
+Direct dependencies are pinned with `=` in its `Cargo.toml` (shown below); there is no `Cargo.lock` in this document, so transitive crates may resolve newer on a rerun (at the time of writing: `granit-parser` 2.1.0, `yaml-rust2` 0.10.4 under `marked-yaml`, `serde_core` 1.0.229).
 Run: `cd /tmp/yaml-spike/spike && cargo run --bin yaml-spike -- <path to small-ruleset.yaml>` and `cargo run --bin tree`.
-Each case loads one snippet through `saphyr default` (library defaults), `saphyr options-only` (the five knobs), `saphyr RECOMMENDED`
+Each case loads one snippet through `saphyr default` (library defaults), `saphyr options-only` (the six options), `saphyr RECOMMENDED`
 (knobs + event pass + path), `serde_yaml_ng`, `serde_norway`, `yaml_ng + pre-pass` (the same event pass in front of `serde_yaml_ng`) and `marked-yaml`.
 Rows for `REC+no_schema` and `serde_norway` appear only when they differ from `RECOMMENDED` and `serde_yaml_ng`. Lines longer than 118 characters are cut.
 
@@ -160,14 +171,14 @@ edition = "2024"
 publish = false
 
 [dependencies]
-serde = { version = "1", features = ["derive"] }
-serde-saphyr = "2.1.0"
-serde_yaml_ng = "0.10.0"
-serde_norway = "0.9.42"
-saphyr = "0.3.3"
-yaml-rust2 = "0.13.0"
-serde_path_to_error = "0.1"
-marked-yaml = { version = "0.8.0", features = ["serde-path"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde-saphyr = "=2.1.0"
+serde_yaml_ng = "=0.10.0"
+serde_norway = "=0.9.42"
+saphyr = "=0.3.3"
+yaml-rust2 = "=0.13.0"
+serde_path_to_error = "=0.1.20"
+marked-yaml = { version = "=0.8.0", features = ["serde-path"] }
 ```
 
 ### 5.2 Code: `src/main.rs`
@@ -182,7 +193,7 @@ use std::fmt::Debug;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use serde::Deserialize;
-use serde::de::DeserializeOwned;
+use serde::de::{self, DeserializeOwned, Deserializer, MapAccess, Visitor};
 use serde_saphyr::granit_parser::{Event, Parser, ScalarStyle, Span};
 
 // ---- typed targets (stand-ins for ruleset DTOs)
@@ -210,6 +221,34 @@ struct StepsAdapter { #[serde(with = "serde_yaml_ng::with::singleton_map_recursi
 /// `init: false` or `init: { from_field: life }`, both occur in small-ruleset.yaml.
 #[derive(Debug, Deserialize)] #[serde(untagged)] enum Init { Bool(bool), Int(i64), FromField { from_field: String } }
 #[derive(Debug, Deserialize)] struct InitDoc { init: Init }
+// The scalar-or-map field `init`: three candidate DTO shapes (see the "open decision" section).
+#[derive(Debug, Deserialize)] struct InitStr { init: String }
+#[derive(Debug, Deserialize)] #[serde(untagged)] enum InitLit { Lit(String), FromField { from_field: String } }
+#[derive(Debug, Deserialize)] struct InitLitDoc { init: InitLit }
+#[derive(Debug)] enum InitHand { Lit(String), FromField(String) }
+#[derive(Debug, Deserialize)] struct InitHandDoc { init: InitHand }
+/// Hand-written: scalar (kept as text) or `{ from_field: name }`. Needs `deserialize_any`.
+impl<'de> Deserialize<'de> for InitHand {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        struct V;
+        impl<'de> Visitor<'de> for V {
+            type Value = InitHand;
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result { f.write_str("a scalar or { from_field: name }") }
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<InitHand, E> { Ok(InitHand::Lit(v.to_string())) }
+            fn visit_bool<E: de::Error>(self, v: bool) -> Result<InitHand, E> { Ok(InitHand::Lit(v.to_string())) }
+            fn visit_i64<E: de::Error>(self, v: i64) -> Result<InitHand, E> { Ok(InitHand::Lit(v.to_string())) }
+            fn visit_u64<E: de::Error>(self, v: u64) -> Result<InitHand, E> { Ok(InitHand::Lit(v.to_string())) }
+            fn visit_map<A: MapAccess<'de>>(self, mut m: A) -> Result<InitHand, A::Error> {
+                let key: String = m.next_key()?.ok_or_else(|| de::Error::custom("empty map"))?;
+                if key != "from_field" { return Err(de::Error::unknown_field(&key, &["from_field"])); }
+                let name: String = m.next_value()?;
+                if m.next_key::<String>()?.is_some() { return Err(de::Error::custom("extra key after from_field")); }
+                Ok(InitHand::FromField(name))
+            }
+        }
+        d.deserialize_any(V)
+    }
+}
 #[derive(Debug, Deserialize)] struct IntInner { b: i64 }
 #[derive(Debug, Deserialize)] struct FlatInt { a: i64, #[serde(flatten)] inner: IntInner }
 #[derive(Debug, Deserialize)]
@@ -345,7 +384,7 @@ fn main() {
     // b. bool field
     for v in ["yes", "on", "True"] { run::<Flag>(&format!("b {v}"), &format!("flag: {v}\n")); }
     // c/d. String field
-    for v in ["no", "on", "1e3", "true", "~", "\"no\""] { run::<Text>(&format!("c/d {v}"), &format!("text: {v}\n")); }
+    for v in ["no", "on", "1e3", "true", "~", "null", "Null", "\"no\""] { run::<Text>(&format!("c/d {v}"), &format!("text: {v}\n")); }
     run::<Text>("c/d (empty value)", "text:\n");
     run::<MaybeText>("d' Option<String> = ~", "text: ~\n");
     // e. integer field
@@ -380,6 +419,16 @@ fn main() {
     run::<Op>("shape2 internally tagged enum", "op: draw\ncount: 2\n");
     run::<InitDoc>("shape4a untagged Bool|Int|Map, bool", "init: false\n");
     run::<InitDoc>("shape4b untagged Bool|Int|Map, map", "init: { from_field: life }\n");
+    // the scalar-or-map field `init`: is there any DTO shape that loads every form?
+    run::<InitStr>("init1 `String` DTO, map form", "init: { from_field: life }\n");
+    run::<InitStr>("init1 `String` DTO, bool form", "init: false\n");
+    run::<InitLitDoc>("init2 untagged Lit(String)|FromField, false", "init: false\n");
+    run::<InitLitDoc>("init2 untagged Lit(String)|FromField, 5", "init: 5\n");
+    run::<InitLitDoc>("init2 untagged Lit(String)|FromField, map", "init: { from_field: life }\n");
+    run::<InitHandDoc>("init3 hand-written Deserialize, false", "init: false\n");
+    run::<InitHandDoc>("init3 hand-written Deserialize, 5", "init: 5\n");
+    run::<InitHandDoc>("init3 hand-written Deserialize, 0x1F", "init: 0x1F\n");
+    run::<InitHandDoc>("init3 hand-written Deserialize, map", "init: { from_field: life }\n");
     run::<FlatInt>("shape3 flatten with integer fields", "a: 1\nb: 2\n");
     // spans for stage-2 (semantic) errors
     run::<Located>("span Spanned<T>", "id: deck\nsteps:\n  - move: { to: hand }\n");
@@ -510,6 +559,20 @@ fn main() {
   serde_yaml_ng         OK  Text { text: "~" }
   yaml_ng + pre-pass    OK  Text { text: "~" }
   marked-yaml           OK  Text { text: "~" }
+### c/d null   text: null\n
+  saphyr default        ERR error: line 1 column 7: cannot deserialize null into string; use Option<String> |  --> <input>:1:7 |   | | 1 | tex...
+  saphyr options-only   ERR cannot deserialize null into string; use Option<String> at line 1, column 7
+  saphyr RECOMMENDED    ERR cannot deserialize null into string; use Option<String> at line 1, column 7 [path: text]
+  serde_yaml_ng         OK  Text { text: "null" }
+  yaml_ng + pre-pass    OK  Text { text: "null" }
+  marked-yaml           OK  Text { text: "null" }
+### c/d Null   text: Null\n
+  saphyr default        ERR error: line 1 column 7: cannot deserialize null into string; use Option<String> |  --> <input>:1:7 |   | | 1 | tex...
+  saphyr options-only   ERR cannot deserialize null into string; use Option<String> at line 1, column 7
+  saphyr RECOMMENDED    ERR cannot deserialize null into string; use Option<String> at line 1, column 7 [path: text]
+  serde_yaml_ng         OK  Text { text: "Null" }
+  yaml_ng + pre-pass    OK  Text { text: "Null" }
+  marked-yaml           OK  Text { text: "Null" }
 ### c/d "no"   text: "no"\n
   saphyr default        OK  Text { text: "no" }
   saphyr options-only   OK  Text { text: "no" }
@@ -720,6 +783,70 @@ fn main() {
   serde_yaml_ng         OK  InitDoc { init: FromField { from_field: "life" } }
   yaml_ng + pre-pass    OK  InitDoc { init: FromField { from_field: "life" } }
   marked-yaml           OK  InitDoc { init: FromField { from_field: "life" } }
+### init1 `String` DTO, map form   init: { from_field: life }\n
+  saphyr default        ERR error: line 1 column 7: expected string scalar |  --> <input>:1:7 |   | | 1 | init: { from_field: life } |   |    ...
+  saphyr options-only   ERR expected string scalar at line 1, column 7
+  saphyr RECOMMENDED    ERR expected string scalar at line 1, column 7 [path: init]
+  serde_yaml_ng         ERR init: invalid type: map, expected a string at line 1 column 7
+  yaml_ng + pre-pass    ERR init: invalid type: map, expected a string at line 1 column 7
+  marked-yaml           ERR init: invalid type: map, expected a string @ line:col 1:7
+### init1 `String` DTO, bool form   init: false\n
+  saphyr default        OK  InitStr { init: "false" }
+  saphyr options-only   OK  InitStr { init: "false" }
+  saphyr RECOMMENDED    OK  InitStr { init: "false" }
+  saphyr REC+no_schema  ERR The string value [false] must be quoted at line 1, column 7 [path: init]
+  serde_yaml_ng         OK  InitStr { init: "false" }
+  yaml_ng + pre-pass    OK  InitStr { init: "false" }
+  marked-yaml           OK  InitStr { init: "false" }
+### init2 untagged Lit(String)|FromField, false   init: false\n
+  saphyr default        ERR error: line 1 column 7: data did not match any variant of untagged enum InitLit |  --> <input>:1:7 |   | | 1 | ini...
+  saphyr options-only   ERR data did not match any variant of untagged enum InitLit at line 1, column 7
+  saphyr RECOMMENDED    ERR data did not match any variant of untagged enum InitLit at line 1, column 7 [path: init]
+  serde_yaml_ng         ERR data did not match any variant of untagged enum InitLit
+  yaml_ng + pre-pass    ERR data did not match any variant of untagged enum InitLit
+  marked-yaml           OK  InitLitDoc { init: Lit("false") }
+### init2 untagged Lit(String)|FromField, 5   init: 5\n
+  saphyr default        ERR error: line 1 column 7: data did not match any variant of untagged enum InitLit |  --> <input>:1:7 |   | | 1 | ini...
+  saphyr options-only   ERR data did not match any variant of untagged enum InitLit at line 1, column 7
+  saphyr RECOMMENDED    ERR data did not match any variant of untagged enum InitLit at line 1, column 7 [path: init]
+  serde_yaml_ng         ERR data did not match any variant of untagged enum InitLit
+  yaml_ng + pre-pass    ERR data did not match any variant of untagged enum InitLit
+  marked-yaml           OK  InitLitDoc { init: Lit("5") }
+### init2 untagged Lit(String)|FromField, map   init: { from_field: life }\n
+  saphyr default        OK  InitLitDoc { init: FromField { from_field: "life" } }
+  saphyr options-only   OK  InitLitDoc { init: FromField { from_field: "life" } }
+  saphyr RECOMMENDED    OK  InitLitDoc { init: FromField { from_field: "life" } }
+  serde_yaml_ng         OK  InitLitDoc { init: FromField { from_field: "life" } }
+  yaml_ng + pre-pass    OK  InitLitDoc { init: FromField { from_field: "life" } }
+  marked-yaml           OK  InitLitDoc { init: FromField { from_field: "life" } }
+### init3 hand-written Deserialize, false   init: false\n
+  saphyr default        OK  InitHandDoc { init: Lit("false") }
+  saphyr options-only   OK  InitHandDoc { init: Lit("false") }
+  saphyr RECOMMENDED    OK  InitHandDoc { init: Lit("false") }
+  serde_yaml_ng         OK  InitHandDoc { init: Lit("false") }
+  yaml_ng + pre-pass    OK  InitHandDoc { init: Lit("false") }
+  marked-yaml           OK  InitHandDoc { init: Lit("false") }
+### init3 hand-written Deserialize, 5   init: 5\n
+  saphyr default        OK  InitHandDoc { init: Lit("5") }
+  saphyr options-only   OK  InitHandDoc { init: Lit("5") }
+  saphyr RECOMMENDED    OK  InitHandDoc { init: Lit("5") }
+  serde_yaml_ng         OK  InitHandDoc { init: Lit("5") }
+  yaml_ng + pre-pass    OK  InitHandDoc { init: Lit("5") }
+  marked-yaml           OK  InitHandDoc { init: Lit("5") }
+### init3 hand-written Deserialize, 0x1F   init: 0x1F\n
+  saphyr default        OK  InitHandDoc { init: Lit("31") }
+  saphyr options-only   OK  InitHandDoc { init: Lit("31") }
+  saphyr RECOMMENDED    OK  InitHandDoc { init: Lit("31") }
+  serde_yaml_ng         OK  InitHandDoc { init: Lit("31") }
+  yaml_ng + pre-pass    OK  InitHandDoc { init: Lit("31") }
+  marked-yaml           OK  InitHandDoc { init: Lit("0x1F") }
+### init3 hand-written Deserialize, map   init: { from_field: life }\n
+  saphyr default        OK  InitHandDoc { init: FromField("life") }
+  saphyr options-only   OK  InitHandDoc { init: FromField("life") }
+  saphyr RECOMMENDED    OK  InitHandDoc { init: FromField("life") }
+  serde_yaml_ng         OK  InitHandDoc { init: FromField("life") }
+  yaml_ng + pre-pass    OK  InitHandDoc { init: FromField("life") }
+  marked-yaml           OK  InitHandDoc { init: FromField("life") }
 ### shape3 flatten with integer fields   a: 1\nb: 2\n
   saphyr default        OK  FlatInt { a: 1, inner: IntInner { b: 2 } }
   saphyr options-only   OK  FlatInt { a: 1, inner: IntInner { b: 2 } }
@@ -734,7 +861,7 @@ fn main() {
   serde_yaml_ng         ERR steps[0]: invalid type: map, expected a YAML tag starting with '!' at line 3 column 5
   yaml_ng + pre-pass    ERR steps[0]: invalid type: map, expected a YAML tag starting with '!' at line 3 column 5
   marked-yaml           ERR id: invalid type: string "deck", expected a span-aware newtype wrapper @ line:col 1:5
-### serde_norway output differed from serde_yaml_ng in 0 of 42 cases
+### serde_norway output differed from serde_yaml_ng in 0 of 53 cases
 ### robust undefined alias
   marked-yaml           ERR 1:4: while parsing node, found unknown anchor
   saphyr RECOMMENDED    ERR syntax error: while parsing node, found unknown anchor at char 3 line 1 column 4
