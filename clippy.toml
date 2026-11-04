@@ -1,0 +1,20 @@
+disallowed-types = [
+    { path = "std::collections::HashMap", reason = "iteration order is nondeterministic; use BTreeMap or a Vec" },
+    { path = "std::collections::HashSet", reason = "iteration order is nondeterministic; use BTreeSet or a Vec" },
+]
+
+disallowed-methods = [
+    { path = "std::time::SystemTime::now", reason = "wall-clock time is nondeterministic" },
+    { path = "std::time::Instant::now", reason = "wall-clock time is nondeterministic" },
+    { path = "std::thread::spawn", reason = "threads are nondeterministic" },
+    { path = "std::thread::Builder::spawn", reason = "threads are nondeterministic" },
+    { path = "std::thread::scope", reason = "threads are nondeterministic" },
+    { path = "std::env::var", reason = "the environment is not part of the GameState" },
+    { path = "std::env::var_os", reason = "the environment is not part of the GameState" },
+    { path = "std::env::vars", reason = "the environment is not part of the GameState" },
+    { path = "std::env::vars_os", reason = "the environment is not part of the GameState" },
+    { path = "std::env::args", reason = "the environment is not part of the GameState" },
+    { path = "std::env::args_os", reason = "the environment is not part of the GameState" },
+    { path = "std::env::current_dir", reason = "the environment is not part of the GameState" },
+    { path = "std::env::temp_dir", reason = "the environment is not part of the GameState" },
+]

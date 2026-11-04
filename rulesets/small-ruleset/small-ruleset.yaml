@@ -1,0 +1,105 @@
+meta: { id: small, version: 1 }
+
+parameters:
+  players: 2
+  starting_player: 0
+
+zones:
+  - { id: deck,        visibility: hidden, ordered: true }
+  - { id: hand,        visibility: owner,  ordered: false }
+  - { id: field,       visibility: public, ordered: false }
+  - { id: trash,       visibility: public, ordered: true }   # topo = última carta
+  - { id: mana_deck,   visibility: hidden, ordered: true }
+  - { id: mana_zone,   visibility: public, ordered: false }
+  - { id: leader_zone, visibility: public, ordered: false }
+
+card_types:
+  - id: leader
+    fields:
+      - { name: name,  type: text }
+      - { name: power, type: int }
+      - { name: life,  type: int }
+    instance_state:
+      - { name: current_life, type: int,  init: { from_field: life } }
+      - { name: tapped,       type: bool, init: false }
+    effects: false
+  - id: creature
+    fields:
+      - { name: name,  type: text }
+      - { name: cost,  type: int }
+      - { name: power, type: int }
+    instance_state:
+      - { name: tapped,           type: bool, init: false }
+      - { name: recently_played,  type: bool, init: false }
+    effects: false
+  - id: mana
+    fields: []
+    instance_state:
+      - { name: tapped, type: bool, init: false }
+    effects: false
+
+inputs:
+  - { id: leader,    card_types: [leader],   size: 1,  zone: leader_zone }
+  - { id: main_deck, card_types: [creature], size: 50, max_copies: 4, zone: deck }
+  - { id: mana_deck, card_types: [mana],     size: 10, zone: mana_deck }
+
+setup:
+  - draw: { player: each, count: 5 }
+
+turn:
+  phases:
+    - id: start
+      automatic:
+        - untap: { who: active, zones: [mana_zone, field] }
+        - set_state: { who: active, zone: field, state: recently_played, value: false }
+        - draw: { who: active, count: 1 }
+        - move: { who: active, from: mana_deck, to: mana_zone, count: 2, position: top }
+    - id: main
+      actions: [play_creature, attack]
+    - id: end
+      actions: [pass_turn]
+
+actions:
+  - id: play_creature
+    params:
+      - { name: card, zone: hand, card_type: creature }
+    cost:
+      - tap: { zone: mana_zone, count: { ref: card.cost } }
+    effects:
+      - move: { card: { ref: card }, to: field }
+      - set_state: { card: { ref: card }, state: recently_played, value: true }
+
+  - id: attack
+    params:
+      - name: attacker
+        zone: field
+        card_type: creature
+        where:
+          and:
+            - { eq: [{ ref: attacker.tapped }, false] }
+            - { eq: [{ ref: attacker.recently_played }, false] }
+      - name: target
+        one_of:
+          - { zone: field, owner: opponent, where: { eq: [{ ref: target.tapped }, true] } }
+          - { zone: leader_zone, owner: opponent }
+    effects:
+      - set_state: { card: { ref: attacker }, state: tapped, value: true }
+      - if:
+          is_card_type: [{ ref: target }, creature]
+        then:
+          - if: { gte: [{ ref: attacker.power }, { ref: target.power }] }
+            then: [ { move: { card: { ref: target }, to: trash } } ]
+        else:
+          - if: { gte: [{ ref: attacker.power }, { ref: target.power }] }
+            then: [ { add_state: { card: { ref: target }, state: current_life, amount: -1 } } ]
+
+  - id: pass_turn
+    effects: [ { end_turn: {} } ]
+
+win_conditions:
+  - id: leader_dead
+    when: { lte: [{ ref: leader.current_life }, 0] }
+    loser: owner
+  - id: deck_out
+    when: { draw_from_empty: deck }
+    loser: owner
