@@ -3,6 +3,10 @@
 //!
 //! Two Players, `PassTurn` and `DealDamage`. No phases, cards, randomness or
 //! Terminal Outcome.
+//!
+//! This is the Toy Ruleset described in `CONTEXT.md`, a proving scenario
+//! written in code. It is not a game Ruleset: game Rulesets are declarative
+//! data (ADR-0004).
 
 use std::fmt;
 
