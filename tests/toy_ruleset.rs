@@ -302,18 +302,23 @@ fn deal_damage_may_make_life_total_negative() {
         transition.trace,
         EventTrace::new(vec![damage_dealt(7, 3, 25, -5)])
     );
-    assert_eq!(transition.state.life_total(p(3)), Some(LifeTotal(-5)));
+    assert_eq!(transition.state, state(7, 1, 20, -5));
 }
 
 #[test]
 fn deal_damage_may_repeat_within_a_turn() {
     let first = accept(&initial(), &deal(7, 3, 3));
-    assert_eq!(first.state.life_total(p(3)), Some(LifeTotal(17)));
-    assert_eq!(first.trace.events().len(), 1);
+    assert_eq!(
+        first.trace,
+        EventTrace::new(vec![damage_dealt(7, 3, 3, 17)])
+    );
+    assert_eq!(first.state, state(7, 1, 20, 17));
 
     let second = accept(&first.state, &deal(7, 3, 5));
-    assert_eq!(second.state.life_total(p(3)), Some(LifeTotal(12)));
-    assert_eq!(second.trace.events().len(), 1);
+    assert_eq!(
+        second.trace,
+        EventTrace::new(vec![damage_dealt(7, 3, 5, 12)])
+    );
     assert_eq!(second.state, state(7, 1, 20, 12));
 }
 
@@ -325,7 +330,7 @@ fn deal_damage_reaches_the_minimum_life_total() {
         transition.trace,
         EventTrace::new(vec![damage_dealt(7, 3, 1, i64::MIN)])
     );
-    assert_eq!(transition.state.life_total(p(3)), Some(LifeTotal(i64::MIN)));
+    assert_eq!(transition.state, state(7, 1, 20, i64::MIN));
 }
 
 // -------------------------------------------------------------- rejections
