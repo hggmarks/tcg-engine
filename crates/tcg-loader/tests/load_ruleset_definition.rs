@@ -183,6 +183,16 @@ fn state_init_path() -> DefinitionPath {
         .key("init")
 }
 
+/// The same element as `state_init_path`, addressed by id as the engine reports it.
+fn semantic_init_path() -> DefinitionPath {
+    path()
+        .key("card_types")
+        .id("c")
+        .key("instance_state")
+        .id("s")
+        .key("init")
+}
+
 // ---- the fixture
 
 #[test]
@@ -229,7 +239,7 @@ fn init_keeps_the_yaml_scalar_type() {
     assert_eq!(
         definition_error(&document_with_state("type: text, init: 5")),
         DefinitionError {
-            path: state_init_path(),
+            path: semantic_init_path(),
             kind: DefinitionErrorKind::InitializerTypeMismatch {
                 declared: FieldType::Text,
                 found: FieldType::Int
@@ -239,7 +249,7 @@ fn init_keeps_the_yaml_scalar_type() {
     assert_eq!(
         definition_error(&document_with_state("type: bool, init: \"false\"")),
         DefinitionError {
-            path: state_init_path(),
+            path: semantic_init_path(),
             kind: DefinitionErrorKind::InitializerTypeMismatch {
                 declared: FieldType::Bool,
                 found: FieldType::Text
