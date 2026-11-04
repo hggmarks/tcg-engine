@@ -12,4 +12,5 @@
 pub mod player;
 pub mod ruleset;
 pub mod runtime;
+pub mod toy;
 pub mod turn;
