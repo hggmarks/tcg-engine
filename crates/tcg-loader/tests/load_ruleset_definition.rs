@@ -415,14 +415,6 @@ fn forbidden_yaml_features_are_rejected() {
             path(),
         ),
         (
-            "yes for a bool",
-            format!(
-                "{PREFIX}zones: []\ncard_types:\n  - id: c\n    fields: []\n    instance_state: []\n    effects: yes\n"
-            ),
-            forbidden(YamlFeature::ImplicitTyping),
-            path().key("card_types").index(0).key("effects"),
-        ),
-        (
             "null for a text",
             format!(
                 "{PREFIX}zones: []\ncard_types:\n  - id: c\n    fields:\n      - {{ name: ~, type: int }}\n"
@@ -440,6 +432,24 @@ fn forbidden_yaml_features_are_rejected() {
         let error = yaml_error(&yaml);
         assert_eq!(error.kind, kind, "{name}");
         assert_eq!(error.path, at, "{name}");
+    }
+
+    // A bool key accepts only a YAML bool scalar (ticket #20), so `yes` is a text there, quoted or
+    // not, and is `Malformed` at the key rather than `ImplicitTyping`.
+    for yes in ["yes", "\"yes\""] {
+        let error = yaml_error(&format!(
+            "{PREFIX}zones: []\ncard_types:\n  - id: c\n    fields: []\n    instance_state: []\n    effects: {yes}\n"
+        ));
+        assert_eq!(
+            error.path,
+            path().key("card_types").index(0).key("effects"),
+            "effects: {yes}"
+        );
+        assert!(
+            matches!(error.kind, YamlErrorKind::Malformed { .. }),
+            "effects: {yes} gave {:?}",
+            error.kind
+        );
     }
 
     // Line and column are 1-based and point at the anchored node.
@@ -711,6 +721,111 @@ fn reserved_words_are_rejected_as_ids_quoted_or_not() {
             error.path,
             path().key("zones").index(0).key("id"),
             "id: {word}"
+        );
+    }
+}
+
+const SMALL_CATALOG: &str = include_str!("../../../rulesets/small-ruleset/small-catalog.yaml");
+const DECK_A: &str = include_str!("../../../rulesets/small-ruleset/decks/deck-a.yaml");
+
+#[test]
+fn quoted_numbers_and_bools_are_rejected_in_format_keys() {
+    #[derive(Clone, Copy)]
+    enum File {
+        Ruleset,
+        Catalog,
+        Deck,
+    }
+    use File::{Catalog, Deck, Ruleset};
+
+    // (file, the text to quote, the quoted text, the path of the key). The first occurrence of the
+    // text in the file is replaced.
+    let cases: Vec<(File, &str, &str, DefinitionPath)> = vec![
+        (
+            Ruleset,
+            "version: 1 }",
+            "version: \"1\" }",
+            path().key("meta").key("version"),
+        ),
+        (
+            Ruleset,
+            "players: 2",
+            "players: \"2\"",
+            path().key("parameters").key("players"),
+        ),
+        (
+            Ruleset,
+            "starting_player: 0",
+            "starting_player: \"0\"",
+            path().key("parameters").key("starting_player"),
+        ),
+        (
+            Ruleset,
+            "ordered: true }",
+            "ordered: \"true\" }",
+            path().key("zones").index(0).key("ordered"),
+        ),
+        (
+            Ruleset,
+            "effects: false",
+            "effects: \"false\"",
+            path().key("card_types").index(0).key("effects"),
+        ),
+        (
+            Ruleset,
+            "size: 1,",
+            "size: \"1\",",
+            path().key("inputs").index(0).key("size"),
+        ),
+        (
+            Ruleset,
+            "max_copies: 4",
+            "max_copies: \"4\"",
+            path().key("inputs").index(1).key("max_copies"),
+        ),
+        (
+            Catalog,
+            "ruleset_version: 1",
+            "ruleset_version: \"1\"",
+            path().key("meta").key("ruleset_version"),
+        ),
+        (
+            Deck,
+            "count: 1",
+            "count: \"1\"",
+            path()
+                .key("inputs")
+                .index(0)
+                .key("cards")
+                .index(0)
+                .key("count"),
+        ),
+    ];
+
+    let parse = |file: File, yaml: &str| -> Result<(), YamlError> {
+        match file {
+            Ruleset => parse_ruleset_draft(yaml).map(|_| ()),
+            Catalog => tcg_loader::parse_card_catalog_draft(yaml).map(|_| ()),
+            Deck => tcg_loader::parse_deck_list_draft(yaml).map(|_| ()),
+        }
+    };
+    for (file, unquoted, quoted, at) in cases {
+        let original = match file {
+            Ruleset => FIXTURE,
+            Catalog => SMALL_CATALOG,
+            Deck => DECK_A,
+        };
+        assert!(original.contains(unquoted), "{unquoted}");
+        assert_eq!(parse(file, original), Ok(()), "the unquoted file loads");
+
+        let error = parse(file, &original.replacen(unquoted, quoted, 1)).expect_err(&format!(
+            "{quoted}: a quoted value is a text, not a number or a bool"
+        ));
+        assert_eq!(error.path, at, "{quoted}");
+        assert!(
+            matches!(error.kind, YamlErrorKind::Malformed { .. }),
+            "{quoted} gave {:?}",
+            error.kind
         );
     }
 }

@@ -2,6 +2,8 @@
 //! engine's plain-data draft. The same rules as in `dto.rs` apply.
 
 use serde::Deserialize;
+
+use crate::scalar;
 use tcg_engine::deck_list::{DeckEntryDraft, DeckInputCardsDraft, DeckListDraft};
 
 #[derive(Deserialize)]
@@ -21,6 +23,7 @@ struct DeckInputDto {
 #[serde(deny_unknown_fields)]
 struct DeckEntryDto {
     card: String,
+    #[serde(deserialize_with = "scalar::strict_u32")]
     count: u32,
 }
 

@@ -23,7 +23,7 @@ pub enum YamlFeature {
     MergeKey,
     DuplicateKey,
     MultipleDocuments,
-    /// A scalar that YAML would read as another type, such as `yes` for a bool or `~` for a text.
+    /// A null (`~`, `null`) where a text is expected.
     ImplicitTyping,
 }
 

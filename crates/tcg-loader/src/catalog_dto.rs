@@ -8,7 +8,7 @@ use serde::Deserialize;
 use tcg_engine::card_catalog::{CardCatalogDraft, CardDraft, CatalogMetaDraft, EffectDraft};
 use tcg_engine::ruleset_definition::FieldValue;
 
-use crate::scalar::ScalarDto;
+use crate::scalar::{self, ScalarDto};
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -21,6 +21,7 @@ pub(crate) struct CatalogDto {
 #[serde(deny_unknown_fields)]
 struct CatalogMetaDto {
     ruleset: String,
+    #[serde(deserialize_with = "scalar::strict_u32")]
     ruleset_version: u32,
 }
 

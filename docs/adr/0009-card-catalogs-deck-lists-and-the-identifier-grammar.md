@@ -14,6 +14,8 @@ Stage 2 of ADR-0004's loading is a `CardCatalog` validated against a `RulesetDef
 
 **Canonical order.** A `CardCatalog` keeps its cards in file order and each card's field values in the schema order of its card type, whatever order the file used. A `DeckList` keeps its inputs in the ruleset's input order and the entries of each input in file order. The pre-shuffle order will feed the seeded shuffle, so it must be deterministic; the same inputs written in another order give an equal `DeckList`. A catalog records the ruleset id and version it targets, and both validators reject a mismatch with a typed error.
 
+**Format numbers and bools.** Every integer and bool key of the three formats (`version`, `players`, `starting_player`, `size`, `max_copies`, `ordered`, `effects`, `ruleset_version`, `count`) must be the YAML scalar's own kind, so a quoted `"3"` or `"true"` is a text and is rejected as `Malformed` at the key; this narrows #19's `ForbiddenFeature(ImplicitTyping)` for bool keys (an unquoted `yes`) to `Malformed`, and `ImplicitTyping` now covers an unquoted `~` or `null` where a text is expected.
+
 This conflicts with no earlier ADR. It refines ADR-0004's "no implicit typing" and "decks are input", and ADR-0004's "constraints" on field schemas stay open (no value constraints yet).
 
 **Status**: accepted

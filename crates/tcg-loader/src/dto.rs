@@ -42,13 +42,16 @@ fn present<'de, D: Deserializer<'de>>(deserializer: D) -> Result<bool, D::Error>
 #[serde(deny_unknown_fields)]
 struct MetaDto {
     id: String,
+    #[serde(deserialize_with = "scalar::strict_u32")]
     version: u32,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ParametersDto {
+    #[serde(deserialize_with = "scalar::strict_u32")]
     players: u32,
+    #[serde(deserialize_with = "scalar::strict_u32")]
     starting_player: u32,
 }
 
@@ -57,6 +60,7 @@ struct ParametersDto {
 struct ZoneDto {
     id: String,
     visibility: VisibilityDto,
+    #[serde(deserialize_with = "scalar::strict_bool")]
     ordered: bool,
 }
 
@@ -74,6 +78,7 @@ struct CardTypeDto {
     id: String,
     fields: Vec<FieldDto>,
     instance_state: Vec<StateDto>,
+    #[serde(deserialize_with = "scalar::strict_bool")]
     effects: bool,
 }
 
@@ -162,16 +167,13 @@ impl<'de> Deserialize<'de> for InitDto {
 struct InputDto {
     id: String,
     card_types: Vec<String>,
+    #[serde(deserialize_with = "scalar::strict_u32")]
     size: u32,
     // An absent key means "no limit"; an explicit `~` is an error, which `Option<u32>` alone would
     // accept as `None`.
-    #[serde(default, deserialize_with = "present_max_copies")]
+    #[serde(default, deserialize_with = "scalar::strict_present_u32")]
     max_copies: Option<u32>,
     zone: String,
-}
-
-fn present_max_copies<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<u32>, D::Error> {
-    u32::deserialize(deserializer).map(Some)
 }
 
 impl RulesetDto {
