@@ -6,10 +6,12 @@
 //! identical errors. This is stage 1 of ADR-0004's two-stage loading; the card catalog stage
 //! validates against the resulting [`RulesetDefinition`].
 //!
-//! Validation reports the first error only, in a fixed order: `parameters.players`, then
-//! `parameters.starting_player`, then zones, card types and inputs, each list in declaration
-//! order. Within an element its id is checked for duplicates against earlier elements before its
-//! content, in key order.
+//! Validation reports the first error only, in a fixed order: `meta.id`, then `parameters.players`,
+//! then `parameters.starting_player`, then zones, card types and inputs, each list in declaration
+//! order. Within an element its id is checked against the identifier grammar and then for
+//! duplicates against earlier elements, before its content, in key order. An input's content is
+//! its card types (non-empty, known, without repeats), then `size`, then `max_copies`, then its
+//! zone.
 
 mod draft;
 mod error;
