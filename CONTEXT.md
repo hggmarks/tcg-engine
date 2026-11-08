@@ -22,7 +22,7 @@ _Avoid_: Ruleset for the typed data model; that is the RulesetDefinition.
 A description of player or system intent, without execution logic.
 
 **Event Trace**:
-The ordered record of facts produced while an accepted Action changes a GameState.
+The ordered record of Events produced while an accepted Action changes a GameState, or while Game creation sets up the opening position. Applying it to the prior GameState reproduces the next one.
 
 **Deterministic Execution**:
 Execution where the same initial GameState, **Random State**, and Action sequence produce the same Event Trace and final GameState.
@@ -145,7 +145,7 @@ A declared source of cards for a Game: the allowed Card Types (at least one, wit
 A 0-based position in the Player Order, such as the starting player.
 
 **Unsupported Section**:
-A behavior section of a ruleset file (`setup`, `turn`, `actions`, `win_conditions`) that the Loader rejects explicitly instead of ignoring.
+A behavior section of a ruleset file (`turn`, `actions`, `win_conditions`) that the Loader rejects explicitly instead of ignoring.
 
 **FieldValue**:
 A value of one of the supported Field Types: a bool, an integer or a text. Its kind comes from the YAML scalar, so `5` is an integer and `"5"` is a text; int values have no minimum or maximum yet.
@@ -175,3 +175,56 @@ A Card Id and a count of at least 1 in a Deck List. A card is listed once per in
 
 **Copy Limit**:
 A Deck Input's optional `max_copies`: the most copies of one Card Definition an input may hold. It is at least 1 and at most the input's size; an absent key means no limit.
+
+## Declarative Games
+
+**Declarative Ruleset**:
+The Ruleset that interprets a RulesetDefinition and a Card Catalog. Its GameState changes only by Event Application. Its Action and Rejection types have no variants until the Actions ticket.
+
+**Seat**:
+A Player's 0-based position in the Player Order. `PlayerId(n)` sits at seat `n`, and Deck List `n` belongs to seat `n`.
+
+**Setup**:
+The Setup Steps of a ruleset, run once after the cards of the Deck Lists are placed. Absent means no steps.
+
+**Setup Step**:
+One entry of the ruleset's `setup`: a single-key map naming a primitive (`shuffle` or `draw`) and its arguments.
+
+**Shuffle**:
+A Setup Step that reorders a zone of each selected Player with the GameState's Random State. It emits one `ZoneShuffled` per Player, even for a zone of 0 or 1 cards.
+
+**Draw**:
+A Setup Step that moves `count` cards, one at a time, from the Top of an explicit `from` zone onto the Top of an explicit `to` zone. Drawing from an empty zone fails Game creation.
+
+**Player Selector**:
+The value of a step's `player` key. The only selector is `each`: every Player in seat order, and a step runs fully for one Player before the next.
+
+**Top**:
+The end of a zone's list. Placing a card appends it, so the first card placed is at the bottom; a draw takes the last card.
+
+**Card Instance**:
+A card in a running Game: owner, Card Definition and mutable instance state, initialized per the card type's schema in schema order. It does not store its location, which is derived from the zones.
+
+**Card Instance Id**:
+The identity of a Card Instance, dense from 0 in creation order: seat 0 first, then for each seat the Deck Inputs in ruleset order, the Deck List entries in file order, each entry `count` times.
+
+**CardCreated**:
+The Event that a Card Instance came into being on the Top of its owner's zone.
+
+**CardMoved**:
+The Event that a card left a zone, wherever it was in the list, and went onto the Top of another zone of the same Player.
+
+**ZoneShuffled**:
+The Event that a zone was reordered. It carries the complete resulting order and the Random State after the shuffle, so replay is exact. Observations must never expose either for a hidden zone (ADR-0010).
+
+**Event Application**:
+`GameState::apply`, the single atomic function through which a declarative GameState changes. A rejected Event leaves the state unchanged.
+
+**Empty GameState**:
+The state Game creation starts from: Players by seat, the Active Player, the Random State of the Seed, every zone empty and no Card Instances.
+
+**Opening Position**:
+The GameState after Game creation: cards placed, setup run. The first Turn has not begun.
+
+**Game Creation**:
+`DeclarativeRuleset::create_game`: from one Deck List per seat and a Seed it returns the Empty GameState and the Opening Position with its setup Event Trace. It is not on the Ruleset seam (ADR-0005).
