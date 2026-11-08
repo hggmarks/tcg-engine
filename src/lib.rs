@@ -9,5 +9,10 @@
 //! in the "Determinism rules" section of `CLAUDE.md`, and most are enforced
 //! by `clippy.toml` and `[workspace.lints]`.
 
+pub mod player;
+pub mod ruleset;
+pub mod runtime;
+pub mod toy;
+pub mod turn;
 pub mod definition_path;
 pub mod ruleset_definition;

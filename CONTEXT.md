@@ -33,8 +33,38 @@ The intentionally small, game-agnostic proving scenario used to validate the fir
 **Turn**:
 A period of play owned by one active Player, ending when the rules accept that Player's `PassTurn` Action.
 
+**Turn Number**:
+The 1-based count of Turns since the Game began. Every accepted `PassTurn` increments it.
+
+**PassTurn**:
+An Action by the Active Player that ends their Turn, makes the next Player in the cyclic Player Order active and increments the Turn Number.
+
+**TurnPassed**:
+The Event fact that an accepted PassTurn ended a Turn, including the previous and next Active Player and the resulting Turn Number.
+
 **State Transition**:
 The atomic application of one Action to a GameState, yielding either a new GameState and Event Trace or an error with no state change.
+
+**Rejection**:
+The typed error a Ruleset returns for an Action it does not accept; the GameState is unchanged and no Events are produced.
+
+**Unknown Player**:
+A Rejection: an Action names a Player who is not in the Player Order.
+
+**Not Active Player**:
+A Rejection: the Player performing an Action is not the Active Player.
+
+**Self-Target**:
+A Rejection: a DealDamage Action whose source and target are the same Player.
+
+**Non-Positive Amount**:
+A Rejection: a DealDamage Action whose amount is zero or negative.
+
+**LifeTotal Underflow**:
+A Rejection: a DealDamage Action that would take the target's LifeTotal below the minimum representable value.
+
+**Turn Number Overflow**:
+A Rejection: a PassTurn Action that would take the Turn Number above the maximum representable value.
 
 **Domain Fact**:
 Information that defines the game at a point in time and is therefore eligible to belong in GameState or its Event Trace.
