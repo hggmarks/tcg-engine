@@ -28,7 +28,7 @@ use serde::de::DeserializeOwned;
 use serde_saphyr::Error as SaphyrError;
 use tcg_engine::card_catalog::{CardCatalog, CardCatalogDraft};
 use tcg_engine::deck_list::{DeckList, DeckListDraft};
-use tcg_engine::definition_path::DefinitionPath;
+use tcg_engine::definition_path::{DefinitionPath, PathSegment};
 use tcg_engine::ruleset_definition::{RulesetDefinition, RulesetDraft};
 
 pub use error::{
@@ -144,8 +144,9 @@ fn classify(error: SaphyrError, path: DefinitionPath) -> YamlError {
         SaphyrError::SerdeUnknownField { field, .. } => {
             (YamlErrorKind::UnknownKey { key: field.clone() }, path)
         }
-        // An unknown Setup Step primitive: an unknown key of the list element.
-        SaphyrError::SerdeUnknownVariant { variant, .. } => (
+        // An unknown Setup Step primitive, at exactly `setup[i]`: an unknown key of the list
+        // element. Any other unknown enum value (`visibility`, `type`) stays `Malformed`.
+        SaphyrError::SerdeUnknownVariant { variant, .. } if is_setup_step(&path) => (
             YamlErrorKind::UnknownKey {
                 key: variant.clone(),
             },
@@ -180,6 +181,14 @@ fn classify(error: SaphyrError, path: DefinitionPath) -> YamlError {
         }),
         kind,
     }
+}
+
+/// Whether `path` is exactly one element of the `setup` list, such as `setup[1]`.
+fn is_setup_step(path: &DefinitionPath) -> bool {
+    matches!(
+        path.segments(),
+        [PathSegment::Key(key), PathSegment::Index(_)] if key == "setup"
+    )
 }
 
 fn forbidden(feature: YamlFeature) -> YamlErrorKind {

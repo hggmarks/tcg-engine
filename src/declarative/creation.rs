@@ -26,12 +26,12 @@ pub struct DeclarativeRuleset {
     catalog: CardCatalog,
 }
 
-/// An Action of the declarative Ruleset. It has no variants until ticket [10] gives Actions a
+/// An Action of the declarative Ruleset. It has no variants until the first Action is added (ticket [08]); ticket [10] gives Actions a
 /// representation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {}
 
-/// The reason the declarative Ruleset refuses an Action. It has no variants until ticket [10].
+/// The reason the declarative Ruleset refuses an Action. It has no variants until the first Action is added (ticket [08]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Rejection {}
 

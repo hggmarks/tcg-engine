@@ -934,3 +934,35 @@ fn setup_meaning_is_checked_by_the_engine_with_positional_step_paths() {
         }
     );
 }
+
+#[test]
+fn unknown_enum_values_outside_setup_stay_malformed() {
+    // Only an unknown Setup Step primitive is an unknown key; other unknown values are `Malformed`.
+    let error = yaml_error(&format!(
+        "{PREFIX}zones:\n  - {{ id: deck, visibility: secret, ordered: true }}\ncard_types: []\ninputs: []\n"
+    ));
+    assert_eq!(error.path, path().key("zones").index(0).key("visibility"));
+    assert!(
+        matches!(error.kind, YamlErrorKind::Malformed { .. }),
+        "visibility: secret gave {:?}",
+        error.kind
+    );
+
+    let error = yaml_error(&format!(
+        "{PREFIX}zones: []\ncard_types:\n  - id: c\n    fields:\n      - {{ name: f, type: float }}\n    instance_state: []\n    effects: false\ninputs: []\n"
+    ));
+    assert_eq!(
+        error.path,
+        path()
+            .key("card_types")
+            .index(0)
+            .key("fields")
+            .index(0)
+            .key("type")
+    );
+    assert!(
+        matches!(error.kind, YamlErrorKind::Malformed { .. }),
+        "type: float gave {:?}",
+        error.kind
+    );
+}

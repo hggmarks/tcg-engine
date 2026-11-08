@@ -55,9 +55,9 @@ The starter cards are in `small-catalog.yaml` (3 Leaders, 16 creatures, the mana
 
 Before the first turn, in this order:
 
-1. **Placement.** Each player's cards are placed in their zones, seat 0 first: the Leader in the Leader Zone, the 50 main deck cards in the Deck and the 10 mana cards in the Mana Deck. Cards are placed in the order of the deck list, one after another, so the first card listed ends at the bottom.
-2. **Shuffle.** Each player's main deck is shuffled with the game's seeded random state, seat 0 first and then seat 1. The mana deck is **not** shuffled.
-3. **Draw.** Each player in seat order draws 5 cards from the top of the Deck into the Hand (player 0 draws all 5, then player 1 draws all 5). The top of the Deck is its last card.
+1. **Placement.** Each player's cards are placed in their zones, Player 0 first: the Leader in the Leader Zone, the 50 main deck cards in the Deck and the 10 mana cards in the Mana Deck. Cards are placed in the order of the deck list, one after another, so the first card listed ends at the bottom.
+2. **Shuffle.** Each player's main deck is shuffled with the game's seeded random state, Player 0 first and then Player 1. The mana deck is **not** shuffled.
+3. **Draw.** Each player in order (Player 0, then Player 1) draws 5 cards from the top of the Deck into the Hand (player 0 draws all 5, then player 1 draws all 5). The top of the Deck is its last card.
 
 Player 0 then takes the first turn.
 
@@ -95,6 +95,7 @@ The attacker chooses a target: a **tapped creature** of the opponent, or the **o
 |---|---|
 | **Player** | A participant in the game. This ruleset has exactly 2, numbered from 0. |
 | **Starting player** | The player who takes the first turn (Player 0). |
+| **Setup** | What happens before the first turn: place each player's cards, shuffle the main decks, then draw the starting hands. |
 | **Starting hand** | The 5 cards each player draws from the main deck at the start of the game. |
 | **Turn** | One player's complete sequence of phases: Start, Main, End. |
 | **Phase** | A segment of a turn. The phases are Start, Main, and End. |
@@ -148,6 +149,7 @@ The attacker chooses a target: a **tapped creature** of the opponent, or the **o
 |---|---|
 | **Action** | A choice made by a player (play a creature, attack, pass the turn). |
 | **Draw** | Move the top card of the deck to the hand. |
+| **Shuffle** | Put the cards of a zone in a random order, using the game's seeded random state. Only the main deck is shuffled, during setup. |
 | **Play** | Move a creature from hand to field, paying its cost. |
 | **Tap** | Change a card from untapped to tapped. |
 | **Untap** | Change a card from tapped to untapped. |

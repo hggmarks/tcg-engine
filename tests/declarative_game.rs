@@ -618,6 +618,60 @@ fn setup_draw_from_an_empty_zone_fails_game_creation() {
 }
 
 #[test]
+fn card_instance_state_copies_literal_initializers() {
+    // Non-default literals, declared in a schema order that is not alphabetical.
+    let literal = |name: &str, state_type: FieldTypeDraft, value: FieldValue| InstanceStateDraft {
+        name: name.to_string(),
+        state_type,
+        init: InitializerDraft::Literal(value),
+    };
+    let ruleset = ruleset_from(|draft| {
+        draft.card_types[1].instance_state = vec![
+            literal("charges", FieldTypeDraft::Int, FieldValue::Int(3)),
+            literal("ready", FieldTypeDraft::Bool, FieldValue::Bool(true)),
+            literal(
+                "mood",
+                FieldTypeDraft::Text,
+                FieldValue::Text("calm".to_string()),
+            ),
+            literal("debt", FieldTypeDraft::Int, FieldValue::Int(-2)),
+        ];
+    });
+    let creation = ruleset
+        .create_game(&decks(), Seed(1))
+        .expect("the decks create a game");
+    let expected = vec![
+        (StateName::new("charges"), FieldValue::Int(3)),
+        (StateName::new("ready"), FieldValue::Bool(true)),
+        (StateName::new("mood"), FieldValue::Text("calm".to_string())),
+        (StateName::new("debt"), FieldValue::Int(-2)),
+    ];
+    // Every creature instance has exactly those values; the Leader and mana keep theirs.
+    let creatures: Vec<_> = creation
+        .opening
+        .state
+        .cards()
+        .iter()
+        .filter(|card| card.definition().as_str().starts_with("creature_"))
+        .collect();
+    assert_eq!(creatures.len(), 100);
+    for card in creatures {
+        assert_eq!(card.state(), expected.as_slice());
+    }
+    let mana = creation
+        .opening
+        .state
+        .cards()
+        .iter()
+        .find(|card| card.definition().as_str() == "mana")
+        .expect("a mana card exists");
+    assert_eq!(
+        mana.state(),
+        [(StateName::new("tapped"), FieldValue::Bool(false))]
+    );
+}
+
+#[test]
 fn game_creation_without_setup_only_creates_cards() {
     let ruleset = ruleset_from(|draft| draft.setup.clear());
     let creation = ruleset

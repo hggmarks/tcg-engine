@@ -64,7 +64,7 @@ inputs:
 - Each entry of `inputs` provides one deck input of the ruleset by id; every input of the ruleset is provided exactly once, in any order.
 - Each entry of `cards` is `{ card, count }`: a card of the catalog and a number of copies of at least 1. A card is listed once per input; copies are never summed across entries.
 - Only card types allowed by the input are accepted, a card has at most `max_copies` copies in an input, and the counts of an input add up to exactly its `size`. The Leader input of the Small Ruleset has `size: 1`, so it takes exactly one Leader.
-- The order of the `cards` of an input is kept: it is the order the deck has before the seeded shuffle.
+- The order of the `cards` of an input is kept: it is the order the deck has when its cards are placed, before any setup step such as a shuffle.
 
 ## Starter data for the Small Ruleset
 

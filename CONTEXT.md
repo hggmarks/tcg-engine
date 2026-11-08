@@ -179,7 +179,7 @@ A Deck Input's optional `max_copies`: the most copies of one Card Definition an 
 ## Declarative Games
 
 **Declarative Ruleset**:
-The Ruleset that interprets a RulesetDefinition and a Card Catalog. Its GameState changes only by Event Application. Its Action and Rejection types have no variants until the Actions ticket.
+The Ruleset that interprets a RulesetDefinition and a Card Catalog. Its GameState changes only by Event Application. Its Action and Rejection types have no variants until the first Action is added ([08]).
 
 **Seat**:
 A Player's 0-based position in the Player Order. `PlayerId(n)` sits at seat `n`, and Deck List `n` belongs to seat `n`.
@@ -212,10 +212,13 @@ The identity of a Card Instance, dense from 0 in creation order: seat 0 first, t
 The Event that a Card Instance came into being on the Top of its owner's zone.
 
 **CardMoved**:
-The Event that a card left a zone, wherever it was in the list, and went onto the Top of another zone of the same Player.
+The Event that a card left `from`, wherever it was in that list, and went onto the Top of `to`; both zones belong to the same Player.
 
 **ZoneShuffled**:
-The Event that a zone was reordered. It carries the complete resulting order and the Random State after the shuffle, so replay is exact. Observations must never expose either for a hidden zone (ADR-0010).
+The Event that a zone was reordered. It carries the complete resulting order and the Random State after the shuffle, so replay is exact. Observations must never expose its Random State, nor the order of a hidden zone (ADR-0010).
+
+**Apply Error**:
+The typed error `GameState::apply` returns for an Event that does not fit the GameState; the state is unchanged. Its `UnknownPlayer` is not the Action Rejection of the same name.
 
 **Event Application**:
 `GameState::apply`, the single atomic function through which a declarative GameState changes. A rejected Event leaves the state unchanged.
