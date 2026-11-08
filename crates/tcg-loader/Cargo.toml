@@ -12,5 +12,5 @@ workspace = true
 [dependencies]
 tcg-engine = { path = "../.." }
 serde = { version = "=1.0.229", features = ["derive"] }
-serde-saphyr = { version = "=2.1.0", default-features = false, features = ["deserialize"] }
+serde-saphyr = { version = "=2.1.1", default-features = false, features = ["deserialize"] }
 serde_path_to_error = "=0.1.20"
