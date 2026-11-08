@@ -318,7 +318,13 @@ fn deck_list_rejects_too_many_copies() {
 #[test]
 fn deck_list_accepts_max_copies_exactly() {
     // 4 copies of a card pass: every entry of the legal deck has 4 except the last.
-    assert!(validate(legal_draft()).is_ok());
+    let deck = validate(legal_draft()).expect("4 copies are within the limit");
+    let first = &deck
+        .input(&DeckInputId::new("main_deck"))
+        .expect("main deck")
+        .entries()[0];
+    assert_eq!(first.card(), &CardId::new(creature_id(1)));
+    assert_eq!(first.count().get(), 4);
 
     // 5 fail, even when the total stays at 50.
     let mut cards = main_deck();

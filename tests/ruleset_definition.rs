@@ -766,7 +766,7 @@ fn ruleset_definition_rejects_invalid_id() {
         kind: DefinitionErrorKind::InvalidId { id: id.to_string() },
     };
 
-    for bad in ["", "3", "Deck", "a]b", "a-b", "_x"] {
+    for bad in ["", "3", "Deck", "a]b", "a-b", "_x", "true", "false", "null"] {
         // ruleset id
         let mut draft = small_ruleset_draft();
         draft.meta.id = bad.to_string();
@@ -867,11 +867,11 @@ fn ruleset_definition_rejects_invalid_id() {
 #[test]
 fn identifier_grammar_accepts_lowercase_letters_digits_and_underscores() {
     let mut draft = small_ruleset_draft();
-    for id in ["a", "a1", "a_b", "true", "x9_", "mana_deck_2"] {
+    for id in ["a", "a1", "a_b", "x9_", "mana_deck_2"] {
         draft.zones.push(zone(id, Visibility::Public, false));
     }
     let definition = RulesetDefinition::validate(draft).expect("every id matches the grammar");
-    assert_eq!(definition.zones().len(), 13);
+    assert_eq!(definition.zones().len(), 12);
 }
 
 // ---- deck input constraints (ticket #20)

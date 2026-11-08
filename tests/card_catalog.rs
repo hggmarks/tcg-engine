@@ -207,7 +207,7 @@ fn card_catalog_rejects_duplicate_card_id() {
     assert_eq!(
         small_error_of(vec![
             goblin(),
-            card("hero", "leader", vec![]),
+            card("mana", "mana", vec![]),
             card("goblin", "ghost", vec![]),
         ]),
         CatalogError {
