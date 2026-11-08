@@ -6,6 +6,7 @@
 
 use std::fmt;
 
+use crate::scalar;
 use serde::de::{self, Deserializer, IgnoredAny, MapAccess, Visitor};
 use serde::Deserialize;
 use tcg_engine::ruleset_definition::{
@@ -41,13 +42,16 @@ fn present<'de, D: Deserializer<'de>>(deserializer: D) -> Result<bool, D::Error>
 #[serde(deny_unknown_fields)]
 struct MetaDto {
     id: String,
+    #[serde(deserialize_with = "scalar::strict_u32")]
     version: u32,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ParametersDto {
+    #[serde(deserialize_with = "scalar::strict_u32")]
     players: u32,
+    #[serde(deserialize_with = "scalar::strict_u32")]
     starting_player: u32,
 }
 
@@ -56,6 +60,7 @@ struct ParametersDto {
 struct ZoneDto {
     id: String,
     visibility: VisibilityDto,
+    #[serde(deserialize_with = "scalar::strict_bool")]
     ordered: bool,
 }
 
@@ -73,6 +78,7 @@ struct CardTypeDto {
     id: String,
     fields: Vec<FieldDto>,
     instance_state: Vec<StateDto>,
+    #[serde(deserialize_with = "scalar::strict_bool")]
     effects: bool,
 }
 
@@ -129,21 +135,19 @@ impl<'de> Deserialize<'de> for InitDto {
             }
 
             fn visit_bool<E: de::Error>(self, value: bool) -> Result<InitDto, E> {
-                Ok(InitDto::Literal(FieldValue::Bool(value)))
+                Ok(InitDto::Literal(scalar::from_bool(value)))
             }
 
             fn visit_i64<E: de::Error>(self, value: i64) -> Result<InitDto, E> {
-                Ok(InitDto::Literal(FieldValue::Int(value)))
+                Ok(InitDto::Literal(scalar::from_i64(value)))
             }
 
             fn visit_u64<E: de::Error>(self, value: u64) -> Result<InitDto, E> {
-                i64::try_from(value)
-                    .map(|value| InitDto::Literal(FieldValue::Int(value)))
-                    .map_err(|_| E::custom("the integer does not fit in 64 bits"))
+                scalar::from_u64(value).map(InitDto::Literal)
             }
 
             fn visit_str<E: de::Error>(self, value: &str) -> Result<InitDto, E> {
-                Ok(InitDto::Literal(FieldValue::Text(value.to_string())))
+                Ok(InitDto::Literal(scalar::from_str(value)))
             }
 
             fn visit_map<A: MapAccess<'de>>(self, map: A) -> Result<InitDto, A::Error> {
@@ -163,8 +167,11 @@ impl<'de> Deserialize<'de> for InitDto {
 struct InputDto {
     id: String,
     card_types: Vec<String>,
+    #[serde(deserialize_with = "scalar::strict_u32")]
     size: u32,
-    #[serde(default)]
+    // An absent key means "no limit"; an explicit `~` is an error, which `Option<u32>` alone would
+    // accept as `None`.
+    #[serde(default, deserialize_with = "scalar::strict_present_u32")]
     max_copies: Option<u32>,
     zone: String,
 }

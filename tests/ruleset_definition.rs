@@ -756,3 +756,223 @@ fn engine_crate_has_no_yaml_or_serde_dependency() {
     assert!(!manifest.contains("serde"));
     assert!(!manifest.contains("yaml"));
 }
+
+// ---- identifier grammar (ticket #20)
+
+#[test]
+fn ruleset_definition_rejects_invalid_id() {
+    let invalid = |id: &str, at: DefinitionPath| DefinitionError {
+        path: at,
+        kind: DefinitionErrorKind::InvalidId { id: id.to_string() },
+    };
+
+    for bad in ["", "3", "Deck", "a]b", "a-b", "_x", "true", "false", "null"] {
+        // ruleset id
+        let mut draft = small_ruleset_draft();
+        draft.meta.id = bad.to_string();
+        assert_eq!(
+            error_of(draft),
+            invalid(bad, path().key("meta").key("id")),
+            "ruleset id {bad:?}"
+        );
+
+        // zone
+        let mut draft = small_ruleset_draft();
+        draft.zones.push(zone(bad, Visibility::Public, false));
+        assert_eq!(
+            error_of(draft),
+            invalid(bad, path().key("zones").index(7).key("id")),
+            "zone {bad:?}"
+        );
+
+        // card type
+        let mut draft = small_ruleset_draft();
+        draft.card_types.push(card_type(bad, vec![], vec![]));
+        assert_eq!(
+            error_of(draft),
+            invalid(bad, path().key("card_types").index(3).key("id")),
+            "card type {bad:?}"
+        );
+
+        // field
+        let mut draft = small_ruleset_draft();
+        draft.card_types[1]
+            .fields
+            .push(field(bad, FieldTypeDraft::Int));
+        assert_eq!(
+            error_of(draft),
+            invalid(
+                bad,
+                path()
+                    .key("card_types")
+                    .id("creature")
+                    .key("fields")
+                    .index(3)
+                    .key("name")
+            ),
+            "field {bad:?}"
+        );
+
+        // instance state
+        let mut draft = small_ruleset_draft();
+        draft.card_types[1].instance_state.push(state(
+            bad,
+            FieldTypeDraft::Int,
+            InitializerDraft::Literal(FieldValue::Int(0)),
+        ));
+        assert_eq!(
+            error_of(draft),
+            invalid(
+                bad,
+                path()
+                    .key("card_types")
+                    .id("creature")
+                    .key("instance_state")
+                    .index(2)
+                    .key("name")
+            ),
+            "instance state {bad:?}"
+        );
+
+        // deck input
+        let mut draft = small_ruleset_draft();
+        draft
+            .inputs
+            .push(input(bad, &["creature"], 1, None, "deck"));
+        assert_eq!(
+            error_of(draft),
+            invalid(bad, path().key("inputs").index(3).key("id")),
+            "deck input {bad:?}"
+        );
+    }
+
+    // The ruleset id comes first, before the parameters.
+    let mut draft = small_ruleset_draft();
+    draft.meta.id = "Small".to_string();
+    draft.parameters.players = 0;
+    assert_eq!(
+        error_of(draft).kind,
+        DefinitionErrorKind::InvalidId {
+            id: "Small".to_string()
+        }
+    );
+
+    // Declarations are checked in file order: a bad zone id wins over a bad card type id.
+    let mut draft = small_ruleset_draft();
+    draft.zones.push(zone("Z", Visibility::Public, false));
+    draft.card_types.push(card_type("C", vec![], vec![]));
+    assert_eq!(error_of(draft).path, path().key("zones").index(7).key("id"));
+}
+
+#[test]
+fn identifier_grammar_accepts_lowercase_letters_digits_and_underscores() {
+    let mut draft = small_ruleset_draft();
+    for id in ["a", "a1", "a_b", "x9_", "mana_deck_2"] {
+        draft.zones.push(zone(id, Visibility::Public, false));
+    }
+    let definition = RulesetDefinition::validate(draft).expect("every id matches the grammar");
+    assert_eq!(definition.zones().len(), 12);
+}
+
+// ---- deck input constraints (ticket #20)
+
+fn input_path(id: &str) -> DefinitionPath {
+    path().key("inputs").id(id)
+}
+
+#[test]
+fn deck_input_rejects_size_zero() {
+    let mut draft = small_ruleset_draft();
+    draft.inputs[1].size = 0;
+    assert_eq!(
+        error_of(draft.clone()),
+        DefinitionError {
+            path: input_path("main_deck").key("size"),
+            kind: DefinitionErrorKind::InvalidDeckSize,
+        }
+    );
+
+    // The size is checked before the copy limit and the zone.
+    draft.inputs[1].zone = "nowhere".to_string();
+    assert_eq!(error_of(draft).kind, DefinitionErrorKind::InvalidDeckSize);
+
+    let mut draft = small_ruleset_draft();
+    draft.inputs[1].size = 1;
+    draft.inputs[1].max_copies = Some(1);
+    assert!(
+        RulesetDefinition::validate(draft).is_ok(),
+        "size 1 is valid"
+    );
+}
+
+#[test]
+fn deck_input_rejects_max_copies_zero() {
+    let mut draft = small_ruleset_draft();
+    draft.inputs[1].max_copies = Some(0);
+    assert_eq!(
+        error_of(draft),
+        DefinitionError {
+            path: input_path("main_deck").key("max_copies"),
+            kind: DefinitionErrorKind::InvalidMaxCopies {
+                max_copies: 0,
+                size: 50
+            },
+        }
+    );
+}
+
+#[test]
+fn deck_input_rejects_max_copies_above_size() {
+    let mut draft = small_ruleset_draft();
+    draft.inputs[1].size = 3;
+    draft.inputs[1].max_copies = Some(4);
+    assert_eq!(
+        error_of(draft.clone()),
+        DefinitionError {
+            path: input_path("main_deck").key("max_copies"),
+            kind: DefinitionErrorKind::InvalidMaxCopies {
+                max_copies: 4,
+                size: 3
+            },
+        }
+    );
+
+    // max_copies equal to the size is accepted.
+    draft.inputs[1].max_copies = Some(3);
+    let definition = RulesetDefinition::validate(draft).expect("max_copies == size is valid");
+    assert_eq!(definition.deck_inputs()[1].max_copies(), Some(3));
+}
+
+#[test]
+fn deck_input_rejects_empty_card_types() {
+    let mut draft = small_ruleset_draft();
+    draft.inputs[1].card_types = vec![];
+    assert_eq!(
+        error_of(draft.clone()),
+        DefinitionError {
+            path: input_path("main_deck").key("card_types"),
+            kind: DefinitionErrorKind::NoCardTypes,
+        }
+    );
+
+    // Card types are checked first, before the size and the zone.
+    draft.inputs[1].size = 0;
+    draft.inputs[1].zone = "nowhere".to_string();
+    assert_eq!(error_of(draft).kind, DefinitionErrorKind::NoCardTypes);
+}
+
+#[test]
+fn deck_input_rejects_repeated_card_type() {
+    let mut draft = small_ruleset_draft();
+    draft.inputs[1].card_types = vec!["creature".to_string(), "creature".to_string()];
+    assert_eq!(
+        error_of(draft),
+        DefinitionError {
+            path: input_path("main_deck").key("card_types").index(1),
+            kind: DefinitionErrorKind::DuplicateId {
+                id: "creature".to_string(),
+                first: input_path("main_deck").key("card_types").index(0),
+            },
+        }
+    );
+}

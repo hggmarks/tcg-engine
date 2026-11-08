@@ -415,14 +415,6 @@ fn forbidden_yaml_features_are_rejected() {
             path(),
         ),
         (
-            "yes for a bool",
-            format!(
-                "{PREFIX}zones: []\ncard_types:\n  - id: c\n    fields: []\n    instance_state: []\n    effects: yes\n"
-            ),
-            forbidden(YamlFeature::ImplicitTyping),
-            path().key("card_types").index(0).key("effects"),
-        ),
-        (
             "null for a text",
             format!(
                 "{PREFIX}zones: []\ncard_types:\n  - id: c\n    fields:\n      - {{ name: ~, type: int }}\n"
@@ -440,6 +432,24 @@ fn forbidden_yaml_features_are_rejected() {
         let error = yaml_error(&yaml);
         assert_eq!(error.kind, kind, "{name}");
         assert_eq!(error.path, at, "{name}");
+    }
+
+    // A bool key accepts only a YAML bool scalar (ticket #20), so `yes` is a text there, quoted or
+    // not, and is `Malformed` at the key rather than `ImplicitTyping`.
+    for yes in ["yes", "\"yes\""] {
+        let error = yaml_error(&format!(
+            "{PREFIX}zones: []\ncard_types:\n  - id: c\n    fields: []\n    instance_state: []\n    effects: {yes}\n"
+        ));
+        assert_eq!(
+            error.path,
+            path().key("card_types").index(0).key("effects"),
+            "effects: {yes}"
+        );
+        assert!(
+            matches!(error.kind, YamlErrorKind::Malformed { .. }),
+            "effects: {yes} gave {:?}",
+            error.kind
+        );
     }
 
     // Line and column are 1-based and point at the anchored node.
@@ -592,4 +602,230 @@ fn loader_inherits_the_workspace_guardrails() {
         !own_clippy_toml.exists(),
         "a crate-local clippy.toml would shadow the root one"
     );
+}
+
+// ---- ticket #20: identifier grammar and deck input constraints
+
+#[test]
+fn explicit_null_max_copies_is_rejected() {
+    // An absent key means "no limit".
+    let draft = parse_ruleset_draft(FIXTURE).expect("fixture parses");
+    assert_eq!(draft.inputs[0].max_copies, None);
+    assert_eq!(draft.inputs[1].max_copies, Some(4));
+
+    // `max_copies: ~` is not the same thing: it is a syntax error at the key.
+    let yaml = FIXTURE.replace("max_copies: 4", "max_copies: ~");
+    assert_ne!(yaml, FIXTURE);
+    let error = yaml_error(&yaml);
+    assert_eq!(error.path, path().key("inputs").index(1).key("max_copies"));
+    assert!(
+        matches!(error.kind, YamlErrorKind::Malformed { .. }),
+        "got {:?}",
+        error.kind
+    );
+}
+
+#[test]
+fn numeric_ids_are_invalid_whether_quoted_or_not() {
+    for id in ["3", "\"3\""] {
+        let yaml = format!(
+            "{PREFIX}zones:\n  - {{ id: {id}, visibility: hidden, ordered: true }}\ncard_types: []\ninputs: []\n"
+        );
+        assert_eq!(
+            definition_error(&yaml),
+            DefinitionError {
+                path: path().key("zones").index(0).key("id"),
+                kind: DefinitionErrorKind::InvalidId {
+                    id: "3".to_string()
+                },
+            },
+            "id: {id}"
+        );
+    }
+}
+
+#[test]
+fn deck_input_constraints_reach_the_loader_as_definition_errors() {
+    let yaml = FIXTURE.replace("size: 50, max_copies: 4", "size: 3, max_copies: 4");
+    assert_ne!(yaml, FIXTURE);
+    assert_eq!(
+        definition_error(&yaml),
+        DefinitionError {
+            path: path().key("inputs").id("main_deck").key("max_copies"),
+            kind: DefinitionErrorKind::InvalidMaxCopies {
+                max_copies: 4,
+                size: 3
+            },
+        }
+    );
+
+    let yaml = FIXTURE.replace("card_types: [mana],", "card_types: [],");
+    assert_ne!(yaml, FIXTURE);
+    assert_eq!(
+        definition_error(&yaml),
+        DefinitionError {
+            path: path().key("inputs").id("mana_deck").key("card_types"),
+            kind: DefinitionErrorKind::NoCardTypes,
+        }
+    );
+}
+
+#[test]
+fn reserved_words_are_rejected_as_ids_quoted_or_not() {
+    let document = |id: &str| {
+        format!(
+            "{PREFIX}zones:\n  - {{ id: {id}, visibility: hidden, ordered: true }}\ncard_types: []\ninputs: []\n"
+        )
+    };
+
+    // Quoted, the word is a text: the engine rejects it as an id.
+    for word in ["true", "false", "null"] {
+        assert_eq!(
+            definition_error(&document(&format!("\"{word}\""))),
+            DefinitionError {
+                path: path().key("zones").index(0).key("id"),
+                kind: DefinitionErrorKind::InvalidId {
+                    id: word.to_string()
+                },
+            },
+            "id: \"{word}\""
+        );
+    }
+
+    // Unquoted, serde-saphyr reads `true` and `false` into a text as the words themselves, so the
+    // engine rejects them exactly like the quoted spelling.
+    for word in ["true", "false"] {
+        assert_eq!(
+            definition_error(&document(word)),
+            DefinitionError {
+                path: path().key("zones").index(0).key("id"),
+                kind: DefinitionErrorKind::InvalidId {
+                    id: word.to_string()
+                },
+            },
+            "id: {word}"
+        );
+    }
+
+    // An unquoted null is not read into a text at all: the loader rejects it as implicit typing.
+    for word in ["null", "~"] {
+        let error = yaml_error(&document(word));
+        assert_eq!(
+            error.kind,
+            YamlErrorKind::ForbiddenFeature {
+                feature: YamlFeature::ImplicitTyping
+            },
+            "id: {word}"
+        );
+        assert_eq!(
+            error.path,
+            path().key("zones").index(0).key("id"),
+            "id: {word}"
+        );
+    }
+}
+
+const SMALL_CATALOG: &str = include_str!("../../../rulesets/small-ruleset/small-catalog.yaml");
+const DECK_A: &str = include_str!("../../../rulesets/small-ruleset/decks/deck-a.yaml");
+
+#[test]
+fn quoted_numbers_and_bools_are_rejected_in_format_keys() {
+    #[derive(Clone, Copy)]
+    enum File {
+        Ruleset,
+        Catalog,
+        Deck,
+    }
+    use File::{Catalog, Deck, Ruleset};
+
+    // (file, the text to quote, the quoted text, the path of the key). The first occurrence of the
+    // text in the file is replaced.
+    let cases: Vec<(File, &str, &str, DefinitionPath)> = vec![
+        (
+            Ruleset,
+            "version: 1 }",
+            "version: \"1\" }",
+            path().key("meta").key("version"),
+        ),
+        (
+            Ruleset,
+            "players: 2",
+            "players: \"2\"",
+            path().key("parameters").key("players"),
+        ),
+        (
+            Ruleset,
+            "starting_player: 0",
+            "starting_player: \"0\"",
+            path().key("parameters").key("starting_player"),
+        ),
+        (
+            Ruleset,
+            "ordered: true }",
+            "ordered: \"true\" }",
+            path().key("zones").index(0).key("ordered"),
+        ),
+        (
+            Ruleset,
+            "effects: false",
+            "effects: \"false\"",
+            path().key("card_types").index(0).key("effects"),
+        ),
+        (
+            Ruleset,
+            "size: 1,",
+            "size: \"1\",",
+            path().key("inputs").index(0).key("size"),
+        ),
+        (
+            Ruleset,
+            "max_copies: 4",
+            "max_copies: \"4\"",
+            path().key("inputs").index(1).key("max_copies"),
+        ),
+        (
+            Catalog,
+            "ruleset_version: 1",
+            "ruleset_version: \"1\"",
+            path().key("meta").key("ruleset_version"),
+        ),
+        (
+            Deck,
+            "count: 1",
+            "count: \"1\"",
+            path()
+                .key("inputs")
+                .index(0)
+                .key("cards")
+                .index(0)
+                .key("count"),
+        ),
+    ];
+
+    let parse = |file: File, yaml: &str| -> Result<(), YamlError> {
+        match file {
+            Ruleset => parse_ruleset_draft(yaml).map(|_| ()),
+            Catalog => tcg_loader::parse_card_catalog_draft(yaml).map(|_| ()),
+            Deck => tcg_loader::parse_deck_list_draft(yaml).map(|_| ()),
+        }
+    };
+    for (file, unquoted, quoted, at) in cases {
+        let original = match file {
+            Ruleset => FIXTURE,
+            Catalog => SMALL_CATALOG,
+            Deck => DECK_A,
+        };
+        assert!(original.contains(unquoted), "{unquoted}");
+        assert_eq!(parse(file, original), Ok(()), "the unquoted file loads");
+
+        let error = parse(file, &original.replacen(unquoted, quoted, 1)).expect_err(&format!(
+            "{quoted}: a quoted value is a text, not a number or a bool"
+        ));
+        assert_eq!(error.path, at, "{quoted}");
+        assert!(
+            matches!(error.kind, YamlErrorKind::Malformed { .. }),
+            "{quoted} gave {:?}",
+            error.kind
+        );
+    }
 }

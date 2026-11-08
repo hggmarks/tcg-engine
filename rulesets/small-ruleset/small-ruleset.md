@@ -49,6 +49,8 @@ Each player provides:
 - **Leader**: exactly 1 Leader card. It is not part of the main deck and starts in the Leader Zone.
 - **Main deck**: 50 cards, creatures only, max 4 copies of each.
 - **Mana deck**: 10 cards, mana only.
+
+The starter cards are in `small-catalog.yaml` (3 Leaders, 16 creatures, the mana card) and two legal sample decks are in `decks/deck-a.yaml` and `decks/deck-b.yaml`. The file formats are in `../formats.md`.
 ## Turn
  
 ### 1. Start (automatic)

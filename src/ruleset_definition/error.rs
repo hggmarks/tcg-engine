@@ -18,17 +18,28 @@ pub struct DefinitionError {
 pub enum ReferenceTarget {
     Zone,
     CardType,
+    DeckInput,
+    Card,
 }
 
 /// The kinds of error. The comment on each variant is the path its error carries.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DefinitionErrorKind {
+    /// An id that breaks the identifier grammar. The path is positional and ends with the key that
+    /// holds the id, such as `zones[3].id`, `card_types[c].fields[2].name` or `meta.id`.
+    InvalidId { id: String },
     /// `parameters.players` (it is 0).
     InvalidPlayerCount { players: u32 },
     /// `parameters.starting_player`.
     InvalidStartingPlayer { starting_player: u32, players: u32 },
     /// The duplicate element, such as `zones[3]`; `first` is the earlier one, such as `zones[0]`.
     DuplicateId { id: String, first: DefinitionPath },
+    /// `inputs[main_deck].size` (it is 0).
+    InvalidDeckSize,
+    /// `inputs[main_deck].max_copies` (it is 0 or above the size).
+    InvalidMaxCopies { max_copies: u32, size: u32 },
+    /// `inputs[main_deck].card_types` (it is empty).
+    NoCardTypes,
     /// `inputs[main_deck].zone` or `inputs[main_deck].card_types[0]`.
     DanglingReference { target: ReferenceTarget, id: String },
     /// `card_types[c].fields[f].type` or `card_types[c].instance_state[s].type`.
@@ -51,6 +62,16 @@ pub enum DefinitionErrorKind {
 impl fmt::Display for DefinitionErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::InvalidId { id } => write!(
+                f,
+                "`{id}` is not a valid id: it must match [a-z][a-z0-9_]* and not be true, false or null"
+            ),
+            Self::InvalidDeckSize => write!(f, "the size of a deck input must be at least 1"),
+            Self::InvalidMaxCopies { max_copies, size } => write!(
+                f,
+                "max_copies must be between 1 and the size {size}, found {max_copies}"
+            ),
+            Self::NoCardTypes => write!(f, "a deck input must allow at least one card type"),
             Self::InvalidPlayerCount { players } => {
                 write!(
                     f,
@@ -71,6 +92,8 @@ impl fmt::Display for DefinitionErrorKind {
                 let target = match target {
                     ReferenceTarget::Zone => "zone",
                     ReferenceTarget::CardType => "card type",
+                    ReferenceTarget::DeckInput => "deck input",
+                    ReferenceTarget::Card => "card",
                 };
                 write!(f, "no {target} has the id `{id}`")
             }

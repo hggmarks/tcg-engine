@@ -1,0 +1,21 @@
+# Card catalogs, deck lists and the identifier grammar
+
+Stage 2 of ADR-0004's loading is a `CardCatalog` validated against a `RulesetDefinition`; a `DeckList` (Game input) is validated against both. Both follow ADR-0008: a plain draft per file kind, a syntax-only YAML loader in `tcg-loader`, and every semantic check in the engine (`CardCatalog::validate`, `DeckList::validate`), with the first error winning in a documented order. The models have private fields, so only `validate` builds them; a `DeckList` is therefore always legal, and Game creation will require one.
+
+**Identifier grammar.** Every declared identifier (ruleset id, zone, card type, field name, instance-state name, deck input, card) matches `[a-z][a-z0-9_]*` and is not one of the reserved words `true`, `false` or `null`, whether or not the YAML scalar is quoted. The engine checks it in `validate`, so every frontend gets it; unchecked constructors such as `ZoneId::new` stay for lookups. This removes the ambiguity between an id and a position in a printed path (`zones[3]`) and between `3` and `"3"`, and loosening it later is backward compatible. The grammar applies to declarations only: a reference that breaks it fails as a dangling reference. An invalid declaration is reported at a positional path ending in the id's key (`zones[3].id`, `card_types[c].fields[2].name`, `meta.id`), because a malformed id cannot be a path segment.
+
+**Deck input constraints** (an addition to ADR-0008's `RulesetDefinition::validate`): `size >= 1`; `1 <= max_copies <= size`; `card_types` non-empty without repeats; an explicit `max_copies: ~` is a loader syntax error, so only an absent key means "no limit". "The Leader input has exactly one card" is not special-cased: it follows from `size: 1` and the exact-size check.
+
+**Values.** A field value is a bool, an integer or a text, and its kind comes from the YAML scalar: `power: 5` is an int, `power: "5"` is a text (a type mismatch in the engine) and `name: 3` is an int (a mismatch). Int values are unconstrained for now; the gameplay tickets decide whether a rule needs a constraint (cost, power, life) and record it.
+
+**Duplicates are rejected, never summed:** a card id twice in a catalog, a field given twice (possible from a code frontend), an input provided twice, a card listed twice in one input. A count of 0 is rejected. Declarations are addressed by id in a path (`cards[goblin].fields[power]`); duplicates by position, like ADR-0008; deck list elements are references and are addressed by position (`inputs[1].cards[3]`) with the ids in the error kind.
+
+**Effects.** A card's `effects` is an optional list of single-key maps `{ <primitive>: <arguments> }`; the draft keeps only the primitive name. A non-empty list on a card type declared `effects: false` is `EffectsNotAllowed`; on any other type every entry is `UnsupportedEffect`, because no primitive exists yet. An empty list and an absent key both mean no effects.
+
+**Canonical order.** A `CardCatalog` keeps its cards in file order and each card's field values in the schema order of its card type, whatever order the file used. A `DeckList` keeps its inputs in the ruleset's input order and the entries of each input in file order. The pre-shuffle order will feed the seeded shuffle, so it must be deterministic; the same inputs written in another order give an equal `DeckList`. A catalog records the ruleset id and version it targets, and both validators reject a mismatch with a typed error.
+
+**Format numbers and bools.** Every integer and bool key of the three formats (`version`, `players`, `starting_player`, `size`, `max_copies`, `ordered`, `effects`, `ruleset_version`, `count`) must be the YAML scalar's own kind, so a quoted `"3"` or `"true"` is a text and is rejected as `Malformed` at the key; this narrows #19's `ForbiddenFeature(ImplicitTyping)` for bool keys (an unquoted `yes`) to `Malformed`, and `ImplicitTyping` now covers an unquoted `~` or `null` where a text is expected.
+
+This conflicts with no earlier ADR. It refines ADR-0004's "no implicit typing" and "decks are input", and ADR-0004's "constraints" on field schemas stay open (no value constraints yet).
+
+**Status**: accepted

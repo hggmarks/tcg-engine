@@ -1,0 +1,31 @@
+# Starter card catalog for the Small Ruleset (rulesets/small-ruleset/small-ruleset.yaml).
+# Format: rulesets/formats.md.
+
+meta: { ruleset: small, ruleset_version: 1 }
+
+cards:
+  # Leaders: one per player, starts in the Leader Zone.
+  - { id: captain_ardel, type: leader, fields: { name: "Captain Ardel", power: 2, life: 5 } }
+  - { id: warden_ilse,   type: leader, fields: { name: "Warden Ilse",   power: 1, life: 6 } }
+  - { id: sage_orren,    type: leader, fields: { name: "Sage Orren",    power: 1, life: 7 } }
+
+  # Creatures.
+  - { id: goblin_scout, type: creature, fields: { name: "Goblin Scout", cost: 1, power: 1 } }
+  - { id: moss_sprite,  type: creature, fields: { name: "Moss Sprite",  cost: 1, power: 2 } }
+  - { id: ember_hound,  type: creature, fields: { name: "Ember Hound",  cost: 2, power: 2 } }
+  - { id: river_otter,  type: creature, fields: { name: "River Otter",  cost: 2, power: 3 } }
+  - { id: stone_golem,  type: creature, fields: { name: "Stone Golem",  cost: 3, power: 3 } }
+  - { id: shadow_cat,   type: creature, fields: { name: "Shadow Cat",   cost: 3, power: 4 } }
+  - { id: iron_guard,   type: creature, fields: { name: "Iron Guard",   cost: 3, power: 2 } }
+  - { id: wind_hawk,    type: creature, fields: { name: "Wind Hawk",    cost: 2, power: 2 } }
+  - { id: thorn_boar,   type: creature, fields: { name: "Thorn Boar",   cost: 4, power: 4 } }
+  - { id: frost_wolf,   type: creature, fields: { name: "Frost Wolf",   cost: 4, power: 5 } }
+  - { id: ash_drake,    type: creature, fields: { name: "Ash Drake",    cost: 5, power: 6 } }
+  - { id: tide_serpent, type: creature, fields: { name: "Tide Serpent", cost: 5, power: 5 } }
+  - { id: sun_knight,   type: creature, fields: { name: "Sun Knight",   cost: 4, power: 3 } }
+  - { id: moon_witch,   type: creature, fields: { name: "Moon Witch",   cost: 3, power: 2 } }
+  - { id: bone_giant,   type: creature, fields: { name: "Bone Giant",   cost: 5, power: 7 } }
+  - { id: storm_roc,    type: creature, fields: { name: "Storm Roc",    cost: 4, power: 4 } }
+
+  # Mana: the mana card has no fields, so one definition serves the whole mana deck.
+  - { id: mana, type: mana, fields: {} }

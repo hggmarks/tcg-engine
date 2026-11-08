@@ -115,7 +115,7 @@ The plain, unchecked data a frontend fills (strings for ids, no invariants) and 
 The component that turns file text into a Ruleset Draft and checks syntax only; every semantic check belongs to the engine.
 
 **Definition Path**:
-The location of an element in a Ruleset Definition, such as `card_types[creature].fields[cost]`; semantic errors address elements by id, syntax errors by position.
+The location of an element in a Ruleset Definition, Card Catalog or Deck List, such as `card_types[creature].fields[cost]` or `inputs[1].cards[3]`; semantic errors address declarations by id and references (deck list elements) by position, syntax errors by position.
 
 **Zone**:
 A named place where cards are held, with a Visibility and an ordered flag (stored, not yet enforced).
@@ -139,10 +139,39 @@ The name, Field Type and Initializer of one value that changes during a Game and
 How an instance-state value starts: a literal of the declared type, or the value of a same-typed field of the same Card Type (`from_field`).
 
 **Deck Input**:
-A declared source of cards for a Game: the allowed Card Types, size, optional maximum copies and the destination Zone.
+A declared source of cards for a Game: the allowed Card Types (at least one, without repeats), a size of at least 1, an optional Copy Limit and the destination Zone.
 
 **Player Position**:
 A 0-based position in the Player Order, such as the starting player.
 
 **Unsupported Section**:
 A behavior section of a ruleset file (`setup`, `turn`, `actions`, `win_conditions`) that the Loader rejects explicitly instead of ignoring.
+
+**FieldValue**:
+A value of one of the supported Field Types: a bool, an integer or a text. Its kind comes from the YAML scalar, so `5` is an integer and `"5"` is a text; int values have no minimum or maximum yet.
+
+**Player Count**:
+The number of Players in a Game, as the ruleset's `parameters.players`; at least 1.
+
+## Card Catalogs and Deck Lists
+
+**Identifier**:
+A declared name (ruleset id, zone, card type, field name, instance-state name, Deck Input, card) matching `[a-z][a-z0-9_]*` and not `true`, `false` or `null`, whether or not the YAML scalar is quoted. The engine checks it; a reference that breaks it fails as a dangling reference.
+
+**Card Catalog**:
+The validated, typed set of Card Definitions of one ruleset id and version, in file order. It is built only by `CardCatalog::validate` against an already loaded Ruleset Definition (stage 2 of loading).
+
+**Card Definition**:
+The immutable definition of a card: its Card Id, its Card Type and one FieldValue per field of that type, kept in the schema order of the type. It is distinct from a card instance, which is runtime state.
+
+**Card Id**:
+The Identifier of a Card Definition, unique within its Card Catalog.
+
+**Deck List**:
+The validated, typed cards one Player provides for every Deck Input of a ruleset. It is Game input, built only by `DeckList::validate`, so a Deck List is always legal. It keeps its inputs in the ruleset's input order and the entries of each input in file order.
+
+**Deck Entry**:
+A Card Id and a count of at least 1 in a Deck List. A card is listed once per input; entries are never summed.
+
+**Copy Limit**:
+A Deck Input's optional `max_copies`: the most copies of one Card Definition an input may hold. It is at least 1 and at most the input's size; an absent key means no limit.

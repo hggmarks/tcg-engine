@@ -5,24 +5,7 @@ use std::num::NonZeroU32;
 
 use super::draft::RulesetDraft;
 use super::error::DefinitionError;
-
-macro_rules! id_type {
-    ($(#[$doc:meta])* $name:ident) => {
-        $(#[$doc])*
-        #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-        pub struct $name(String);
-
-        impl $name {
-            pub fn new(id: impl Into<String>) -> Self {
-                Self(id.into())
-            }
-
-            pub fn as_str(&self) -> &str {
-                &self.0
-            }
-        }
-    };
-}
+use crate::id::id_type;
 
 id_type!(
     /// The identity of a Ruleset (`meta.id`).
