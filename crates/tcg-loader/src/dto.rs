@@ -6,6 +6,7 @@
 
 use std::fmt;
 
+use crate::scalar;
 use serde::de::{self, Deserializer, IgnoredAny, MapAccess, Visitor};
 use serde::Deserialize;
 use tcg_engine::ruleset_definition::{
@@ -129,21 +130,19 @@ impl<'de> Deserialize<'de> for InitDto {
             }
 
             fn visit_bool<E: de::Error>(self, value: bool) -> Result<InitDto, E> {
-                Ok(InitDto::Literal(FieldValue::Bool(value)))
+                Ok(InitDto::Literal(scalar::from_bool(value)))
             }
 
             fn visit_i64<E: de::Error>(self, value: i64) -> Result<InitDto, E> {
-                Ok(InitDto::Literal(FieldValue::Int(value)))
+                Ok(InitDto::Literal(scalar::from_i64(value)))
             }
 
             fn visit_u64<E: de::Error>(self, value: u64) -> Result<InitDto, E> {
-                i64::try_from(value)
-                    .map(|value| InitDto::Literal(FieldValue::Int(value)))
-                    .map_err(|_| E::custom("the integer does not fit in 64 bits"))
+                scalar::from_u64(value).map(InitDto::Literal)
             }
 
             fn visit_str<E: de::Error>(self, value: &str) -> Result<InitDto, E> {
-                Ok(InitDto::Literal(FieldValue::Text(value.to_string())))
+                Ok(InitDto::Literal(scalar::from_str(value)))
             }
 
             fn visit_map<A: MapAccess<'de>>(self, map: A) -> Result<InitDto, A::Error> {
@@ -164,9 +163,15 @@ struct InputDto {
     id: String,
     card_types: Vec<String>,
     size: u32,
-    #[serde(default)]
+    // An absent key means "no limit"; an explicit `~` is an error, which `Option<u32>` alone would
+    // accept as `None`.
+    #[serde(default, deserialize_with = "present_max_copies")]
     max_copies: Option<u32>,
     zone: String,
+}
+
+fn present_max_copies<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<u32>, D::Error> {
+    u32::deserialize(deserializer).map(Some)
 }
 
 impl RulesetDto {

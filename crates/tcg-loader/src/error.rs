@@ -2,6 +2,8 @@
 
 use std::fmt;
 
+use tcg_engine::card_catalog::CatalogError;
+use tcg_engine::deck_list::DeckError;
 use tcg_engine::definition_path::DefinitionPath;
 use tcg_engine::ruleset_definition::DefinitionError;
 
@@ -117,5 +119,69 @@ impl From<YamlError> for LoadError {
 impl From<DefinitionError> for LoadError {
     fn from(error: DefinitionError) -> Self {
         Self::Definition(error)
+    }
+}
+
+/// Either stage of loading a card catalog failed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CatalogLoadError {
+    /// The text is not a card catalog in the supported YAML subset.
+    Yaml(YamlError),
+    /// The text parsed into a draft that the engine rejected.
+    Catalog(CatalogError),
+}
+
+impl fmt::Display for CatalogLoadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Yaml(error) => error.fmt(f),
+            Self::Catalog(error) => error.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for CatalogLoadError {}
+
+impl From<YamlError> for CatalogLoadError {
+    fn from(error: YamlError) -> Self {
+        Self::Yaml(error)
+    }
+}
+
+impl From<CatalogError> for CatalogLoadError {
+    fn from(error: CatalogError) -> Self {
+        Self::Catalog(error)
+    }
+}
+
+/// Either stage of loading a deck list failed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeckLoadError {
+    /// The text is not a deck list in the supported YAML subset.
+    Yaml(YamlError),
+    /// The text parsed into a draft that the engine rejected.
+    Deck(DeckError),
+}
+
+impl fmt::Display for DeckLoadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Yaml(error) => error.fmt(f),
+            Self::Deck(error) => error.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for DeckLoadError {}
+
+impl From<YamlError> for DeckLoadError {
+    fn from(error: YamlError) -> Self {
+        Self::Yaml(error)
+    }
+}
+
+impl From<DeckError> for DeckLoadError {
+    fn from(error: DeckError) -> Self {
+        Self::Deck(error)
     }
 }

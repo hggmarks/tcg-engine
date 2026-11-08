@@ -659,3 +659,58 @@ fn deck_input_constraints_reach_the_loader_as_definition_errors() {
         }
     );
 }
+
+#[test]
+fn reserved_words_are_rejected_as_ids_quoted_or_not() {
+    let document = |id: &str| {
+        format!(
+            "{PREFIX}zones:\n  - {{ id: {id}, visibility: hidden, ordered: true }}\ncard_types: []\ninputs: []\n"
+        )
+    };
+
+    // Quoted, the word is a text: the engine rejects it as an id.
+    for word in ["true", "false", "null"] {
+        assert_eq!(
+            definition_error(&document(&format!("\"{word}\""))),
+            DefinitionError {
+                path: path().key("zones").index(0).key("id"),
+                kind: DefinitionErrorKind::InvalidId {
+                    id: word.to_string()
+                },
+            },
+            "id: \"{word}\""
+        );
+    }
+
+    // Unquoted, serde-saphyr reads `true` and `false` into a text as the words themselves, so the
+    // engine rejects them exactly like the quoted spelling.
+    for word in ["true", "false"] {
+        assert_eq!(
+            definition_error(&document(word)),
+            DefinitionError {
+                path: path().key("zones").index(0).key("id"),
+                kind: DefinitionErrorKind::InvalidId {
+                    id: word.to_string()
+                },
+            },
+            "id: {word}"
+        );
+    }
+
+    // An unquoted null is not read into a text at all: the loader rejects it as implicit typing.
+    for word in ["null", "~"] {
+        let error = yaml_error(&document(word));
+        assert_eq!(
+            error.kind,
+            YamlErrorKind::ForbiddenFeature {
+                feature: YamlFeature::ImplicitTyping
+            },
+            "id: {word}"
+        );
+        assert_eq!(
+            error.path,
+            path().key("zones").index(0).key("id"),
+            "id: {word}"
+        );
+    }
+}

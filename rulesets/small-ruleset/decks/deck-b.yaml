@@ -1,0 +1,27 @@
+# Sample deck B for the Small Ruleset: 1 Leader, 50 creatures (at most 4 of each), 10 mana.
+# Format: rulesets/formats.md.
+
+inputs:
+  - input: leader
+    cards:
+      - { card: warden_ilse, count: 1 }
+  - input: main_deck
+    cards:
+      - { card: moss_sprite,  count: 4 }
+      - { card: ember_hound,  count: 4 }
+      - { card: river_otter,  count: 4 }
+      - { card: stone_golem,  count: 4 }
+      - { card: shadow_cat,   count: 4 }
+      - { card: iron_guard,   count: 4 }
+      - { card: wind_hawk,    count: 4 }
+      - { card: thorn_boar,   count: 4 }
+      - { card: frost_wolf,   count: 4 }
+      - { card: ash_drake,    count: 4 }
+      - { card: tide_serpent, count: 2 }
+      - { card: sun_knight,   count: 2 }
+      - { card: moon_witch,   count: 2 }
+      - { card: bone_giant,   count: 2 }
+      - { card: storm_roc,    count: 2 }
+  - input: mana_deck
+    cards:
+      - { card: mana, count: 10 }
