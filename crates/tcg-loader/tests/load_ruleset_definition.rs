@@ -593,3 +593,69 @@ fn loader_inherits_the_workspace_guardrails() {
         "a crate-local clippy.toml would shadow the root one"
     );
 }
+
+// ---- ticket #20: identifier grammar and deck input constraints
+
+#[test]
+fn explicit_null_max_copies_is_rejected() {
+    // An absent key means "no limit".
+    let draft = parse_ruleset_draft(FIXTURE).expect("fixture parses");
+    assert_eq!(draft.inputs[0].max_copies, None);
+    assert_eq!(draft.inputs[1].max_copies, Some(4));
+
+    // `max_copies: ~` is not the same thing: it is a syntax error at the key.
+    let yaml = FIXTURE.replace("max_copies: 4", "max_copies: ~");
+    assert_ne!(yaml, FIXTURE);
+    let error = yaml_error(&yaml);
+    assert_eq!(error.path, path().key("inputs").index(1).key("max_copies"));
+    assert!(
+        matches!(error.kind, YamlErrorKind::Malformed { .. }),
+        "got {:?}",
+        error.kind
+    );
+}
+
+#[test]
+fn numeric_ids_are_invalid_whether_quoted_or_not() {
+    for id in ["3", "\"3\""] {
+        let yaml = format!(
+            "{PREFIX}zones:\n  - {{ id: {id}, visibility: hidden, ordered: true }}\ncard_types: []\ninputs: []\n"
+        );
+        assert_eq!(
+            definition_error(&yaml),
+            DefinitionError {
+                path: path().key("zones").index(0).key("id"),
+                kind: DefinitionErrorKind::InvalidId {
+                    id: "3".to_string()
+                },
+            },
+            "id: {id}"
+        );
+    }
+}
+
+#[test]
+fn deck_input_constraints_reach_the_loader_as_definition_errors() {
+    let yaml = FIXTURE.replace("size: 50, max_copies: 4", "size: 3, max_copies: 4");
+    assert_ne!(yaml, FIXTURE);
+    assert_eq!(
+        definition_error(&yaml),
+        DefinitionError {
+            path: path().key("inputs").id("main_deck").key("max_copies"),
+            kind: DefinitionErrorKind::InvalidMaxCopies {
+                max_copies: 4,
+                size: 3
+            },
+        }
+    );
+
+    let yaml = FIXTURE.replace("card_types: [mana],", "card_types: [],");
+    assert_ne!(yaml, FIXTURE);
+    assert_eq!(
+        definition_error(&yaml),
+        DefinitionError {
+            path: path().key("inputs").id("mana_deck").key("card_types"),
+            kind: DefinitionErrorKind::NoCardTypes,
+        }
+    );
+}
