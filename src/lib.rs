@@ -12,6 +12,7 @@ pub mod random;
 
 pub mod card_catalog;
 pub mod deck_list;
+pub mod declarative;
 pub mod definition_path;
 mod id;
 pub mod player;

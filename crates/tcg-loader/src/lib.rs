@@ -10,8 +10,8 @@
 //! 1. an event pass that rejects anchors, aliases and every tag, and tracks the path;
 //! 2. `serde-saphyr`, with strict options, into private data-transfer types that reject unknown
 //!    keys;
-//! 3. a check that no unsupported behavior section (`setup`, `turn`, `actions`, `win_conditions`)
-//!    is present;
+//! 3. a check that no unsupported behavior section (`turn`, `actions`, `win_conditions`) is
+//!    present;
 //! 4. conversion into the draft.
 //!
 //! The three file kinds share steps 1 and 2; each has its own data-transfer types. The first error
@@ -144,6 +144,13 @@ fn classify(error: SaphyrError, path: DefinitionPath) -> YamlError {
         SaphyrError::SerdeUnknownField { field, .. } => {
             (YamlErrorKind::UnknownKey { key: field.clone() }, path)
         }
+        // An unknown Setup Step primitive: an unknown key of the list element.
+        SaphyrError::SerdeUnknownVariant { variant, .. } => (
+            YamlErrorKind::UnknownKey {
+                key: variant.clone(),
+            },
+            path,
+        ),
         SaphyrError::DuplicateMappingKey { key, .. } => {
             let path = match key {
                 Some(key) => path.key(key.as_str()),

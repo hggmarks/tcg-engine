@@ -10,6 +10,8 @@ pub struct RulesetDraft {
     pub zones: Vec<ZoneDraft>,
     pub card_types: Vec<CardTypeDraft>,
     pub inputs: Vec<DeckInputDraft>,
+    /// The Setup Steps, in order. Empty means no steps.
+    pub setup: Vec<SetupStepDraft>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -76,4 +78,20 @@ pub struct DeckInputDraft {
     pub size: u32,
     pub max_copies: Option<u32>,
     pub zone: String,
+}
+
+/// An unvalidated Setup Step. The strings are the keys of the ruleset format: `player` is a Player
+/// Selector such as `each`, and the zones are zone ids.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SetupStepDraft {
+    Shuffle {
+        player: String,
+        zone: String,
+    },
+    Draw {
+        player: String,
+        from: String,
+        to: String,
+        count: u32,
+    },
 }

@@ -11,7 +11,8 @@
 //! order. Within an element its id is checked against the identifier grammar and then for
 //! duplicates against earlier elements, before its content, in key order. An input's content is
 //! its card types (non-empty, known, without repeats), then `size`, then `max_copies`, then its
-//! zone.
+//! zone. Setup steps come last, in declaration order. Within a step: `player`, then its zones
+//! (`zone`, or `from` then `to`), then `count`.
 
 mod draft;
 mod error;
@@ -20,11 +21,12 @@ mod validate;
 
 pub use draft::{
     CardTypeDraft, DeckInputDraft, FieldDraft, FieldTypeDraft, InitializerDraft,
-    InstanceStateDraft, MetaDraft, ParametersDraft, RulesetDraft, ZoneDraft,
+    InstanceStateDraft, MetaDraft, ParametersDraft, RulesetDraft, SetupStepDraft, ZoneDraft,
 };
 pub use error::{DefinitionError, DefinitionErrorKind, ReferenceTarget};
 pub use model::{
     CardType, CardTypeId, DeckInput, DeckInputId, FieldName, FieldSchema, FieldType, FieldValue,
     Initializer, InstanceStateSchema, Meta, Parameters, PlayerCount, PlayerPosition,
-    RulesetDefinition, RulesetId, RulesetVersion, StateName, Visibility, Zone, ZoneId,
+    PlayerSelector, RulesetDefinition, RulesetId, RulesetVersion, SetupStep, StateName, Visibility,
+    Zone, ZoneId,
 };

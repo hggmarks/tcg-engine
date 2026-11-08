@@ -43,17 +43,22 @@ inputs:
   - { id: main_deck, card_types: [creature], size: 50, max_copies: 4, zone: deck }
   - { id: mana_deck, card_types: [mana],     size: 10, zone: mana_deck }
 
+# Setup runs after each Player's cards are placed on the zone of their deck input (leader in
+# leader_zone, main deck in deck, mana deck in mana_deck). `player: each` is every Player in seat
+# order; a step runs fully for one Player before the next. The main deck is shuffled; the mana deck
+# is not. Seed-driven: the shuffles use the Game's one random stream, seat 0 first.
 setup:
-  - draw: { player: each, count: 5 }
+  - shuffle: { player: each, zone: deck }
+  - draw: { player: each, from: deck, to: hand, count: 5 }
 
 turn:
   phases:
     - id: start
       automatic:
-        - untap: { who: active, zones: [mana_zone, field] }
-        - set_state: { who: active, zone: field, state: recently_played, value: false }
-        - draw: { who: active, count: 1 }
-        - move: { who: active, from: mana_deck, to: mana_zone, count: 2, position: top }
+        - untap: { player: active, zones: [mana_zone, field] }
+        - set_state: { player: active, zone: field, state: recently_played, value: false }
+        - draw: { player: active, from: deck, to: hand, count: 1 }
+        - move: { player: active, from: mana_deck, to: mana_zone, count: 2, position: top }
     - id: main
       actions: [play_creature, attack]
     - id: end

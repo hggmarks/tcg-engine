@@ -51,6 +51,16 @@ Each player provides:
 - **Mana deck**: 10 cards, mana only.
 
 The starter cards are in `small-catalog.yaml` (3 Leaders, 16 creatures, the mana card) and two legal sample decks are in `decks/deck-a.yaml` and `decks/deck-b.yaml`. The file formats are in `../formats.md`.
+## Setup
+
+Before the first turn, in this order:
+
+1. **Placement.** Each player's cards are placed in their zones, seat 0 first: the Leader in the Leader Zone, the 50 main deck cards in the Deck and the 10 mana cards in the Mana Deck. Cards are placed in the order of the deck list, one after another, so the first card listed ends at the bottom.
+2. **Shuffle.** Each player's main deck is shuffled with the game's seeded random state, seat 0 first and then seat 1. The mana deck is **not** shuffled.
+3. **Draw.** Each player in seat order draws 5 cards from the top of the Deck into the Hand (player 0 draws all 5, then player 1 draws all 5). The top of the Deck is its last card.
+
+Player 0 then takes the first turn.
+
 ## Turn
  
 ### 1. Start (automatic)
