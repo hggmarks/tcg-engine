@@ -3,12 +3,14 @@
 //! Drafts are built in Rust, the way a code frontend would build them. Every error test asserts the
 //! whole `DefinitionError`: kind and path.
 
+use std::num::NonZeroU32;
+
 use tcg_engine::definition_path::{DefinitionPath, PathSegment};
 use tcg_engine::ruleset_definition::{
     CardTypeDraft, CardTypeId, DeckInputDraft, DefinitionError, DefinitionErrorKind, FieldDraft,
     FieldName, FieldType, FieldTypeDraft, FieldValue, Initializer, InitializerDraft,
-    InstanceStateDraft, MetaDraft, ParametersDraft, ReferenceTarget, RulesetDefinition,
-    RulesetDraft, Visibility, ZoneDraft, ZoneId,
+    InstanceStateDraft, MetaDraft, ParametersDraft, PlayerSelector, ReferenceTarget,
+    RulesetDefinition, RulesetDraft, SetupStep, SetupStepDraft, Visibility, ZoneDraft, ZoneId,
 };
 
 // ---- draft builders
@@ -134,6 +136,7 @@ fn small_ruleset_draft() -> RulesetDraft {
             input("main_deck", &["creature"], 50, Some(4), "deck"),
             input("mana_deck", &["mana"], 10, None, "mana_deck"),
         ],
+        setup: vec![],
     }
 }
 
@@ -151,6 +154,7 @@ fn draft_with_card_types(card_types: Vec<CardTypeDraft>) -> RulesetDraft {
         zones: vec![],
         card_types,
         inputs: vec![],
+        setup: vec![],
     }
 }
 
@@ -587,6 +591,7 @@ fn ids_may_repeat_across_lists() {
             input("mana_deck", &["mana"], 10, None, "mana_deck"),
             input("leader", &["leader"], 1, None, "mana_deck"),
         ],
+        setup: vec![],
     };
     let definition = RulesetDefinition::validate(draft).expect("ids are scoped to their list");
     let zone_ids: Vec<&str> = definition.zones().iter().map(|z| z.id().as_str()).collect();
@@ -975,4 +980,206 @@ fn deck_input_rejects_repeated_card_type() {
             },
         }
     );
+}
+
+// ---- setup (ticket #21)
+
+fn shuffle(player: &str, zone: &str) -> SetupStepDraft {
+    SetupStepDraft::Shuffle {
+        player: player.to_string(),
+        zone: zone.to_string(),
+    }
+}
+
+fn draw(player: &str, from: &str, to: &str, count: u32) -> SetupStepDraft {
+    SetupStepDraft::Draw {
+        player: player.to_string(),
+        from: from.to_string(),
+        to: to.to_string(),
+        count,
+    }
+}
+
+/// The Small Ruleset structure with the given setup steps.
+fn small_ruleset_with_setup(setup: Vec<SetupStepDraft>) -> RulesetDraft {
+    let mut draft = small_ruleset_draft();
+    draft.setup = setup;
+    draft
+}
+
+fn setup_path(step: usize, primitive: &str, key: &str) -> DefinitionPath {
+    path().key("setup").index(step).key(primitive).key(key)
+}
+
+#[test]
+fn valid_setup_is_kept_in_order() {
+    let definition = RulesetDefinition::validate(small_ruleset_with_setup(vec![
+        shuffle("each", "deck"),
+        draw("each", "deck", "hand", 5),
+    ]))
+    .expect("a valid setup");
+    assert_eq!(
+        definition.setup(),
+        [
+            SetupStep::Shuffle {
+                player: PlayerSelector::Each,
+                zone: ZoneId::new("deck"),
+            },
+            SetupStep::Draw {
+                player: PlayerSelector::Each,
+                from: ZoneId::new("deck"),
+                to: ZoneId::new("hand"),
+                count: NonZeroU32::new(5).expect("5 is not zero"),
+            },
+        ]
+    );
+
+    // No steps is a valid setup.
+    let definition = RulesetDefinition::validate(small_ruleset_with_setup(vec![]))
+        .expect("an empty setup is valid");
+    assert_eq!(definition.setup(), []);
+}
+
+#[test]
+fn setup_rejects_unknown_player_selector() {
+    // Only `each` exists; there is no `active` selector yet.
+    let error = error_of(small_ruleset_with_setup(vec![
+        shuffle("each", "deck"),
+        shuffle("active", "deck"),
+    ]));
+    assert_eq!(
+        error,
+        DefinitionError {
+            path: setup_path(1, "shuffle", "player"),
+            kind: DefinitionErrorKind::UnknownPlayerSelector {
+                selector: "active".to_string()
+            },
+        }
+    );
+
+    let error = error_of(small_ruleset_with_setup(vec![draw(
+        "who", "deck", "hand", 1,
+    )]));
+    assert_eq!(
+        error,
+        DefinitionError {
+            path: setup_path(0, "draw", "player"),
+            kind: DefinitionErrorKind::UnknownPlayerSelector {
+                selector: "who".to_string()
+            },
+        }
+    );
+}
+
+#[test]
+fn setup_rejects_dangling_zone() {
+    let dangling = |id: &str| DefinitionErrorKind::DanglingReference {
+        target: ReferenceTarget::Zone,
+        id: id.to_string(),
+    };
+
+    // shuffle.zone
+    let error = error_of(small_ruleset_with_setup(vec![shuffle("each", "nowhere")]));
+    assert_eq!(
+        error,
+        DefinitionError {
+            path: setup_path(0, "shuffle", "zone"),
+            kind: dangling("nowhere"),
+        }
+    );
+
+    // draw.from
+    let error = error_of(small_ruleset_with_setup(vec![
+        shuffle("each", "deck"),
+        draw("each", "nowhere", "hand", 5),
+    ]));
+    assert_eq!(
+        error,
+        DefinitionError {
+            path: setup_path(1, "draw", "from"),
+            kind: dangling("nowhere"),
+        }
+    );
+
+    // draw.to
+    let error = error_of(small_ruleset_with_setup(vec![draw(
+        "each",
+        "deck",
+        "elsewhere",
+        5,
+    )]));
+    assert_eq!(
+        error,
+        DefinitionError {
+            path: setup_path(0, "draw", "to"),
+            kind: dangling("elsewhere"),
+        }
+    );
+
+    // A zone id that breaks the identifier grammar is a dangling reference too (ADR-0009).
+    let error = error_of(small_ruleset_with_setup(vec![shuffle("each", "Deck")]));
+    assert_eq!(
+        error,
+        DefinitionError {
+            path: setup_path(0, "shuffle", "zone"),
+            kind: dangling("Deck"),
+        }
+    );
+}
+
+#[test]
+fn setup_rejects_zero_draw_count() {
+    let error = error_of(small_ruleset_with_setup(vec![draw(
+        "each", "deck", "hand", 0,
+    )]));
+    assert_eq!(
+        error,
+        DefinitionError {
+            path: setup_path(0, "draw", "count"),
+            kind: DefinitionErrorKind::InvalidDrawCount,
+        }
+    );
+}
+
+#[test]
+fn setup_is_checked_after_inputs() {
+    // A bad input zone and a bad setup step: the input is reported, whatever the step.
+    let mut draft = small_ruleset_with_setup(vec![shuffle("nobody", "nowhere")]);
+    draft.inputs[0].zone = "missing".to_string();
+    assert_eq!(
+        error_of(draft),
+        DefinitionError {
+            path: path().key("inputs").id("leader").key("zone"),
+            kind: DefinitionErrorKind::DanglingReference {
+                target: ReferenceTarget::Zone,
+                id: "missing".to_string()
+            },
+        }
+    );
+}
+
+#[test]
+fn setup_steps_are_checked_in_order_and_each_step_in_key_order() {
+    // The first bad step wins, even when a later one is also bad.
+    let error = error_of(small_ruleset_with_setup(vec![
+        shuffle("each", "nowhere"),
+        draw("who", "deck", "hand", 0),
+    ]));
+    assert_eq!(error.path, setup_path(0, "shuffle", "zone"));
+
+    // Within a draw: player, then from, then to, then count.
+    let error = error_of(small_ruleset_with_setup(vec![draw("who", "a", "b", 0)]));
+    assert_eq!(error.path, setup_path(0, "draw", "player"));
+    let error = error_of(small_ruleset_with_setup(vec![draw("each", "a", "b", 0)]));
+    assert_eq!(error.path, setup_path(0, "draw", "from"));
+    let error = error_of(small_ruleset_with_setup(vec![draw("each", "deck", "b", 0)]));
+    assert_eq!(error.path, setup_path(0, "draw", "to"));
+    let error = error_of(small_ruleset_with_setup(vec![draw(
+        "each", "deck", "hand", 0,
+    )]));
+    assert_eq!(error.path, setup_path(0, "draw", "count"));
+
+    // Within a shuffle: player, then zone.
+    let error = error_of(small_ruleset_with_setup(vec![shuffle("who", "nowhere")]));
+    assert_eq!(error.path, setup_path(0, "shuffle", "player"));
 }
