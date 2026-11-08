@@ -20,8 +20,9 @@ use tcg_engine::player::{PlayerId, PlayerOrder};
 use tcg_engine::random::{RandomState, Seed};
 use tcg_engine::ruleset::Ruleset;
 use tcg_engine::ruleset_definition::{
-    FieldTypeDraft, FieldValue, InitializerDraft, InstanceStateDraft, MetaDraft, RulesetDefinition,
-    RulesetDraft, SetupStepDraft, StateName, ZoneId,
+    DefinitionError, DefinitionErrorKind, FieldTypeDraft, FieldValue, InitializerDraft,
+    InstanceStateDraft, MetaDraft, RulesetDefinition, RulesetDraft, SetupStepDraft, StateName,
+    ZoneId,
 };
 use tcg_engine::runtime::Runtime;
 
@@ -259,11 +260,22 @@ fn apply_zone_shuffled_replaces_the_order_and_the_random_state() {
     assert_eq!(cards_in(&state, 0, "deck"), ids(&[2, 0, 1]));
     assert_eq!(state.random_state(), &RandomState::from_seed(Seed(3)));
 
-    // Shuffling an empty zone (and a zone of one card) is a valid Event too.
+    // A zone of one card is a valid Event too.
+    let mut state = state_after(&[some_card(0, 0, "deck")]);
+    state
+        .apply(&shuffled(0, "deck", &[0]))
+        .expect("a one-card zone shuffles");
+    assert_eq!(cards_in(&state, 0, "deck"), ids(&[0]));
+    assert_eq!(state.random_state(), &RandomState::from_seed(Seed(3)));
+
+    // So is an empty zone.
     let mut state = create().empty;
+    assert_ne!(state.random_state(), &RandomState::from_seed(Seed(3)));
     state
         .apply(&shuffled(1, "deck", &[]))
         .expect("an empty zone shuffles");
+    assert_eq!(cards_in(&state, 1, "deck"), ids(&[]));
+    assert_eq!(state.random_state(), &RandomState::from_seed(Seed(3)));
 }
 
 #[test]
@@ -638,10 +650,12 @@ fn a_ruleset_definition_with_a_bad_setup_never_reaches_game_creation() {
         to: "hand".to_string(),
         count: 0,
     }];
-    let error = RulesetDefinition::validate(draft).unwrap_err();
     assert_eq!(
-        error.path,
-        path().key("setup").index(0).key("draw").key("count")
+        RulesetDefinition::validate(draft),
+        Err(DefinitionError {
+            path: path().key("setup").index(0).key("draw").key("count"),
+            kind: DefinitionErrorKind::InvalidDrawCount,
+        })
     );
 }
 

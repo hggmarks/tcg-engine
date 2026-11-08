@@ -1160,26 +1160,53 @@ fn setup_is_checked_after_inputs() {
 
 #[test]
 fn setup_steps_are_checked_in_order_and_each_step_in_key_order() {
+    let dangling = |id: &str| DefinitionErrorKind::DanglingReference {
+        target: ReferenceTarget::Zone,
+        id: id.to_string(),
+    };
+    let unknown_selector = |selector: &str| DefinitionErrorKind::UnknownPlayerSelector {
+        selector: selector.to_string(),
+    };
+    let expect = |steps: Vec<SetupStepDraft>, path: DefinitionPath, kind: DefinitionErrorKind| {
+        assert_eq!(
+            error_of(small_ruleset_with_setup(steps)),
+            DefinitionError { path, kind }
+        );
+    };
+
     // The first bad step wins, even when a later one is also bad.
-    let error = error_of(small_ruleset_with_setup(vec![
-        shuffle("each", "nowhere"),
-        draw("who", "deck", "hand", 0),
-    ]));
-    assert_eq!(error.path, setup_path(0, "shuffle", "zone"));
+    expect(
+        vec![shuffle("each", "nowhere"), draw("who", "deck", "hand", 0)],
+        setup_path(0, "shuffle", "zone"),
+        dangling("nowhere"),
+    );
 
     // Within a draw: player, then from, then to, then count.
-    let error = error_of(small_ruleset_with_setup(vec![draw("who", "a", "b", 0)]));
-    assert_eq!(error.path, setup_path(0, "draw", "player"));
-    let error = error_of(small_ruleset_with_setup(vec![draw("each", "a", "b", 0)]));
-    assert_eq!(error.path, setup_path(0, "draw", "from"));
-    let error = error_of(small_ruleset_with_setup(vec![draw("each", "deck", "b", 0)]));
-    assert_eq!(error.path, setup_path(0, "draw", "to"));
-    let error = error_of(small_ruleset_with_setup(vec![draw(
-        "each", "deck", "hand", 0,
-    )]));
-    assert_eq!(error.path, setup_path(0, "draw", "count"));
+    expect(
+        vec![draw("who", "a", "b", 0)],
+        setup_path(0, "draw", "player"),
+        unknown_selector("who"),
+    );
+    expect(
+        vec![draw("each", "a", "b", 0)],
+        setup_path(0, "draw", "from"),
+        dangling("a"),
+    );
+    expect(
+        vec![draw("each", "deck", "b", 0)],
+        setup_path(0, "draw", "to"),
+        dangling("b"),
+    );
+    expect(
+        vec![draw("each", "deck", "hand", 0)],
+        setup_path(0, "draw", "count"),
+        DefinitionErrorKind::InvalidDrawCount,
+    );
 
     // Within a shuffle: player, then zone.
-    let error = error_of(small_ruleset_with_setup(vec![shuffle("who", "nowhere")]));
-    assert_eq!(error.path, setup_path(0, "shuffle", "player"));
+    expect(
+        vec![shuffle("who", "nowhere")],
+        setup_path(0, "shuffle", "player"),
+        unknown_selector("who"),
+    );
 }

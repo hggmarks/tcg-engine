@@ -214,6 +214,61 @@ fn every_deck_card_is_one_card_instance_in_one_zone() {
 }
 
 #[test]
+fn card_instances_are_created_in_deck_list_order() {
+    let ruleset = ruleset();
+    let decks = decks(&ruleset);
+    let creation = ruleset
+        .create_game(&decks, Seed(1))
+        .expect("the sample decks create a game");
+
+    // Seat-major; within a seat, the inputs in ruleset order, the entries in file order (nothing
+    // sorted), each entry `count` times, each card on the zone of its input.
+    let mut expected = Vec::new();
+    for (seat_index, deck) in decks.iter().enumerate() {
+        for input in ruleset.definition().deck_inputs() {
+            let provided = deck
+                .input(input.id())
+                .expect("the deck provides every input");
+            for entry in provided.entries() {
+                for _ in 0..entry.count().get() {
+                    let id = u32::try_from(expected.len()).expect("the id fits in u32");
+                    expected.push((
+                        CardInstanceId(id),
+                        seat(u32::try_from(seat_index).expect("the seat fits in u32")),
+                        entry.card().clone(),
+                        input.zone().clone(),
+                    ));
+                }
+            }
+        }
+    }
+    assert_eq!(expected.len(), 122);
+
+    let created: Vec<(CardInstanceId, PlayerId, CardId, ZoneId)> = creation
+        .opening
+        .trace
+        .events()
+        .iter()
+        .filter_map(|event| match event {
+            Event::CardCreated {
+                card,
+                owner,
+                definition,
+                zone,
+                ..
+            } => Some((*card, *owner, definition.clone(), zone.clone())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(created, expected);
+
+    // Seat 0 owns ids 0..61 and seat 1 owns ids 61..122.
+    for (id, owner, _, _) in &created {
+        assert_eq!(owner, &seat(u32::from(id.0 >= 61)));
+    }
+}
+
+#[test]
 fn game_creation_shuffles_the_main_deck_with_the_random_state() {
     let seed = Seed(42);
     let creation = create(42);
