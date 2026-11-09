@@ -57,16 +57,16 @@ actions:
 ```
 
 - `turn` is optional; absent means the Game has no Turns (creation stops after setup and no Action is legal). `actions` is optional; absent means none.
-- `turn.phases` is a list of phases, each `{ id, automatic }` or `{ id, actions }`: exactly one of the two keys. `automatic` is a list of steps run in order when the phase begins; `actions` is a list of declared action ids the Active Player may take there. A turn has exactly one phase with `actions`: the Game waits in it, and `end_turn` is the only way out. When the Game is created the first Turn begins and runs to that phase.
+- `turn.phases` is a list of phases, each `{ id, automatic }` or `{ id, actions }`: exactly one of the two keys. `automatic` is a list of steps run in order when the phase begins; `actions` is a list of declared action ids the Active Player may take there. A turn has exactly one phase with `actions`: the Game waits in it, and `end_turn` is the only way out. Validation does not yet check that the action phase can be left (it may list no action, or none with `end_turn`, and the Game then waits there forever), nor that an action ends at most one Turn (`[end_turn, end_turn]` ends two); an action no phase lists loads and is always rejected. These are to be decided when effects are extended (ADR-0012). When the Game is created the first Turn begins and runs to that phase.
 - A step is a single-key map naming a primitive, or the `if` form. `player` is `each` or `active` (the Active Player). Steps run for the selected Players in seat order, the zones in the listed order and the cards bottom first.
   - `untap: { player, zones }` sets `tapped` to false on the cards of the listed zones.
   - `set_state: { player, zone, state, value }` sets the instance state `state` to `value` (a scalar of the state's type) on the cards of `zone`.
   - `untap` and `set_state` change only the cards whose card type declares the state, and only when the value actually changes.
-  - `draw: { player, from, to, count }` moves up to `count` cards, one at a time, from the top of `from` onto the top of `to`. If `from` runs out, nothing more is drawn and one draw-from-empty fact is recorded.
+  - `draw: { player, from, to, count }` moves up to `count` cards, one at a time, from the top of `from` onto the top of `to`. If `from` runs out, nothing more is drawn for that Player and one draw-from-empty fact is recorded per Player, not per missing card.
   - `move: { player, from, to, count, position }` is the same without the fact: it moves the cards there are. `position` is `top` (the top of `from`).
   - `if: <condition>`, `then: [steps]` and an optional `else: [steps]` are sibling keys of one list element. The only condition is `first_turn: {}`, true on the Game's first Turn (Turn Number 1).
   - `from` of a `draw` and of a `move` must be an ordered zone (ADR-0013); `count` is an unquoted integer of at least 1.
-- Each action is `{ id, effects }`; the only effect is `end_turn: {}`: the phases after the current one run, then the next Player's Turn begins, in the same transition. Parameters, costs and the other effects are not loaded yet.
+- Each action is `{ id, effects }`; the only effect is `end_turn: {}`: the phases after the current one run, then the next Player's Turn begins, in the same transition. Parameters, costs and the other effects are not readable yet: an action with `params` or `cost` is rejected by the loader as an unknown key.
 - Turn validation follows `actions`: phases are addressed by id in errors (`turn.phases[main].actions[0]`) and steps by position, with `then` and `else` as keys (`turn.phases[start].automatic[2].else[0].draw.from`). The decisions are in ADR-0012.
 
 ## Card catalog

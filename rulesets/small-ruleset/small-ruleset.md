@@ -29,8 +29,8 @@ Per player:
  
 | Type | Fields | Effects |
 |---|---|---|
-| **Leader** | `name` (string), `power` (int), `life` (int) | No |
-| **Creature** | `name` (string), `cost` (int), `power` (int) | No |
+| **Leader** | `name` (text), `power` (int), `life` (int) | No |
+| **Creature** | `name` (text), `cost` (int), `power` (int) | No |
 | **Mana** | None | No |
  
 ## Decks
