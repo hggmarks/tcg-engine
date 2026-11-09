@@ -126,6 +126,8 @@ pub fn small_draft() -> RulesetDraft {
                 count: 5,
             },
         ],
+        actions: vec![],
+        turn: None,
     }
 }
 
