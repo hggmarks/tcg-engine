@@ -20,6 +20,9 @@ pub enum ReferenceTarget {
     CardType,
     DeckInput,
     Card,
+    Action,
+    /// An instance-state name that no card type declares.
+    InstanceState,
 }
 
 /// The kinds of error. The comment on each variant is the path its error carries.
@@ -40,14 +43,34 @@ pub enum DefinitionErrorKind {
     InvalidMaxCopies { max_copies: u32, size: u32 },
     /// `inputs[main_deck].card_types` (it is empty).
     NoCardTypes,
-    /// `inputs[main_deck].zone` or `inputs[main_deck].card_types[0]`.
+    /// `inputs[main_deck].zone` or `inputs[main_deck].card_types[0]`; a step's zone; an action of a
+    /// phase (`turn.phases[main].actions[0]`); the `state` of a `set_state`, or the step itself for
+    /// an `untap` (no card type declares `tapped`).
     DanglingReference { target: ReferenceTarget, id: String },
     /// `card_types[c].fields[f].type` or `card_types[c].instance_state[s].type`.
     UnsupportedFieldType { field_type: FieldTypeDraft },
-    /// `setup[0].shuffle.player` or `setup[1].draw.player`: only `each` exists.
+    /// `setup[0].shuffle.player` or `turn.phases[start].automatic[0].untap.player`: only `each` and
+    /// `active` exist.
     UnknownPlayerSelector { selector: String },
-    /// `setup[1].draw.count` (it is 0).
-    InvalidDrawCount,
+    /// A `count` of a draw or a move (it is 0), such as `setup[1].draw.count` or
+    /// `turn.phases[start].automatic[3].move.count`.
+    InvalidCount,
+    /// The source of a shuffle, a draw or a move (ADR-0013): a zone with `ordered: false`, such as
+    /// `setup[0].shuffle.zone` or `turn.phases[start].automatic[2].else[0].draw.from`.
+    ZoneNotOrdered { zone: String },
+    /// `turn.phases[start].automatic[3].move.position`: only `top` exists.
+    UnknownPosition { position: String },
+    /// `turn.phases[end]`: a phase has exactly one of `automatic` and `actions`.
+    InvalidPhaseKind,
+    /// `turn.phases`: a turn has exactly one phase with `actions`.
+    InvalidActionPhaseCount { found: usize },
+    /// `turn.phases[start].automatic[1].set_state.value`, or the step itself for an `untap`: the
+    /// value is not the type some card type declares for the state.
+    StateValueTypeMismatch {
+        state: String,
+        declared: FieldType,
+        found: FieldType,
+    },
     /// `card_types[c].instance_state[s].init`.
     InitializerTypeMismatch {
         declared: FieldType,
@@ -98,14 +121,39 @@ impl fmt::Display for DefinitionErrorKind {
                     ReferenceTarget::CardType => "card type",
                     ReferenceTarget::DeckInput => "deck input",
                     ReferenceTarget::Card => "card",
+                    ReferenceTarget::Action => "action",
+                    ReferenceTarget::InstanceState => "instance state",
                 };
                 write!(f, "no {target} has the id `{id}`")
             }
             Self::UnknownPlayerSelector { selector } => write!(
                 f,
-                "`{selector}` is not a player selector; the only one is `each`"
+                "`{selector}` is not a player selector; the selectors are `each` and `active`"
             ),
-            Self::InvalidDrawCount => write!(f, "a draw must take at least 1 card"),
+            Self::InvalidCount => write!(f, "a draw or a move must take at least 1 card"),
+            Self::ZoneNotOrdered { zone } => write!(
+                f,
+                "the zone `{zone}` is not ordered, so cards cannot be shuffled or taken from it"
+            ),
+            Self::UnknownPosition { position } => {
+                write!(f, "`{position}` is not a position; the only one is `top`")
+            }
+            Self::InvalidPhaseKind => write!(
+                f,
+                "a phase must have exactly one of `automatic` and `actions`"
+            ),
+            Self::InvalidActionPhaseCount { found } => write!(
+                f,
+                "a turn must have exactly one phase with actions, found {found}"
+            ),
+            Self::StateValueTypeMismatch {
+                state,
+                declared,
+                found,
+            } => write!(
+                f,
+                "the state `{state}` is {declared:?} but the value is {found:?}"
+            ),
             Self::UnsupportedFieldType { field_type } => {
                 write!(f, "the field type {field_type:?} is not supported yet")
             }

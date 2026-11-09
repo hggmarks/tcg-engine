@@ -5,7 +5,8 @@ use super::state::CardInstanceId;
 use crate::card_catalog::CardId;
 use crate::player::PlayerId;
 use crate::random::RandomState;
-use crate::ruleset_definition::{FieldValue, StateName, ZoneId};
+use crate::ruleset_definition::{FieldValue, PhaseId, StateName, ZoneId};
+use crate::turn::TurnNumber;
 
 /// A fact that occurred. Applying Events through `GameState::apply` is the only way a declarative
 /// GameState changes.
@@ -39,4 +40,20 @@ pub enum Event {
         order: Vec<CardInstanceId>,
         random_state: RandomState,
     },
+    /// A Turn began: `player` is the Active Player and `turn` the Turn Number, and no phase has
+    /// begun yet. Applying it checks only that the Player is in the Game; the Ruleset decides who
+    /// is next and which Turn Number follows.
+    TurnBegan { player: PlayerId, turn: TurnNumber },
+    /// A phase of the Turn in progress began.
+    PhaseBegan { phase: PhaseId },
+    /// The instance state `state` of a card changed to `value`. The card has that state, and
+    /// `value` is of the type of its current value. The Ruleset emits it only for a value that
+    /// actually changes.
+    CardStateChanged {
+        card: CardInstanceId,
+        state: StateName,
+        value: FieldValue,
+    },
+    /// A draw found the zone empty. It changes nothing; win conditions read it ([09]).
+    DrawFromEmptyZone { player: PlayerId, zone: ZoneId },
 }

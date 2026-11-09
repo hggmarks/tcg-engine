@@ -12,6 +12,10 @@ pub struct RulesetDraft {
     pub inputs: Vec<DeckInputDraft>,
     /// The Setup Steps, in order. Empty means no steps.
     pub setup: Vec<SetupStepDraft>,
+    /// The actions, in order. Empty means none.
+    pub actions: Vec<ActionDraft>,
+    /// The turn structure. `None` means the Game has no Turns.
+    pub turn: Option<TurnDraft>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -94,4 +98,69 @@ pub enum SetupStepDraft {
         to: String,
         count: u32,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActionDraft {
+    pub id: String,
+    pub effects: Vec<EffectDraft>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EffectDraft {
+    EndTurn,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TurnDraft {
+    pub phases: Vec<PhaseDraft>,
+}
+
+/// An unvalidated phase. Exactly one of `automatic` and `actions` must be present; validation
+/// rejects any other combination.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PhaseDraft {
+    pub id: String,
+    pub automatic: Option<Vec<AutomaticStepDraft>>,
+    /// The ids of the actions the Active Player may take in this phase.
+    pub actions: Option<Vec<String>>,
+}
+
+/// An unvalidated step of an automatic phase. `player` is a Player Selector (`each` or `active`),
+/// `position` is `top`, and the other strings are ids.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AutomaticStepDraft {
+    Untap {
+        player: String,
+        zones: Vec<String>,
+    },
+    SetState {
+        player: String,
+        zone: String,
+        state: String,
+        value: FieldValue,
+    },
+    Draw {
+        player: String,
+        from: String,
+        to: String,
+        count: u32,
+    },
+    Move {
+        player: String,
+        from: String,
+        to: String,
+        count: u32,
+        position: String,
+    },
+    If {
+        condition: ConditionDraft,
+        then: Vec<AutomaticStepDraft>,
+        otherwise: Vec<AutomaticStepDraft>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConditionDraft {
+    FirstTurn,
 }

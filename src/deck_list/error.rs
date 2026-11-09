@@ -75,6 +75,8 @@ impl fmt::Display for DeckErrorKind {
                     ReferenceTarget::CardType => "card type",
                     ReferenceTarget::DeckInput => "deck input",
                     ReferenceTarget::Card => "card",
+                    ReferenceTarget::Action => "action",
+                    ReferenceTarget::InstanceState => "instance state",
                 };
                 write!(f, "no {target} has the id `{id}`")
             }

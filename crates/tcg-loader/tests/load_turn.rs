@@ -277,23 +277,32 @@ fn a_malformed_if_step_is_a_syntax_error_at_its_list_element() {
 }
 
 #[test]
-fn an_unknown_condition_or_effect_is_malformed() {
+fn an_unknown_condition_or_effect_is_an_unknown_key() {
+    // An unknown condition primitive is an unknown key of the condition's map, like an unknown step
+    // primitive is of its list element.
     let error = yaml_error(&document(&start_phase(
         "        - if: { not: {} }\n          then: []\n",
     )));
-    assert!(
-        matches!(error.kind, YamlErrorKind::Malformed { .. }),
-        "an unknown condition gave {:?}",
-        error.kind
+    assert_eq!(
+        error.kind,
+        YamlErrorKind::UnknownKey {
+            key: "not".to_string()
+        }
     );
+    assert_eq!(error.path, positional_step(0).key("if"));
 
     let error = yaml_error(&document(
         "actions:\n  - id: boom\n    effects: [ { explode: {} } ]\n",
     ));
-    assert!(
-        matches!(error.kind, YamlErrorKind::Malformed { .. }),
-        "an unknown effect gave {:?}",
-        error.kind
+    assert_eq!(
+        error.kind,
+        YamlErrorKind::UnknownKey {
+            key: "explode".to_string()
+        }
+    );
+    assert_eq!(
+        error.path,
+        path().key("actions").index(0).key("effects").index(0)
     );
 }
 

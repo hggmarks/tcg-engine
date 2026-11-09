@@ -4,14 +4,17 @@ use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 
 use super::draft::{
-    CardTypeDraft, DeckInputDraft, FieldTypeDraft, InitializerDraft, InstanceStateDraft,
-    RulesetDraft, SetupStepDraft,
+    ActionDraft, AutomaticStepDraft, CardTypeDraft, ConditionDraft, DeckInputDraft, EffectDraft,
+    FieldTypeDraft, InitializerDraft, InstanceStateDraft, PhaseDraft, RulesetDraft, SetupStepDraft,
+    TurnDraft,
 };
 use super::error::{DefinitionError, DefinitionErrorKind, ReferenceTarget};
 use super::model::{
-    CardType, CardTypeId, DeckInput, DeckInputId, FieldName, FieldSchema, FieldType, Initializer,
-    InstanceStateSchema, Meta, Parameters, PlayerCount, PlayerPosition, PlayerSelector,
-    RulesetDefinition, RulesetId, RulesetVersion, SetupStep, StateName, Zone, ZoneId,
+    ActionDefinition, ActionId, AutomaticStep, CardType, CardTypeId, Condition, DeckInput,
+    DeckInputId, Effect, FieldName, FieldSchema, FieldType, Initializer, InstanceStateSchema, Meta,
+    Parameters, Phase, PhaseId, PhaseKind, PlayerCount, PlayerPosition, PlayerSelector, Position,
+    RulesetDefinition, RulesetId, RulesetVersion, SetupStep, StateName, TurnStructure, Zone,
+    ZoneId,
 };
 use crate::definition_path::DefinitionPath;
 use crate::id::is_valid_id;
@@ -92,6 +95,8 @@ pub(super) fn validate(draft: RulesetDraft) -> Result<RulesetDefinition, Definit
         card_types,
         inputs,
         setup,
+        actions,
+        turn,
     } = draft;
 
     if !is_valid_id(&meta.id) {
@@ -159,6 +164,27 @@ pub(super) fn validate(draft: RulesetDraft) -> Result<RulesetDefinition, Definit
         )?);
     }
 
+    let actions_path = DefinitionPath::root().key("actions");
+    let mut seen = Seen::new(actions_path.clone());
+    let mut valid_actions = Vec::with_capacity(actions.len());
+    for (index, action) in actions.iter().enumerate() {
+        check_id(&actions_path, index, "id", &action.id)?;
+        seen.insert(&action.id, index)?;
+        valid_actions.push(validate_action(action));
+    }
+
+    let valid_turn = match &turn {
+        Some(turn) => {
+            let context = Context {
+                zones: &valid_zones,
+                card_types: &valid_card_types,
+                actions: &valid_actions,
+            };
+            Some(validate_turn(turn, &context)?)
+        }
+        None => None,
+    };
+
     Ok(RulesetDefinition {
         meta: Meta {
             id: RulesetId::new(meta.id),
@@ -172,7 +198,304 @@ pub(super) fn validate(draft: RulesetDraft) -> Result<RulesetDefinition, Definit
         card_types: valid_card_types,
         deck_inputs: valid_inputs,
         setup: valid_setup,
+        actions: valid_actions,
+        turn: valid_turn,
     })
+}
+
+/// What the steps of a turn are validated against.
+struct Context<'a> {
+    zones: &'a [Zone],
+    card_types: &'a [CardType],
+    actions: &'a [ActionDefinition],
+}
+
+fn validate_action(action: &ActionDraft) -> ActionDefinition {
+    ActionDefinition {
+        id: ActionId::new(&action.id),
+        effects: action
+            .effects
+            .iter()
+            .map(|effect| match effect {
+                EffectDraft::EndTurn => Effect::EndTurn,
+            })
+            .collect(),
+    }
+}
+
+fn validate_turn(
+    turn: &TurnDraft,
+    context: &Context<'_>,
+) -> Result<TurnStructure, DefinitionError> {
+    let phases_path = DefinitionPath::root().key("turn").key("phases");
+    let mut seen = Seen::new(phases_path.clone());
+    let mut phases = Vec::with_capacity(turn.phases.len());
+    let mut action_phases = 0usize;
+    for (index, phase) in turn.phases.iter().enumerate() {
+        check_id(&phases_path, index, "id", &phase.id)?;
+        seen.insert(&phase.id, index)?;
+        let at = phases_path.clone().id(&phase.id);
+        let kind = validate_phase_kind(phase, context, at)?;
+        if matches!(kind, PhaseKind::Actions(_)) {
+            action_phases += 1;
+        }
+        phases.push(Phase {
+            id: PhaseId::new(&phase.id),
+            kind,
+        });
+    }
+    if action_phases != 1 {
+        return fail(
+            phases_path,
+            DefinitionErrorKind::InvalidActionPhaseCount {
+                found: action_phases,
+            },
+        );
+    }
+    Ok(TurnStructure { phases })
+}
+
+fn validate_phase_kind(
+    phase: &PhaseDraft,
+    context: &Context<'_>,
+    at: DefinitionPath,
+) -> Result<PhaseKind, DefinitionError> {
+    match (&phase.automatic, &phase.actions) {
+        (Some(steps), None) => Ok(PhaseKind::Automatic(validate_steps(
+            steps,
+            context,
+            at.key("automatic"),
+        )?)),
+        (None, Some(actions)) => {
+            let list = at.key("actions");
+            let mut seen = Seen::new(list.clone());
+            let mut valid = Vec::with_capacity(actions.len());
+            for (index, id) in actions.iter().enumerate() {
+                if !context
+                    .actions
+                    .iter()
+                    .any(|action| action.id.as_str() == id)
+                {
+                    return fail(
+                        list.index(index),
+                        DefinitionErrorKind::DanglingReference {
+                            target: ReferenceTarget::Action,
+                            id: id.clone(),
+                        },
+                    );
+                }
+                seen.insert(id, index)?;
+                valid.push(ActionId::new(id));
+            }
+            Ok(PhaseKind::Actions(valid))
+        }
+        _ => fail(at, DefinitionErrorKind::InvalidPhaseKind),
+    }
+}
+
+/// The steps of the list at `list`, in order.
+fn validate_steps(
+    steps: &[AutomaticStepDraft],
+    context: &Context<'_>,
+    list: DefinitionPath,
+) -> Result<Vec<AutomaticStep>, DefinitionError> {
+    steps
+        .iter()
+        .enumerate()
+        .map(|(index, step)| validate_automatic_step(step, context, list.clone().index(index)))
+        .collect()
+}
+
+fn validate_automatic_step(
+    step: &AutomaticStepDraft,
+    context: &Context<'_>,
+    at: DefinitionPath,
+) -> Result<AutomaticStep, DefinitionError> {
+    match step {
+        AutomaticStepDraft::Untap { player, zones } => {
+            let at = at.key("untap");
+            let player = validate_selector(player, at.clone().key("player"))?;
+            let zones_path = at.clone().key("zones");
+            let mut seen = Seen::new(zones_path.clone());
+            let mut valid = Vec::with_capacity(zones.len());
+            for (index, id) in zones.iter().enumerate() {
+                valid.push(validate_zone_reference(
+                    id,
+                    context.zones,
+                    zones_path.clone().index(index),
+                )?);
+                seen.insert(id, index)?;
+            }
+            check_state_value(
+                context.card_types,
+                "tapped",
+                FieldType::Bool,
+                (at.clone(), at),
+            )?;
+            Ok(AutomaticStep::Untap {
+                player,
+                zones: valid,
+            })
+        }
+        AutomaticStepDraft::SetState {
+            player,
+            zone,
+            state,
+            value,
+        } => {
+            let at = at.key("set_state");
+            let player = validate_selector(player, at.clone().key("player"))?;
+            let zone = validate_zone_reference(zone, context.zones, at.clone().key("zone"))?;
+            check_state_value(
+                context.card_types,
+                state,
+                value.field_type(),
+                (at.clone().key("state"), at.key("value")),
+            )?;
+            Ok(AutomaticStep::SetState {
+                player,
+                zone,
+                state: StateName::new(state),
+                value: value.clone(),
+            })
+        }
+        AutomaticStepDraft::Draw {
+            player,
+            from,
+            to,
+            count,
+        } => {
+            let at = at.key("draw");
+            let player = validate_selector(player, at.clone().key("player"))?;
+            let from = validate_ordered_zone(from, context.zones, at.clone().key("from"))?;
+            let to = validate_zone_reference(to, context.zones, at.clone().key("to"))?;
+            let count = validate_count(*count, at.key("count"))?;
+            Ok(AutomaticStep::Draw {
+                player,
+                from,
+                to,
+                count,
+            })
+        }
+        AutomaticStepDraft::Move {
+            player,
+            from,
+            to,
+            count,
+            position,
+        } => {
+            let at = at.key("move");
+            let player = validate_selector(player, at.clone().key("player"))?;
+            let from = validate_ordered_zone(from, context.zones, at.clone().key("from"))?;
+            let to = validate_zone_reference(to, context.zones, at.clone().key("to"))?;
+            let count = validate_count(*count, at.clone().key("count"))?;
+            let position = match position.as_str() {
+                "top" => Position::Top,
+                other => {
+                    return fail(
+                        at.key("position"),
+                        DefinitionErrorKind::UnknownPosition {
+                            position: other.to_string(),
+                        },
+                    )
+                }
+            };
+            Ok(AutomaticStep::Move {
+                player,
+                from,
+                to,
+                count,
+                position,
+            })
+        }
+        AutomaticStepDraft::If {
+            condition,
+            then,
+            otherwise,
+        } => {
+            let condition = match condition {
+                ConditionDraft::FirstTurn => Condition::FirstTurn,
+            };
+            let then = validate_steps(then, context, at.clone().key("then"))?;
+            let otherwise = validate_steps(otherwise, context, at.key("else"))?;
+            Ok(AutomaticStep::If {
+                condition,
+                then,
+                otherwise,
+            })
+        }
+    }
+}
+
+/// A count of at least 1.
+fn validate_count(count: u32, at: DefinitionPath) -> Result<NonZeroU32, DefinitionError> {
+    match NonZeroU32::new(count) {
+        Some(count) => Ok(count),
+        None => fail(at, DefinitionErrorKind::InvalidCount),
+    }
+}
+
+/// Checks that some card type declares the instance state `state`, and that every card type that
+/// does declares it with the type of `found`. `at` holds the path of a missing state and of a
+/// mismatch.
+fn check_state_value(
+    card_types: &[CardType],
+    state: &str,
+    found: FieldType,
+    at: (DefinitionPath, DefinitionPath),
+) -> Result<(), DefinitionError> {
+    let (missing_at, mismatch_at) = at;
+    let mut declared = card_types
+        .iter()
+        .flat_map(|card_type| card_type.instance_state.iter())
+        .filter(|schema| schema.name.as_str() == state)
+        .peekable();
+    if declared.peek().is_none() {
+        return fail(
+            missing_at,
+            DefinitionErrorKind::DanglingReference {
+                target: ReferenceTarget::InstanceState,
+                id: state.to_string(),
+            },
+        );
+    }
+    for schema in declared {
+        if schema.state_type != found {
+            return fail(
+                mismatch_at,
+                DefinitionErrorKind::StateValueTypeMismatch {
+                    state: state.to_string(),
+                    declared: schema.state_type,
+                    found,
+                },
+            );
+        }
+    }
+    Ok(())
+}
+
+/// A zone reference that cards are taken from (a shuffle, a draw or a move source): the zone must
+/// exist and be ordered (ADR-0013).
+fn validate_ordered_zone(
+    id: &str,
+    zones: &[Zone],
+    at: DefinitionPath,
+) -> Result<ZoneId, DefinitionError> {
+    let zone = validate_zone_reference(id, zones, at.clone())?;
+    let ordered = zones
+        .iter()
+        .find(|declared| declared.id == zone)
+        .is_some_and(|declared| declared.ordered);
+    if ordered {
+        Ok(zone)
+    } else {
+        fail(
+            at,
+            DefinitionErrorKind::ZoneNotOrdered {
+                zone: id.to_string(),
+            },
+        )
+    }
 }
 
 fn validate_selector(
@@ -181,6 +504,7 @@ fn validate_selector(
 ) -> Result<PlayerSelector, DefinitionError> {
     match selector {
         "each" => Ok(PlayerSelector::Each),
+        "active" => Ok(PlayerSelector::Active),
         other => fail(
             at,
             DefinitionErrorKind::UnknownPlayerSelector {
@@ -219,7 +543,7 @@ fn validate_step(
         SetupStepDraft::Shuffle { player, zone } => {
             let at = at.key("shuffle");
             let player = validate_selector(player, at.clone().key("player"))?;
-            let zone = validate_zone_reference(zone, zones, at.key("zone"))?;
+            let zone = validate_ordered_zone(zone, zones, at.key("zone"))?;
             Ok(SetupStep::Shuffle { player, zone })
         }
         SetupStepDraft::Draw {
@@ -230,11 +554,9 @@ fn validate_step(
         } => {
             let at = at.key("draw");
             let player = validate_selector(player, at.clone().key("player"))?;
-            let from = validate_zone_reference(from, zones, at.clone().key("from"))?;
+            let from = validate_ordered_zone(from, zones, at.clone().key("from"))?;
             let to = validate_zone_reference(to, zones, at.clone().key("to"))?;
-            let Some(count) = NonZeroU32::new(*count) else {
-                return fail(at.key("count"), DefinitionErrorKind::InvalidDrawCount);
-            };
+            let count = validate_count(*count, at.key("count"))?;
             Ok(SetupStep::Draw {
                 player,
                 from,

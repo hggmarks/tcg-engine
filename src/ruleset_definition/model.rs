@@ -31,6 +31,14 @@ id_type!(
     /// The identity of a deck input, unique among the inputs.
     DeckInputId
 );
+id_type!(
+    /// The identity of an action, unique among the actions.
+    ActionId
+);
+id_type!(
+    /// The identity of a phase, unique among the phases of the turn.
+    PhaseId
+);
 
 /// A validated Ruleset Definition (the typed model ADR-0004 first called `Ruleset`).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,6 +49,8 @@ pub struct RulesetDefinition {
     pub(super) card_types: Vec<CardType>,
     pub(super) deck_inputs: Vec<DeckInput>,
     pub(super) setup: Vec<SetupStep>,
+    pub(super) actions: Vec<ActionDefinition>,
+    pub(super) turn: Option<TurnStructure>,
 }
 
 impl RulesetDefinition {
@@ -85,6 +95,21 @@ impl RulesetDefinition {
     /// The Setup Steps in declared order; empty when the ruleset declares none.
     pub fn setup(&self) -> &[SetupStep] {
         &self.setup
+    }
+
+    /// The actions in declared order; empty when the ruleset declares none.
+    pub fn actions(&self) -> &[ActionDefinition] {
+        &self.actions
+    }
+
+    pub fn action(&self, id: &ActionId) -> Option<&ActionDefinition> {
+        self.actions.iter().find(|action| action.id() == id)
+    }
+
+    /// The structure of a Turn; `None` when the ruleset declares none, and the Game then has no
+    /// Turns.
+    pub fn turn(&self) -> Option<&TurnStructure> {
+        self.turn.as_ref()
     }
 }
 
@@ -165,7 +190,8 @@ impl Zone {
         self.visibility
     }
 
-    /// Whether the zone keeps its cards in order. Stored, not yet enforced.
+    /// Whether the zone keeps its cards in order. A shuffle, a draw and a move take cards only from
+    /// an ordered zone (ADR-0013).
     pub fn ordered(&self) -> bool {
         self.ordered
     }
@@ -312,11 +338,14 @@ impl DeckInput {
     }
 }
 
-/// Which Players a Setup Step applies to.
+/// Which Players a step applies to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlayerSelector {
     /// Every Player, in seat order. A step runs fully for one Player before the next Player.
     Each,
+    /// The Active Player: during a Turn, the Player whose Turn it is; during setup, the starting
+    /// Player.
+    Active,
 }
 
 /// One step of Game setup, run after the cards of the Deck Lists are placed. Its zones exist in the
@@ -334,5 +363,128 @@ pub enum SetupStep {
         from: ZoneId,
         to: ZoneId,
         count: NonZeroU32,
+    },
+}
+
+/// A declared action: the effects that run when a Player takes it. Its id is unique among the
+/// actions. Parameters, costs and the other effects arrive with tickets [10] and [11].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActionDefinition {
+    pub(super) id: ActionId,
+    pub(super) effects: Vec<Effect>,
+}
+
+impl ActionDefinition {
+    pub fn id(&self) -> &ActionId {
+        &self.id
+    }
+
+    /// The effects, in the order they run.
+    pub fn effects(&self) -> &[Effect] {
+        &self.effects
+    }
+}
+
+/// An effect of an action.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Effect {
+    /// Ends the Turn: the phases after the current one run, then the next Player's Turn begins.
+    EndTurn,
+}
+
+/// The phases of every Turn, in order. Exactly one has actions: the Game waits there for the
+/// Active Player.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TurnStructure {
+    pub(super) phases: Vec<Phase>,
+}
+
+impl TurnStructure {
+    /// The phases in declared order.
+    pub fn phases(&self) -> &[Phase] {
+        &self.phases
+    }
+}
+
+/// One phase of a Turn. Its id is unique among the phases.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Phase {
+    pub(super) id: PhaseId,
+    pub(super) kind: PhaseKind,
+}
+
+impl Phase {
+    pub fn id(&self) -> &PhaseId {
+        &self.id
+    }
+
+    pub fn kind(&self) -> &PhaseKind {
+        &self.kind
+    }
+}
+
+/// What a phase does.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PhaseKind {
+    /// Runs its steps in order when the phase begins.
+    Automatic(Vec<AutomaticStep>),
+    /// Waits for the Active Player, who may take only these actions.
+    Actions(Vec<ActionId>),
+}
+
+/// Where a `move` takes its cards from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Position {
+    /// The Top of the source zone.
+    Top,
+}
+
+/// A condition of an `if` step, evaluated when the step runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Condition {
+    /// Holds on the Game's first Turn only: the Turn Number is 1.
+    FirstTurn,
+}
+
+/// One step of an automatic phase. Its zones, states and values exist and fit in the Ruleset
+/// Definition it was validated with.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AutomaticStep {
+    /// Sets `tapped` to false on every card of the listed zones of each selected Player whose card
+    /// type declares it.
+    Untap {
+        player: PlayerSelector,
+        zones: Vec<ZoneId>,
+    },
+    /// Sets `state` to `value` on every card of `zone` of each selected Player whose card type
+    /// declares it.
+    SetState {
+        player: PlayerSelector,
+        zone: ZoneId,
+        state: StateName,
+        value: FieldValue,
+    },
+    /// Moves up to `count` cards, one at a time from the Top of `from` onto the Top of `to`. If
+    /// `from` runs out first, a draw-from-empty fact is recorded.
+    Draw {
+        player: PlayerSelector,
+        from: ZoneId,
+        to: ZoneId,
+        count: NonZeroU32,
+    },
+    /// Moves up to `count` cards, one at a time from `position` of `from` onto the Top of `to`;
+    /// it moves the cards there are.
+    Move {
+        player: PlayerSelector,
+        from: ZoneId,
+        to: ZoneId,
+        count: NonZeroU32,
+        position: Position,
+    },
+    /// Runs `then` if the condition holds when the step runs, `otherwise` if not.
+    If {
+        condition: Condition,
+        then: Vec<AutomaticStep>,
+        otherwise: Vec<AutomaticStep>,
     },
 }

@@ -9,7 +9,8 @@ use super::event::Event;
 use crate::card_catalog::CardId;
 use crate::player::{PlayerId, PlayerOrder};
 use crate::random::RandomState;
-use crate::ruleset_definition::{FieldValue, StateName, ZoneId};
+use crate::ruleset_definition::{FieldType, FieldValue, PhaseId, StateName, ZoneId};
+use crate::turn::TurnNumber;
 
 /// The identity of a card instance, unique within one Game. Ids are dense from 0, in creation
 /// order.
@@ -75,12 +76,14 @@ impl ZoneCards {
     }
 }
 
-/// The complete state of one declarative Game: Players by seat, the Active Player, each Player's
-/// zones, every card instance and the Random State.
+/// The complete state of one declarative Game: Players by seat, the Active Player, the Turn Number
+/// and phase, each Player's zones, every card instance and the Random State.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GameState {
     player_order: PlayerOrder,
     active_player: PlayerId,
+    turn_number: Option<TurnNumber>,
+    phase: Option<PhaseId>,
     zones: Vec<(PlayerId, Vec<ZoneCards>)>,
     cards: Vec<CardInstance>,
     random_state: RandomState,
@@ -103,6 +106,24 @@ pub enum ApplyError {
     },
     /// A shuffle's order is not a permutation of the cards in the zone.
     NotAPermutation { player: PlayerId, zone: ZoneId },
+    /// The Event names a card instance that does not exist.
+    UnknownCard { card: CardInstanceId },
+    /// The card has no instance-state entry named `state`.
+    UnknownState {
+        card: CardInstanceId,
+        state: StateName,
+    },
+    /// The new value of the state is not of the type of its current value.
+    StateTypeMismatch {
+        card: CardInstanceId,
+        state: StateName,
+        expected: FieldType,
+        found: FieldType,
+    },
+    /// A draw-from-empty fact names a zone that holds cards.
+    ZoneNotEmpty { player: PlayerId, zone: ZoneId },
+    /// A phase began, but no Turn has begun.
+    NoTurnInProgress,
 }
 
 impl fmt::Display for ApplyError {
@@ -128,6 +149,31 @@ impl fmt::Display for ApplyError {
                 zone.as_str(),
                 player.0
             ),
+            Self::UnknownCard { card } => write!(f, "card instance {} does not exist", card.0),
+            Self::UnknownState { card, state } => write!(
+                f,
+                "card instance {} has no state `{}`",
+                card.0,
+                state.as_str()
+            ),
+            Self::StateTypeMismatch {
+                card,
+                state,
+                expected,
+                found,
+            } => write!(
+                f,
+                "the state `{}` of card instance {} is {expected:?}, not {found:?}",
+                state.as_str(),
+                card.0
+            ),
+            Self::ZoneNotEmpty { player, zone } => write!(
+                f,
+                "zone `{}` of Player {} is not empty",
+                zone.as_str(),
+                player.0
+            ),
+            Self::NoTurnInProgress => write!(f, "no Turn is in progress"),
         }
     }
 }
@@ -160,6 +206,8 @@ impl GameState {
         GameState {
             player_order,
             active_player,
+            turn_number: None,
+            phase: None,
             zones,
             cards: Vec::new(),
             random_state,
@@ -174,6 +222,17 @@ impl GameState {
     /// The Player whose Turn it is.
     pub fn active_player(&self) -> PlayerId {
         self.active_player
+    }
+
+    /// The Turn Number of the Turn in progress; `None` before the first Turn has begun (in the
+    /// Empty GameState, or in a Game whose ruleset has no turn).
+    pub fn turn_number(&self) -> Option<TurnNumber> {
+        self.turn_number
+    }
+
+    /// The phase of the Turn in progress that began last; `None` when no phase has begun.
+    pub fn phase(&self) -> Option<&PhaseId> {
+        self.phase.as_ref()
     }
 
     /// The zones of `player` in declared order; `None` for a Player not in the Game.
@@ -280,6 +339,54 @@ impl GameState {
                     held.cards.clone_from(order);
                 }
                 self.random_state = random_state.clone();
+                Ok(())
+            }
+            Event::TurnBegan { player, turn } => {
+                if !self.player_order.contains(*player) {
+                    return Err(ApplyError::UnknownPlayer { player: *player });
+                }
+                self.active_player = *player;
+                self.turn_number = Some(*turn);
+                self.phase = None;
+                Ok(())
+            }
+            Event::PhaseBegan { phase } => {
+                if self.turn_number.is_none() {
+                    return Err(ApplyError::NoTurnInProgress);
+                }
+                self.phase = Some(phase.clone());
+                Ok(())
+            }
+            Event::CardStateChanged { card, state, value } => {
+                let instance = usize::try_from(card.0)
+                    .ok()
+                    .and_then(|position| self.cards.get_mut(position))
+                    .ok_or(ApplyError::UnknownCard { card: *card })?;
+                let Some((_, current)) = instance.state.iter_mut().find(|(name, _)| name == state)
+                else {
+                    return Err(ApplyError::UnknownState {
+                        card: *card,
+                        state: state.clone(),
+                    });
+                };
+                if current.field_type() != value.field_type() {
+                    return Err(ApplyError::StateTypeMismatch {
+                        card: *card,
+                        state: state.clone(),
+                        expected: current.field_type(),
+                        found: value.field_type(),
+                    });
+                }
+                current.clone_from(value);
+                Ok(())
+            }
+            Event::DrawFromEmptyZone { player, zone } => {
+                if !self.require_zone(*player, zone)?.is_empty() {
+                    return Err(ApplyError::ZoneNotEmpty {
+                        player: *player,
+                        zone: zone.clone(),
+                    });
+                }
                 Ok(())
             }
         }
