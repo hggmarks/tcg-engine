@@ -448,9 +448,16 @@ fn without_win_conditions_an_empty_draw_does_not_end_the_game() {
         .events()
         .iter()
         .any(|event| matches!(event, Event::GameEnded { .. })));
-    assert!(ruleset
+    // The Game goes on: an Action is accepted, and its transition does not end the Game either.
+    let transition = ruleset
         .transition(&creation.opening.state, &pass(0))
-        .is_ok());
+        .expect("PassTurn is accepted: the Game is not over");
+    assert_eq!(transition.state.outcome(), None);
+    assert!(!transition
+        .trace
+        .events()
+        .iter()
+        .any(|event| matches!(event, Event::GameEnded { .. })));
 }
 
 // ---- Event Application

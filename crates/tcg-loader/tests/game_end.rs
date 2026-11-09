@@ -266,8 +266,9 @@ fn a_game_where_both_players_only_pass_ends_by_deck_out_of_player_1_on_turn_92()
         assert_eq!(state.turn_number(), TurnNumber::new(turn));
         assert_eq!(state.outcome(), None, "the Game is on at Turn {turn}");
     }
-    // 90 PassTurns have been accepted. Seat 0's mana deck ran out long ago (Turn 11), and that
-    // does not end the Game; seat 0's deck is empty but seat 0 has not had to draw from it.
+    // 90 PassTurns have been accepted. Seat 0's mana deck has been empty since its fifth Turn
+    // (Turn 9; nothing moved from it from Turn 11 on), and that does not end the Game; seat 0's
+    // deck is empty too, but seat 0 has not had to draw from it.
     assert!(cards_in(&state, 0, "mana_deck").is_empty());
     assert!(cards_in(&state, 0, "deck").is_empty());
     assert_eq!(cards_in(&state, 1, "deck").len(), 0);
