@@ -163,10 +163,14 @@ fn draft_with_turn(start: Vec<AutomaticStepDraft>, end: Vec<AutomaticStepDraft>)
     draft.actions = vec![
         ActionDraft {
             id: "pass_turn".to_string(),
+            params: vec![],
+            cost: vec![],
             effects: vec![EffectDraft::EndTurn],
         },
         ActionDraft {
             id: "idle".to_string(),
+            params: vec![],
+            cost: vec![],
             effects: vec![],
         },
     ];
@@ -208,6 +212,7 @@ fn pass(player: u32) -> Action {
     Action {
         player: p(player),
         action: ActionId::new("pass_turn"),
+        arguments: vec![],
     }
 }
 
@@ -843,6 +848,7 @@ fn an_unknown_action_is_rejected() {
     let action = Action {
         player: p(0),
         action: ActionId::new("cast_spell"),
+        arguments: vec![],
     };
     assert_action_rejected(
         &ruleset,
@@ -865,6 +871,7 @@ fn an_action_not_in_the_current_phase_is_rejected() {
     let idle = Action {
         player: p(0),
         action: ActionId::new("idle"),
+        arguments: vec![],
     };
     assert_action_rejected(&ruleset, &opening(&ruleset), &idle, not_in_phase("idle"));
 
@@ -889,6 +896,7 @@ fn rejections_are_checked_in_order() {
     let unknown_action = |player: u32| Action {
         player: p(player),
         action: ActionId::new("cast_spell"),
+        arguments: vec![],
     };
     // An unknown Player beats an unknown Action; a non-active Player beats an unknown Action.
     assert_eq!(

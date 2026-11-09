@@ -148,6 +148,8 @@ fn turn_and_actions_are_loaded_from_yaml() {
         draft.actions,
         vec![ActionDraft {
             id: "pass_turn".to_string(),
+            params: vec![],
+            cost: vec![],
             effects: vec![EffectDraft::EndTurn],
         }]
     );
@@ -336,15 +338,18 @@ fn an_unknown_key_inside_a_phase_or_an_action_is_reported_inside_it() {
     );
 
     let error = yaml_error(&document(
-        "actions:\n  - id: pass_turn\n    effects: []\n    cost: []\n",
+        "actions:\n  - id: pass_turn\n    effects: []\n    once_per_turn: true\n",
     ));
     assert_eq!(
         error.kind,
         YamlErrorKind::UnknownKey {
-            key: "cost".to_string()
+            key: "once_per_turn".to_string()
         }
     );
-    assert_eq!(error.path, path().key("actions").index(0).key("cost"));
+    assert_eq!(
+        error.path,
+        path().key("actions").index(0).key("once_per_turn")
+    );
 }
 
 #[test]

@@ -70,6 +70,7 @@ fn pass(player: u32) -> Action {
     Action {
         player: p(player),
         action: ActionId::new("pass_turn"),
+        arguments: vec![],
     }
 }
 

@@ -1288,6 +1288,8 @@ fn setup_steps_are_checked_in_order_and_each_step_in_key_order() {
 fn pass_turn_action() -> ActionDraft {
     ActionDraft {
         id: "pass_turn".to_string(),
+        params: vec![],
+        cost: vec![],
         effects: vec![EffectDraft::EndTurn],
     }
 }
@@ -1506,6 +1508,8 @@ fn actions_reject_invalid_and_duplicate_ids() {
     let mut draft = small_ruleset_with_start(vec![]);
     draft.actions.push(ActionDraft {
         id: "Bad".to_string(),
+        params: vec![],
+        cost: vec![],
         effects: vec![],
     });
     assert_eq!(
@@ -1521,6 +1525,8 @@ fn actions_reject_invalid_and_duplicate_ids() {
     let mut draft = small_ruleset_with_start(vec![]);
     draft.actions.push(ActionDraft {
         id: "idle".to_string(),
+        params: vec![],
+        cost: vec![],
         effects: vec![],
     });
     draft.actions.push(pass_turn_action());

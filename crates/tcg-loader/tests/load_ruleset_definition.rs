@@ -501,17 +501,26 @@ fn win_conditions_are_still_unsupported() {
 }
 
 #[test]
-fn the_real_small_ruleset_still_waits_for_action_parameters() {
-    // `play_creature` and `attack` have `params`, `cost` and richer effects, which tickets [10] and
-    // [11] add. The file loads up to them: its `setup` and `turn` are read.
+fn the_real_small_ruleset_still_waits_for_attack_conditions() {
+    // `play_creature` loads (ticket [10]); `attack` has `where` and `one_of`, which ticket [11]
+    // adds. The file loads up to the first of them: its `setup`, `turn` and `play_creature` are
+    // read.
     let error = yaml_error(SMALL_RULESET);
     assert_eq!(
         error.kind,
         YamlErrorKind::UnknownKey {
-            key: "params".to_string()
+            key: "where".to_string()
         }
     );
-    assert_eq!(error.path, path().key("actions").index(0).key("params"));
+    assert_eq!(
+        error.path,
+        path()
+            .key("actions")
+            .index(1)
+            .key("params")
+            .index(0)
+            .key("where")
+    );
 }
 
 // ---- the boundary between the loader and the engine
