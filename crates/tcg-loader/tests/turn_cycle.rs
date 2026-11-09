@@ -2,8 +2,8 @@
 //! run over several rounds with the sample catalog and decks.
 //!
 //! The file is read up to its top-level `actions:` section, with Main waiting for `pass_turn` only,
-//! followed by a `pass_turn` definition: `play_creature` and `attack` have parameters, costs and
-//! richer effects that tickets [10] and [11] add. Code-built Turn cycles, the rejections and the
+//! followed by a `pass_turn` definition. Playing creatures is tested in `play_creature.rs`, and
+//! `attack` waits for ticket [11]. Code-built Turn cycles, the rejections and the
 //! definition errors are tested in the engine crate (`tests/turn_cycle.rs`).
 
 use tcg_engine::deck_list::DeckList;

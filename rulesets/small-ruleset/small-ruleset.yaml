@@ -81,6 +81,9 @@ actions:
   - id: play_creature
     params:
       - { name: card, zone: hand, card_type: creature }
+    # Taps `cost` untapped cards of the acting Player's mana_zone: the first untapped ones, in the
+    # order they entered the zone. Mana cards are interchangeable, so the engine chooses. A cost of
+    # 0 taps nothing, and a play without enough untapped mana is refused.
     cost:
       - tap: { zone: mana_zone, count: { ref: card.cost } }
     effects:

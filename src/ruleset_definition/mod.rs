@@ -11,10 +11,11 @@
 //! order. Within an element its id is checked against the identifier grammar and then for
 //! duplicates against earlier elements, before its content, in key order. An input's content is
 //! its card types (non-empty, known, without repeats), then `size`, then `max_copies`, then its
-//! zone. Setup steps follow, in declaration order, then the actions (each: id grammar, duplicate),
-//! then the turn: per phase, in declaration order, its id (grammar, duplicate), its kind (exactly
-//! one of `automatic` and `actions`) and its content, and after all the phases that exactly one has
-//! actions. Phases are addressed by id (`turn.phases[main].actions[0]`) and steps by position, with
+//! zone. Setup steps follow, in declaration order, then the actions (each: id grammar, duplicate,
+//! then its params, its cost and its effects, in that order, ADR-0015), then the turn: per phase,
+//! in declaration order, its id (grammar, duplicate), its kind (exactly one of `automatic` and
+//! `actions`) and its content, and after all the phases that exactly one has actions. Phases are
+//! addressed by id (`turn.phases[main].actions[0]`) and steps by position, with
 //! `then` and `else` as the keys of nested steps (`turn.phases[start].automatic[2].else[0]`).
 //! Within a step: `player`, then its zones in key order (a source that cards are taken from is
 //! checked for existing and then for being ordered; the zones of an `untap` for existing and then

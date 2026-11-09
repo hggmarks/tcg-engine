@@ -76,7 +76,7 @@ A turn has three phases, in order: Start, Main and End. Player 0's first turn be
 
 The player may do any of the following, in any order:
 
-- **Play a creature** (from hand to field): pay the creature's cost by tapping mana cards. The creature enters with `recently_played`.
+- **Play a creature** (from hand to field): pay the creature's cost by tapping mana cards. The creature enters with `recently_played`. The player plays a creature of their own, from their own hand, and needs at least as many untapped mana cards as the cost, otherwise the play is refused. The mana tapped is the first untapped cards, in the order they entered the Mana Zone (mana cards are interchangeable, so the engine chooses). A cost of 0 taps nothing.
 - **Attack** with a creature that is neither tapped nor `recently_played`. This starts a combat, and the attacker becomes tapped.
 - **Pass the turn.** This ends Main; it is the only way to leave it.
 
