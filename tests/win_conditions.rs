@@ -460,6 +460,32 @@ fn without_win_conditions_an_empty_draw_does_not_end_the_game() {
         .any(|event| matches!(event, Event::GameEnded { .. })));
 }
 
+#[test]
+fn an_empty_draw_from_another_zone_is_not_a_deck_out() {
+    // The condition names `deck`; the Start phase draws from the empty mana deck instead.
+    let draw_from_mana_deck = AutomaticStepDraft::Draw {
+        player: "active".to_string(),
+        from: "mana_deck".to_string(),
+        to: "hand".to_string(),
+        count: 11,
+    };
+    let ruleset = ruleset_of(draft_with(
+        5,
+        vec![draw_from_mana_deck.clone(), draw_from_mana_deck],
+        vec![deck_out("deck_out")],
+    ));
+    let creation = create(&ruleset);
+    let events = creation.opening.trace.events();
+    assert!(events.contains(&Event::DrawFromEmptyZone {
+        player: p(0),
+        zone: zone("mana_deck"),
+    }));
+    assert_eq!(creation.opening.state.outcome(), None);
+    assert!(!events
+        .iter()
+        .any(|event| matches!(event, Event::GameEnded { .. })));
+}
+
 // ---- Event Application
 
 #[test]

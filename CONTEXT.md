@@ -300,7 +300,7 @@ A declared rule `{ id, when, loser }` of the ruleset's `win_conditions`. When it
 A Player who lost and the Win Condition id that made them lose. A Player has at most one Loss: for each Player in seat order, the first Win Condition in declaration order that holds for them is their reason.
 
 **Drawn Game**:
-A Game in which every Player lost in the same transition, so it has no winner: the Terminal Outcome has no winners. It is not the Draw step; Small Ruleset cannot reach it.
+A Game in which every Player lost in the same transition, so it has no winner: the Terminal Outcome has no winners. It is not the Draw step; In the Small Ruleset deck-out alone cannot cause it, because only the Active Player draws.
 
 **GameEnded**:
 The Event that the Game ended, with its Losses in seat order. Applying it sets the Terminal Outcome; no Event applies after it, and it is the last Event of the trace that emits it. A `GameEnded` without a Loss, with a Player twice or out of seat order, or with a Player not in the Game is an Apply Error.
