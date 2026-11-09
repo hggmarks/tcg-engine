@@ -10,8 +10,7 @@
 //! 1. an event pass that rejects anchors, aliases and every tag, and tracks the path;
 //! 2. `serde-saphyr`, with strict options, into private data-transfer types that reject unknown
 //!    keys;
-//! 3. a check that no unsupported behavior section (`turn`, `actions`, `win_conditions`) is
-//!    present;
+//! 3. a check that no unsupported behavior section (`win_conditions`) is present;
 //! 4. conversion into the draft.
 //!
 //! The three file kinds share steps 1 and 2; each has its own data-transfer types. The first error
@@ -144,9 +143,10 @@ fn classify(error: SaphyrError, path: DefinitionPath) -> YamlError {
         SaphyrError::SerdeUnknownField { field, .. } => {
             (YamlErrorKind::UnknownKey { key: field.clone() }, path)
         }
-        // An unknown Setup Step primitive, at exactly `setup[i]`: an unknown key of the list
-        // element. Any other unknown enum value (`visibility`, `type`) stays `Malformed`.
-        SaphyrError::SerdeUnknownVariant { variant, .. } if is_setup_step(&path) => (
+        // An unknown primitive (of a step, an effect or a condition), at exactly the map that
+        // names it: an unknown key of that map. Any other unknown enum value (`visibility`,
+        // `type`) stays `Malformed`.
+        SaphyrError::SerdeUnknownVariant { variant, .. } if names_a_primitive(&path) => (
             YamlErrorKind::UnknownKey {
                 key: variant.clone(),
             },
@@ -183,12 +183,20 @@ fn classify(error: SaphyrError, path: DefinitionPath) -> YamlError {
     }
 }
 
-/// Whether `path` is exactly one element of the `setup` list, such as `setup[1]`.
-fn is_setup_step(path: &DefinitionPath) -> bool {
-    matches!(
-        path.segments(),
-        [PathSegment::Key(key), PathSegment::Index(_)] if key == "setup"
-    )
+/// Whether `path` is a single-key map `{ <primitive>: ... }` whose primitive is chosen by name: an
+/// element of `setup` (`setup[1]`), of an automatic phase or an `if` step
+/// (`turn.phases[0].automatic[2]`, `turn.phases[0].automatic[2].else[0]`) or of an action's
+/// `effects` (`actions[0].effects[0]`), or the condition of an `if` step
+/// (`turn.phases[0].automatic[2].if`).
+fn names_a_primitive(path: &DefinitionPath) -> bool {
+    match path.segments() {
+        [PathSegment::Key(key), PathSegment::Index(_)] if key == "setup" => true,
+        [.., PathSegment::Key(key), PathSegment::Index(_)] => {
+            matches!(key.as_str(), "automatic" | "then" | "else" | "effects")
+        }
+        [.., PathSegment::Key(key)] => key == "if",
+        _ => false,
+    }
 }
 
 fn forbidden(feature: YamlFeature) -> YamlErrorKind {

@@ -6,13 +6,13 @@
 
 use std::fmt;
 
-use crate::scalar;
+use crate::scalar::{self, ScalarDto};
 use serde::de::{self, Deserializer, IgnoredAny, MapAccess, Visitor};
 use serde::Deserialize;
 use tcg_engine::ruleset_definition::{
-    CardTypeDraft, DeckInputDraft, FieldDraft, FieldTypeDraft, FieldValue, InitializerDraft,
-    InstanceStateDraft, MetaDraft, ParametersDraft, RulesetDraft, SetupStepDraft, Visibility,
-    ZoneDraft,
+    ActionDraft, AutomaticStepDraft, CardTypeDraft, ConditionDraft, DeckInputDraft, EffectDraft,
+    FieldDraft, FieldTypeDraft, FieldValue, InitializerDraft, InstanceStateDraft, MetaDraft,
+    ParametersDraft, PhaseDraft, RulesetDraft, SetupStepDraft, TurnDraft, Visibility, ZoneDraft,
 };
 
 #[derive(Deserialize)]
@@ -25,13 +25,22 @@ pub(crate) struct RulesetDto {
     inputs: Vec<InputDto>,
     #[serde(default)]
     setup: Vec<SetupStepDto>,
-    // The other behavior sections are not read, only noticed. `present` also counts an empty value.
-    #[serde(default, deserialize_with = "present")]
-    turn: bool,
-    #[serde(default, deserialize_with = "present")]
-    actions: bool,
+    #[serde(default)]
+    actions: Vec<ActionDto>,
+    // An absent key is `None`; a present key must be a turn, so `turn:` with nothing after it is an
+    // error, not `None`.
+    #[serde(default, deserialize_with = "some")]
+    turn: Option<TurnDto>,
+    // `win_conditions` is not read, only noticed. `present` also counts an empty value.
     #[serde(default, deserialize_with = "present")]
     win_conditions: bool,
+}
+
+/// A value of a key that is present: unlike `Option`, a null is not accepted as `None`.
+fn some<'de, D: Deserializer<'de>, T: Deserialize<'de>>(
+    deserializer: D,
+) -> Result<Option<T>, D::Error> {
+    T::deserialize(deserializer).map(Some)
 }
 
 fn present<'de, D: Deserializer<'de>>(deserializer: D) -> Result<bool, D::Error> {
@@ -63,6 +72,174 @@ struct DrawDto {
     to: String,
     #[serde(deserialize_with = "scalar::strict_u32")]
     count: u32,
+}
+
+/// `{}`: the argument of a primitive that has none.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EmptyDto {}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ActionDto {
+    id: String,
+    effects: Vec<EffectDto>,
+}
+
+/// One effect of an action: a single-key map `{ <primitive>: { ... } }`.
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum EffectDto {
+    EndTurn(EmptyDto),
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TurnDto {
+    phases: Vec<PhaseDto>,
+}
+
+/// A phase has `automatic` (a list of steps) or `actions` (a list of action ids); the engine checks
+/// that it has exactly one.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PhaseDto {
+    id: String,
+    #[serde(default, deserialize_with = "some")]
+    automatic: Option<Vec<AutomaticStepDto>>,
+    #[serde(default, deserialize_with = "some")]
+    actions: Option<Vec<String>>,
+}
+
+/// The condition of an `if` step: a single-key map `{ <condition>: {} }`.
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum ConditionDto {
+    FirstTurn(EmptyDto),
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UntapDto {
+    player: String,
+    zones: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SetStateDto {
+    player: String,
+    zone: String,
+    state: String,
+    value: ScalarDto,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MoveDto {
+    player: String,
+    from: String,
+    to: String,
+    #[serde(deserialize_with = "scalar::strict_u32")]
+    count: u32,
+    position: String,
+}
+
+/// One step of an automatic phase: either a single-key map `{ <primitive>: { ... } }`, or the
+/// sibling-key form `{ if: <condition>, then: [...], else: [...] }` where `then` is required and
+/// `else` is optional.
+enum AutomaticStepDto {
+    Untap(UntapDto),
+    SetState(SetStateDto),
+    Draw(DrawDto),
+    Move(MoveDto),
+    If {
+        condition: ConditionDto,
+        then: Vec<AutomaticStepDto>,
+        otherwise: Vec<AutomaticStepDto>,
+    },
+}
+
+/// The keys a step may have, for the error of an unknown one.
+const STEP_KEYS: &[&str] = &["untap", "set_state", "draw", "move", "if", "then", "else"];
+
+impl<'de> Deserialize<'de> for AutomaticStepDto {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct StepVisitor;
+
+        impl<'de> Visitor<'de> for StepVisitor {
+            type Value = AutomaticStepDto;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("a step: one primitive, or `if` with `then` and optionally `else`")
+            }
+
+            fn visit_map<A: MapAccess<'de>>(
+                self,
+                mut map: A,
+            ) -> Result<AutomaticStepDto, A::Error> {
+                let mut primitive: Option<AutomaticStepDto> = None;
+                let mut condition: Option<ConditionDto> = None;
+                let mut then: Option<Vec<AutomaticStepDto>> = None;
+                let mut otherwise: Option<Vec<AutomaticStepDto>> = None;
+
+                // An unknown key is an unknown variant at the list element, like an unknown Setup
+                // Step primitive.
+                while let Some(key) = map.next_key::<String>()? {
+                    let found = match key.as_str() {
+                        "untap" => Some(AutomaticStepDto::Untap(map.next_value()?)),
+                        "set_state" => Some(AutomaticStepDto::SetState(map.next_value()?)),
+                        "draw" => Some(AutomaticStepDto::Draw(map.next_value()?)),
+                        "move" => Some(AutomaticStepDto::Move(map.next_value()?)),
+                        "if" => {
+                            condition = Some(map.next_value()?);
+                            None
+                        }
+                        "then" => {
+                            then = Some(map.next_value()?);
+                            None
+                        }
+                        "else" => {
+                            otherwise = Some(map.next_value()?);
+                            None
+                        }
+                        other => return Err(de::Error::unknown_variant(other, STEP_KEYS)),
+                    };
+                    if let Some(found) = found {
+                        if primitive.replace(found).is_some() {
+                            return Err(de::Error::custom("a step names only one primitive"));
+                        }
+                    }
+                }
+
+                match (primitive, condition, then, otherwise) {
+                    (Some(primitive), None, None, None) => Ok(primitive),
+                    (None, Some(condition), Some(then), otherwise) => Ok(AutomaticStepDto::If {
+                        condition,
+                        then,
+                        otherwise: otherwise.unwrap_or_default(),
+                    }),
+                    (None, Some(_), None, _) => {
+                        Err(de::Error::custom("an `if` step needs a `then` list"))
+                    }
+                    (Some(_), Some(_), _, _) => Err(de::Error::custom(
+                        "an `if` step cannot also name a primitive",
+                    )),
+                    (None, None, Some(_), _) | (None, None, None, Some(_)) => Err(
+                        de::Error::custom("`then` and `else` belong to an `if` step"),
+                    ),
+                    (Some(_), None, _, _) => Err(de::Error::custom(
+                        "`then` and `else` belong to an `if` step",
+                    )),
+                    (None, None, None, None) => {
+                        Err(de::Error::custom("a step names a primitive or an `if`"))
+                    }
+                }
+            }
+        }
+
+        deserializer.deserialize_map(StepVisitor)
+    }
 }
 
 #[derive(Deserialize)]
@@ -204,16 +381,10 @@ struct InputDto {
 }
 
 impl RulesetDto {
-    /// The first unsupported behavior section present, in the order turn, actions,
-    /// win_conditions.
+    /// The unsupported behavior section present, if any: only `win_conditions` is still not
+    /// loaded.
     pub(crate) fn unsupported_section(&self) -> Option<&'static str> {
-        [
-            ("turn", self.turn),
-            ("actions", self.actions),
-            ("win_conditions", self.win_conditions),
-        ]
-        .into_iter()
-        .find_map(|(name, present)| present.then_some(name))
+        self.win_conditions.then_some("win_conditions")
     }
 
     pub(crate) fn into_draft(self) -> RulesetDraft {
@@ -238,6 +409,93 @@ impl RulesetDto {
                 .into_iter()
                 .map(SetupStepDto::into_draft)
                 .collect(),
+            actions: self
+                .actions
+                .into_iter()
+                .map(ActionDto::into_draft)
+                .collect(),
+            turn: self.turn.map(TurnDto::into_draft),
+        }
+    }
+}
+
+impl ActionDto {
+    fn into_draft(self) -> ActionDraft {
+        ActionDraft {
+            id: self.id,
+            effects: self
+                .effects
+                .into_iter()
+                .map(|effect| match effect {
+                    EffectDto::EndTurn(_) => EffectDraft::EndTurn,
+                })
+                .collect(),
+        }
+    }
+}
+
+impl TurnDto {
+    fn into_draft(self) -> TurnDraft {
+        TurnDraft {
+            phases: self.phases.into_iter().map(PhaseDto::into_draft).collect(),
+        }
+    }
+}
+
+impl PhaseDto {
+    fn into_draft(self) -> PhaseDraft {
+        PhaseDraft {
+            id: self.id,
+            automatic: self.automatic.map(AutomaticStepDto::into_drafts),
+            actions: self.actions,
+        }
+    }
+}
+
+impl AutomaticStepDto {
+    fn into_drafts(steps: Vec<AutomaticStepDto>) -> Vec<AutomaticStepDraft> {
+        steps
+            .into_iter()
+            .map(AutomaticStepDto::into_draft)
+            .collect()
+    }
+
+    fn into_draft(self) -> AutomaticStepDraft {
+        match self {
+            Self::Untap(step) => AutomaticStepDraft::Untap {
+                player: step.player,
+                zones: step.zones,
+            },
+            Self::SetState(step) => AutomaticStepDraft::SetState {
+                player: step.player,
+                zone: step.zone,
+                state: step.state,
+                value: step.value.0,
+            },
+            Self::Draw(step) => AutomaticStepDraft::Draw {
+                player: step.player,
+                from: step.from,
+                to: step.to,
+                count: step.count,
+            },
+            Self::Move(step) => AutomaticStepDraft::Move {
+                player: step.player,
+                from: step.from,
+                to: step.to,
+                count: step.count,
+                position: step.position,
+            },
+            Self::If {
+                condition,
+                then,
+                otherwise,
+            } => AutomaticStepDraft::If {
+                condition: match condition {
+                    ConditionDto::FirstTurn(_) => ConditionDraft::FirstTurn,
+                },
+                then: Self::into_drafts(then),
+                otherwise: Self::into_drafts(otherwise),
+            },
         }
     }
 }

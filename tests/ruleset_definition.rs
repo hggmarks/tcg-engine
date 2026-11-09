@@ -7,10 +7,12 @@ use std::num::NonZeroU32;
 
 use tcg_engine::definition_path::{DefinitionPath, PathSegment};
 use tcg_engine::ruleset_definition::{
-    CardTypeDraft, CardTypeId, DeckInputDraft, DefinitionError, DefinitionErrorKind, FieldDraft,
-    FieldName, FieldType, FieldTypeDraft, FieldValue, Initializer, InitializerDraft,
-    InstanceStateDraft, MetaDraft, ParametersDraft, PlayerSelector, ReferenceTarget,
-    RulesetDefinition, RulesetDraft, SetupStep, SetupStepDraft, Visibility, ZoneDraft, ZoneId,
+    ActionDraft, ActionId, AutomaticStep, AutomaticStepDraft, CardTypeDraft, CardTypeId, Condition,
+    ConditionDraft, DeckInputDraft, DefinitionError, DefinitionErrorKind, Effect, EffectDraft,
+    FieldDraft, FieldName, FieldType, FieldTypeDraft, FieldValue, Initializer, InitializerDraft,
+    InstanceStateDraft, MetaDraft, ParametersDraft, PhaseDraft, PhaseKind, PlayerSelector,
+    Position, ReferenceTarget, RulesetDefinition, RulesetDraft, SetupStep, SetupStepDraft,
+    StateName, TurnDraft, Visibility, ZoneDraft, ZoneId,
 };
 
 // ---- draft builders
@@ -137,6 +139,8 @@ fn small_ruleset_draft() -> RulesetDraft {
             input("mana_deck", &["mana"], 10, None, "mana_deck"),
         ],
         setup: vec![],
+        actions: vec![],
+        turn: None,
     }
 }
 
@@ -155,6 +159,8 @@ fn draft_with_card_types(card_types: Vec<CardTypeDraft>) -> RulesetDraft {
         card_types,
         inputs: vec![],
         setup: vec![],
+        actions: vec![],
+        turn: None,
     }
 }
 
@@ -592,6 +598,8 @@ fn ids_may_repeat_across_lists() {
             input("leader", &["leader"], 1, None, "mana_deck"),
         ],
         setup: vec![],
+        actions: vec![],
+        turn: None,
     };
     let definition = RulesetDefinition::validate(draft).expect("ids are scoped to their list");
     let zone_ids: Vec<&str> = definition.zones().iter().map(|z| z.id().as_str()).collect();
@@ -1041,18 +1049,82 @@ fn valid_setup_is_kept_in_order() {
 }
 
 #[test]
+fn setup_accepts_the_active_player_selector() {
+    let definition = RulesetDefinition::validate(small_ruleset_with_setup(vec![
+        shuffle("active", "deck"),
+        draw("active", "deck", "hand", 5),
+    ]))
+    .expect("`active` is a Player Selector");
+    assert_eq!(
+        definition.setup(),
+        [
+            SetupStep::Shuffle {
+                player: PlayerSelector::Active,
+                zone: ZoneId::new("deck"),
+            },
+            SetupStep::Draw {
+                player: PlayerSelector::Active,
+                from: ZoneId::new("deck"),
+                to: ZoneId::new("hand"),
+                count: NonZeroU32::new(5).expect("5 is not zero"),
+            },
+        ]
+    );
+}
+
+#[test]
+fn setup_shuffle_and_draw_need_an_ordered_zone() {
+    // ADR-0013: `hand` is declared `ordered: false`.
+    let not_ordered = DefinitionErrorKind::ZoneNotOrdered {
+        zone: "hand".to_string(),
+    };
+    assert_eq!(
+        error_of(small_ruleset_with_setup(vec![shuffle("each", "hand")])),
+        DefinitionError {
+            path: setup_path(0, "shuffle", "zone"),
+            kind: not_ordered.clone(),
+        }
+    );
+    assert_eq!(
+        error_of(small_ruleset_with_setup(vec![
+            shuffle("each", "deck"),
+            draw("each", "hand", "deck", 1),
+        ])),
+        DefinitionError {
+            path: setup_path(1, "draw", "from"),
+            kind: not_ordered,
+        }
+    );
+
+    // The destination of a draw may be unordered, like the hand.
+    RulesetDefinition::validate(small_ruleset_with_setup(vec![draw(
+        "each", "deck", "hand", 1,
+    )]))
+    .expect("only the source of a draw needs to be ordered");
+
+    // A dangling reference is reported before the zone is looked at for its order.
+    assert_eq!(
+        error_of(small_ruleset_with_setup(vec![shuffle("each", "nowhere")])).kind,
+        DefinitionErrorKind::DanglingReference {
+            target: ReferenceTarget::Zone,
+            id: "nowhere".to_string()
+        }
+    );
+}
+
+#[test]
 fn setup_rejects_unknown_player_selector() {
-    // Only `each` exists; there is no `active` selector yet.
+    // Only `each` and `active` exist (`active` arrived with the Turn cycle, ADR-0012).
     let error = error_of(small_ruleset_with_setup(vec![
         shuffle("each", "deck"),
-        shuffle("active", "deck"),
+        shuffle("opponent", "deck"),
     ]));
     assert_eq!(
         error,
         DefinitionError {
             path: setup_path(1, "shuffle", "player"),
             kind: DefinitionErrorKind::UnknownPlayerSelector {
-                selector: "active".to_string()
+                selector: "opponent".to_string()
             },
         }
     );
@@ -1136,7 +1208,7 @@ fn setup_rejects_zero_draw_count() {
         error,
         DefinitionError {
             path: setup_path(0, "draw", "count"),
-            kind: DefinitionErrorKind::InvalidDrawCount,
+            kind: DefinitionErrorKind::InvalidCount,
         }
     );
 }
@@ -1200,7 +1272,7 @@ fn setup_steps_are_checked_in_order_and_each_step_in_key_order() {
     expect(
         vec![draw("each", "deck", "hand", 0)],
         setup_path(0, "draw", "count"),
-        DefinitionErrorKind::InvalidDrawCount,
+        DefinitionErrorKind::InvalidCount,
     );
 
     // Within a shuffle: player, then zone.
@@ -1208,5 +1280,818 @@ fn setup_steps_are_checked_in_order_and_each_step_in_key_order() {
         vec![shuffle("who", "nowhere")],
         setup_path(0, "shuffle", "player"),
         unknown_selector("who"),
+    );
+}
+
+// ---- actions and the turn (ticket #22)
+
+fn pass_turn_action() -> ActionDraft {
+    ActionDraft {
+        id: "pass_turn".to_string(),
+        effects: vec![EffectDraft::EndTurn],
+    }
+}
+
+fn automatic_phase(id: &str, steps: Vec<AutomaticStepDraft>) -> PhaseDraft {
+    PhaseDraft {
+        id: id.to_string(),
+        automatic: Some(steps),
+        actions: None,
+    }
+}
+
+fn action_phase(id: &str, actions: &[&str]) -> PhaseDraft {
+    PhaseDraft {
+        id: id.to_string(),
+        automatic: None,
+        actions: Some(actions.iter().map(|action| action.to_string()).collect()),
+    }
+}
+
+fn step_untap(player: &str, zones: &[&str]) -> AutomaticStepDraft {
+    AutomaticStepDraft::Untap {
+        player: player.to_string(),
+        zones: zones.iter().map(|zone| zone.to_string()).collect(),
+    }
+}
+
+fn step_set_state(player: &str, zone: &str, state: &str, value: FieldValue) -> AutomaticStepDraft {
+    AutomaticStepDraft::SetState {
+        player: player.to_string(),
+        zone: zone.to_string(),
+        state: state.to_string(),
+        value,
+    }
+}
+
+fn step_draw(player: &str, from: &str, to: &str, count: u32) -> AutomaticStepDraft {
+    AutomaticStepDraft::Draw {
+        player: player.to_string(),
+        from: from.to_string(),
+        to: to.to_string(),
+        count,
+    }
+}
+
+fn step_move(player: &str, from: &str, to: &str, count: u32, position: &str) -> AutomaticStepDraft {
+    AutomaticStepDraft::Move {
+        player: player.to_string(),
+        from: from.to_string(),
+        to: to.to_string(),
+        count,
+        position: position.to_string(),
+    }
+}
+
+fn step_if(
+    then: Vec<AutomaticStepDraft>,
+    otherwise: Vec<AutomaticStepDraft>,
+) -> AutomaticStepDraft {
+    AutomaticStepDraft::If {
+        condition: ConditionDraft::FirstTurn,
+        then,
+        otherwise,
+    }
+}
+
+/// The Small Ruleset structure with the action `pass_turn` and the given phases.
+fn small_ruleset_with_phases(phases: Vec<PhaseDraft>) -> RulesetDraft {
+    let mut draft = small_ruleset_draft();
+    draft.actions = vec![pass_turn_action()];
+    draft.turn = Some(TurnDraft { phases });
+    draft
+}
+
+/// The Small Ruleset with a Start phase of the given steps, then Main waiting for `pass_turn`.
+fn small_ruleset_with_start(steps: Vec<AutomaticStepDraft>) -> RulesetDraft {
+    small_ruleset_with_phases(vec![
+        automatic_phase("start", steps),
+        action_phase("main", &["pass_turn"]),
+    ])
+}
+
+fn phase_path(id: &str) -> DefinitionPath {
+    path().key("turn").key("phases").id(id)
+}
+
+/// The path of step `index` of the automatic phase `phase`.
+fn step_path(phase: &str, index: usize) -> DefinitionPath {
+    phase_path(phase).key("automatic").index(index)
+}
+
+fn zone_not_ordered(zone: &str) -> DefinitionErrorKind {
+    DefinitionErrorKind::ZoneNotOrdered {
+        zone: zone.to_string(),
+    }
+}
+
+fn dangling(target: ReferenceTarget, id: &str) -> DefinitionErrorKind {
+    DefinitionErrorKind::DanglingReference {
+        target,
+        id: id.to_string(),
+    }
+}
+
+/// The Start phase of the Small Ruleset.
+fn small_start_steps() -> Vec<AutomaticStepDraft> {
+    vec![
+        step_untap("active", &["mana_zone", "field"]),
+        step_set_state(
+            "active",
+            "field",
+            "recently_played",
+            FieldValue::Bool(false),
+        ),
+        step_if(vec![], vec![step_draw("active", "deck", "hand", 1)]),
+        step_move("active", "mana_deck", "mana_zone", 2, "top"),
+    ]
+}
+
+#[test]
+fn valid_actions_and_turn_are_kept_in_order() {
+    let definition = RulesetDefinition::validate(small_ruleset_with_phases(vec![
+        automatic_phase("start", small_start_steps()),
+        action_phase("main", &["pass_turn"]),
+        automatic_phase("end", vec![]),
+    ]))
+    .expect("a valid turn");
+
+    let actions = definition.actions();
+    assert_eq!(actions.len(), 1);
+    assert_eq!(actions[0].id(), &ActionId::new("pass_turn"));
+    assert_eq!(actions[0].effects(), [Effect::EndTurn]);
+    assert_eq!(
+        definition.action(&ActionId::new("pass_turn")),
+        Some(&actions[0])
+    );
+    assert_eq!(definition.action(&ActionId::new("nothing")), None);
+
+    let start = PhaseKind::Automatic(vec![
+        AutomaticStep::Untap {
+            player: PlayerSelector::Active,
+            zones: vec![ZoneId::new("mana_zone"), ZoneId::new("field")],
+        },
+        AutomaticStep::SetState {
+            player: PlayerSelector::Active,
+            zone: ZoneId::new("field"),
+            state: StateName::new("recently_played"),
+            value: FieldValue::Bool(false),
+        },
+        AutomaticStep::If {
+            condition: Condition::FirstTurn,
+            then: vec![],
+            otherwise: vec![AutomaticStep::Draw {
+                player: PlayerSelector::Active,
+                from: ZoneId::new("deck"),
+                to: ZoneId::new("hand"),
+                count: NonZeroU32::new(1).expect("1 is not zero"),
+            }],
+        },
+        AutomaticStep::Move {
+            player: PlayerSelector::Active,
+            from: ZoneId::new("mana_deck"),
+            to: ZoneId::new("mana_zone"),
+            count: NonZeroU32::new(2).expect("2 is not zero"),
+            position: Position::Top,
+        },
+    ]);
+    let main = PhaseKind::Actions(vec![ActionId::new("pass_turn")]);
+    let end = PhaseKind::Automatic(vec![]);
+    let turn = definition.turn().expect("the ruleset has a turn");
+    let phases: Vec<(&str, &PhaseKind)> = turn
+        .phases()
+        .iter()
+        .map(|phase| (phase.id().as_str(), phase.kind()))
+        .collect();
+    assert_eq!(
+        phases,
+        vec![("start", &start), ("main", &main), ("end", &end)]
+    );
+}
+
+#[test]
+fn a_ruleset_without_actions_or_turn_has_none() {
+    let definition =
+        RulesetDefinition::validate(small_ruleset_draft()).expect("a ruleset without a turn");
+    assert_eq!(definition.actions(), []);
+    assert_eq!(definition.turn(), None);
+}
+
+#[test]
+fn turn_steps_accept_the_each_and_active_selectors() {
+    let definition = RulesetDefinition::validate(small_ruleset_with_start(vec![
+        step_untap("each", &["field"]),
+        step_untap("active", &["field"]),
+    ]))
+    .expect("both selectors are valid in a step");
+    let turn = definition.turn().expect("a turn");
+    let selectors: Vec<PlayerSelector> = turn
+        .phases()
+        .iter()
+        .filter_map(|phase| match phase.kind() {
+            PhaseKind::Automatic(steps) => Some(steps),
+            PhaseKind::Actions(_) => None,
+        })
+        .flatten()
+        .filter_map(|step| match step {
+            AutomaticStep::Untap { player, .. } => Some(*player),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(selectors, [PlayerSelector::Each, PlayerSelector::Active]);
+}
+
+#[test]
+fn actions_reject_invalid_and_duplicate_ids() {
+    let mut draft = small_ruleset_with_start(vec![]);
+    draft.actions.push(ActionDraft {
+        id: "Bad".to_string(),
+        effects: vec![],
+    });
+    assert_eq!(
+        error_of(draft),
+        DefinitionError {
+            path: path().key("actions").index(1).key("id"),
+            kind: DefinitionErrorKind::InvalidId {
+                id: "Bad".to_string()
+            },
+        }
+    );
+
+    let mut draft = small_ruleset_with_start(vec![]);
+    draft.actions.push(ActionDraft {
+        id: "idle".to_string(),
+        effects: vec![],
+    });
+    draft.actions.push(pass_turn_action());
+    assert_eq!(
+        error_of(draft),
+        DefinitionError {
+            path: path().key("actions").index(2),
+            kind: DefinitionErrorKind::DuplicateId {
+                id: "pass_turn".to_string(),
+                first: path().key("actions").index(0),
+            },
+        }
+    );
+}
+
+#[test]
+fn phases_reject_invalid_and_duplicate_ids() {
+    let error = error_of(small_ruleset_with_phases(vec![
+        automatic_phase("start", vec![]),
+        action_phase("Main", &["pass_turn"]),
+    ]));
+    assert_eq!(
+        error,
+        DefinitionError {
+            path: path().key("turn").key("phases").index(1).key("id"),
+            kind: DefinitionErrorKind::InvalidId {
+                id: "Main".to_string()
+            },
+        }
+    );
+
+    let error = error_of(small_ruleset_with_phases(vec![
+        automatic_phase("start", vec![]),
+        action_phase("main", &["pass_turn"]),
+        automatic_phase("start", vec![]),
+    ]));
+    assert_eq!(
+        error,
+        DefinitionError {
+            path: path().key("turn").key("phases").index(2),
+            kind: DefinitionErrorKind::DuplicateId {
+                id: "start".to_string(),
+                first: path().key("turn").key("phases").index(0),
+            },
+        }
+    );
+}
+
+#[test]
+fn a_phase_is_automatic_or_waits_for_actions_and_never_both() {
+    let neither = PhaseDraft {
+        id: "main".to_string(),
+        automatic: None,
+        actions: None,
+    };
+    assert_eq!(
+        error_of(small_ruleset_with_phases(vec![
+            automatic_phase("start", vec![]),
+            neither
+        ])),
+        DefinitionError {
+            path: phase_path("main"),
+            kind: DefinitionErrorKind::InvalidPhaseKind,
+        }
+    );
+
+    let both = PhaseDraft {
+        id: "main".to_string(),
+        automatic: Some(vec![]),
+        actions: Some(vec!["pass_turn".to_string()]),
+    };
+    assert_eq!(
+        error_of(small_ruleset_with_phases(vec![both])),
+        DefinitionError {
+            path: phase_path("main"),
+            kind: DefinitionErrorKind::InvalidPhaseKind,
+        }
+    );
+}
+
+#[test]
+fn a_turn_has_exactly_one_phase_with_actions() {
+    let turn_path = path().key("turn").key("phases");
+    for (phases, found) in [
+        (vec![], 0),
+        (vec![automatic_phase("start", vec![])], 0),
+        (
+            vec![
+                action_phase("main", &["pass_turn"]),
+                action_phase("second", &["pass_turn"]),
+            ],
+            2,
+        ),
+    ] {
+        assert_eq!(
+            error_of(small_ruleset_with_phases(phases)),
+            DefinitionError {
+                path: turn_path.clone(),
+                kind: DefinitionErrorKind::InvalidActionPhaseCount { found },
+            }
+        );
+    }
+
+    // The count is checked after the content of every phase.
+    assert_eq!(
+        error_of(small_ruleset_with_phases(vec![
+            action_phase("main", &["pass_turn"]),
+            action_phase("second", &["nowhere"]),
+        ])),
+        DefinitionError {
+            path: phase_path("second").key("actions").index(0),
+            kind: dangling(ReferenceTarget::Action, "nowhere"),
+        }
+    );
+}
+
+#[test]
+fn a_phase_lists_declared_actions_once() {
+    assert_eq!(
+        error_of(small_ruleset_with_phases(vec![action_phase(
+            "main",
+            &["pass_turn", "attack"]
+        )])),
+        DefinitionError {
+            path: phase_path("main").key("actions").index(1),
+            kind: dangling(ReferenceTarget::Action, "attack"),
+        }
+    );
+    assert_eq!(
+        error_of(small_ruleset_with_phases(vec![action_phase(
+            "main",
+            &["pass_turn", "pass_turn"]
+        )])),
+        DefinitionError {
+            path: phase_path("main").key("actions").index(1),
+            kind: DefinitionErrorKind::DuplicateId {
+                id: "pass_turn".to_string(),
+                first: phase_path("main").key("actions").index(0),
+            },
+        }
+    );
+}
+
+#[test]
+fn turn_steps_reject_an_unknown_player_selector() {
+    assert_eq!(
+        error_of(small_ruleset_with_start(vec![step_untap(
+            "opponent",
+            &["field"]
+        )])),
+        DefinitionError {
+            path: step_path("start", 0).key("untap").key("player"),
+            kind: DefinitionErrorKind::UnknownPlayerSelector {
+                selector: "opponent".to_string()
+            },
+        }
+    );
+}
+
+#[test]
+fn turn_steps_reject_dangling_zones() {
+    let nowhere = dangling(ReferenceTarget::Zone, "nowhere");
+    // untap.zones[i]
+    assert_eq!(
+        error_of(small_ruleset_with_start(vec![step_untap(
+            "active",
+            &["field", "nowhere"]
+        )])),
+        DefinitionError {
+            path: step_path("start", 0).key("untap").key("zones").index(1),
+            kind: nowhere.clone(),
+        }
+    );
+    // set_state.zone
+    assert_eq!(
+        error_of(small_ruleset_with_start(vec![step_set_state(
+            "active",
+            "nowhere",
+            "recently_played",
+            FieldValue::Bool(false)
+        )])),
+        DefinitionError {
+            path: step_path("start", 0).key("set_state").key("zone"),
+            kind: nowhere.clone(),
+        }
+    );
+    // draw.from, draw.to
+    assert_eq!(
+        error_of(small_ruleset_with_start(vec![step_draw(
+            "active", "nowhere", "hand", 1
+        )])),
+        DefinitionError {
+            path: step_path("start", 0).key("draw").key("from"),
+            kind: nowhere.clone(),
+        }
+    );
+    assert_eq!(
+        error_of(small_ruleset_with_start(vec![step_draw(
+            "active", "deck", "nowhere", 1
+        )])),
+        DefinitionError {
+            path: step_path("start", 0).key("draw").key("to"),
+            kind: nowhere.clone(),
+        }
+    );
+    // move.from, move.to
+    assert_eq!(
+        error_of(small_ruleset_with_start(vec![step_move(
+            "active",
+            "nowhere",
+            "mana_zone",
+            1,
+            "top"
+        )])),
+        DefinitionError {
+            path: step_path("start", 0).key("move").key("from"),
+            kind: nowhere.clone(),
+        }
+    );
+    assert_eq!(
+        error_of(small_ruleset_with_start(vec![step_move(
+            "active",
+            "mana_deck",
+            "nowhere",
+            1,
+            "top"
+        )])),
+        DefinitionError {
+            path: step_path("start", 0).key("move").key("to"),
+            kind: nowhere,
+        }
+    );
+}
+
+#[test]
+fn untap_rejects_a_zone_listed_twice() {
+    assert_eq!(
+        error_of(small_ruleset_with_start(vec![step_untap(
+            "active",
+            &["field", "mana_zone", "field"]
+        )])),
+        DefinitionError {
+            path: step_path("start", 0).key("untap").key("zones").index(2),
+            kind: DefinitionErrorKind::DuplicateId {
+                id: "field".to_string(),
+                first: step_path("start", 0).key("untap").key("zones").index(0),
+            },
+        }
+    );
+}
+
+#[test]
+fn turn_draw_and_move_need_an_ordered_source_zone() {
+    // ADR-0013. `mana_zone` and `hand` are declared `ordered: false`.
+    assert_eq!(
+        error_of(small_ruleset_with_start(vec![step_draw(
+            "active", "hand", "deck", 1
+        )])),
+        DefinitionError {
+            path: step_path("start", 0).key("draw").key("from"),
+            kind: zone_not_ordered("hand"),
+        }
+    );
+    assert_eq!(
+        error_of(small_ruleset_with_start(vec![step_move(
+            "active",
+            "mana_zone",
+            "mana_deck",
+            1,
+            "top"
+        )])),
+        DefinitionError {
+            path: step_path("start", 0).key("move").key("from"),
+            kind: zone_not_ordered("mana_zone"),
+        }
+    );
+
+    // A destination may be unordered.
+    RulesetDefinition::validate(small_ruleset_with_start(vec![
+        step_draw("active", "deck", "hand", 1),
+        step_move("active", "mana_deck", "mana_zone", 1, "top"),
+    ]))
+    .expect("only the source needs to be ordered");
+
+    // The same check reaches the steps nested in an `if`, with `then` and `else` as path keys.
+    assert_eq!(
+        error_of(small_ruleset_with_start(vec![
+            step_untap("active", &["field"]),
+            step_set_state("active", "field", "tapped", FieldValue::Bool(false)),
+            step_if(vec![], vec![step_draw("active", "hand", "deck", 1)]),
+        ])),
+        DefinitionError {
+            path: step_path("start", 2)
+                .key("else")
+                .index(0)
+                .key("draw")
+                .key("from"),
+            kind: zone_not_ordered("hand"),
+        }
+    );
+    assert_eq!(
+        error_of(small_ruleset_with_start(vec![step_if(
+            vec![
+                step_untap("active", &["field"]),
+                step_move("active", "mana_zone", "mana_deck", 1, "top"),
+            ],
+            vec![]
+        )])),
+        DefinitionError {
+            path: step_path("start", 0)
+                .key("then")
+                .index(1)
+                .key("move")
+                .key("from"),
+            kind: zone_not_ordered("mana_zone"),
+        }
+    );
+}
+
+#[test]
+fn set_state_names_a_state_some_card_type_declares() {
+    assert_eq!(
+        error_of(small_ruleset_with_start(vec![step_set_state(
+            "active",
+            "field",
+            "charge",
+            FieldValue::Int(1)
+        )])),
+        DefinitionError {
+            path: step_path("start", 0).key("set_state").key("state"),
+            kind: dangling(ReferenceTarget::InstanceState, "charge"),
+        }
+    );
+}
+
+#[test]
+fn set_state_value_has_the_declared_type() {
+    // `recently_played` is a bool.
+    assert_eq!(
+        error_of(small_ruleset_with_start(vec![step_set_state(
+            "active",
+            "field",
+            "recently_played",
+            FieldValue::Int(1)
+        )])),
+        DefinitionError {
+            path: step_path("start", 0).key("set_state").key("value"),
+            kind: DefinitionErrorKind::StateValueTypeMismatch {
+                state: "recently_played".to_string(),
+                declared: FieldType::Bool,
+                found: FieldType::Int,
+            },
+        }
+    );
+
+    // `current_life` is an int, and only the Leader declares it.
+    assert_eq!(
+        error_of(small_ruleset_with_start(vec![step_set_state(
+            "active",
+            "leader_zone",
+            "current_life",
+            FieldValue::Text("full".to_string())
+        )])),
+        DefinitionError {
+            path: step_path("start", 0).key("set_state").key("value"),
+            kind: DefinitionErrorKind::StateValueTypeMismatch {
+                state: "current_life".to_string(),
+                declared: FieldType::Int,
+                found: FieldType::Text,
+            },
+        }
+    );
+}
+
+#[test]
+fn untap_needs_a_bool_state_named_tapped() {
+    // No card type declares `tapped`.
+    let mut draft = small_ruleset_with_start(vec![step_untap("active", &["field"])]);
+    for card_type in &mut draft.card_types {
+        card_type
+            .instance_state
+            .retain(|declared| declared.name != "tapped");
+    }
+    assert_eq!(
+        error_of(draft),
+        DefinitionError {
+            path: step_path("start", 0).key("untap"),
+            kind: dangling(ReferenceTarget::InstanceState, "tapped"),
+        }
+    );
+
+    // A card type declares `tapped` as an int.
+    let mut draft = small_ruleset_with_start(vec![step_untap("active", &["field"])]);
+    draft.card_types[2].instance_state = vec![state(
+        "tapped",
+        FieldTypeDraft::Int,
+        InitializerDraft::Literal(FieldValue::Int(0)),
+    )];
+    assert_eq!(
+        error_of(draft),
+        DefinitionError {
+            path: step_path("start", 0).key("untap"),
+            kind: DefinitionErrorKind::StateValueTypeMismatch {
+                state: "tapped".to_string(),
+                declared: FieldType::Int,
+                found: FieldType::Bool,
+            },
+        }
+    );
+}
+
+#[test]
+fn turn_counts_are_at_least_one() {
+    assert_eq!(
+        error_of(small_ruleset_with_start(vec![step_draw(
+            "active", "deck", "hand", 0
+        )])),
+        DefinitionError {
+            path: step_path("start", 0).key("draw").key("count"),
+            kind: DefinitionErrorKind::InvalidCount,
+        }
+    );
+    assert_eq!(
+        error_of(small_ruleset_with_start(vec![step_move(
+            "active",
+            "mana_deck",
+            "mana_zone",
+            0,
+            "top"
+        )])),
+        DefinitionError {
+            path: step_path("start", 0).key("move").key("count"),
+            kind: DefinitionErrorKind::InvalidCount,
+        }
+    );
+}
+
+#[test]
+fn move_position_is_top() {
+    assert_eq!(
+        error_of(small_ruleset_with_start(vec![step_move(
+            "active",
+            "mana_deck",
+            "mana_zone",
+            1,
+            "bottom"
+        )])),
+        DefinitionError {
+            path: step_path("start", 0).key("move").key("position"),
+            kind: DefinitionErrorKind::UnknownPosition {
+                position: "bottom".to_string()
+            },
+        }
+    );
+}
+
+#[test]
+fn turn_steps_are_checked_in_key_order_and_in_order() {
+    let expect = |steps: Vec<AutomaticStepDraft>, at: DefinitionPath, kind: DefinitionErrorKind| {
+        assert_eq!(
+            error_of(small_ruleset_with_start(steps)),
+            DefinitionError { path: at, kind }
+        );
+    };
+    let unknown_selector = DefinitionErrorKind::UnknownPlayerSelector {
+        selector: "who".to_string(),
+    };
+
+    // A move: player, from (dangling, then order), to, count, position.
+    let move_at = |key: &'static str| step_path("start", 0).key("move").key(key);
+    expect(
+        vec![step_move("who", "nowhere", "nowhere", 0, "bottom")],
+        move_at("player"),
+        unknown_selector.clone(),
+    );
+    expect(
+        vec![step_move("active", "nowhere", "nowhere", 0, "bottom")],
+        move_at("from"),
+        dangling(ReferenceTarget::Zone, "nowhere"),
+    );
+    expect(
+        vec![step_move("active", "hand", "nowhere", 0, "bottom")],
+        move_at("from"),
+        zone_not_ordered("hand"),
+    );
+    expect(
+        vec![step_move("active", "mana_deck", "nowhere", 0, "bottom")],
+        move_at("to"),
+        dangling(ReferenceTarget::Zone, "nowhere"),
+    );
+    expect(
+        vec![step_move("active", "mana_deck", "hand", 0, "bottom")],
+        move_at("count"),
+        DefinitionErrorKind::InvalidCount,
+    );
+
+    // A set_state: player, zone, state, value.
+    let set_state_at = |key: &'static str| step_path("start", 0).key("set_state").key(key);
+    expect(
+        vec![step_set_state(
+            "who",
+            "nowhere",
+            "charge",
+            FieldValue::Int(1),
+        )],
+        set_state_at("player"),
+        unknown_selector,
+    );
+    expect(
+        vec![step_set_state(
+            "active",
+            "nowhere",
+            "charge",
+            FieldValue::Int(1),
+        )],
+        set_state_at("zone"),
+        dangling(ReferenceTarget::Zone, "nowhere"),
+    );
+    expect(
+        vec![step_set_state(
+            "active",
+            "field",
+            "charge",
+            FieldValue::Int(1),
+        )],
+        set_state_at("state"),
+        dangling(ReferenceTarget::InstanceState, "charge"),
+    );
+
+    // Steps in order; inside an `if`, the then-steps before the else-steps.
+    expect(
+        vec![
+            step_untap("active", &["field"]),
+            step_draw("active", "deck", "nowhere", 1),
+            step_draw("active", "deck", "elsewhere", 1),
+        ],
+        step_path("start", 1).key("draw").key("to"),
+        dangling(ReferenceTarget::Zone, "nowhere"),
+    );
+    expect(
+        vec![step_if(
+            vec![step_draw("active", "deck", "nowhere", 1)],
+            vec![step_draw("active", "hand", "deck", 1)],
+        )],
+        step_path("start", 0)
+            .key("then")
+            .index(0)
+            .key("draw")
+            .key("to"),
+        dangling(ReferenceTarget::Zone, "nowhere"),
+    );
+}
+
+#[test]
+fn actions_are_checked_after_setup_and_before_the_turn() {
+    // A bad setup step, a bad action and a bad turn: the setup is reported.
+    let mut draft = small_ruleset_with_start(vec![step_draw("who", "deck", "hand", 1)]);
+    draft.setup = vec![shuffle("nobody", "deck")];
+    draft.actions[0].id = "Bad".to_string();
+    assert_eq!(
+        error_of(draft).path,
+        setup_path(0, "shuffle", "player"),
+        "setup first"
+    );
+
+    // Without the setup error, the action is reported before the turn.
+    let mut draft = small_ruleset_with_start(vec![step_draw("who", "deck", "hand", 1)]);
+    draft.actions[0].id = "Bad".to_string();
+    assert_eq!(
+        error_of(draft).path,
+        path().key("actions").index(0).key("id"),
+        "actions before the turn"
     );
 }

@@ -40,13 +40,13 @@ The intentionally small, game-agnostic proving scenario used to validate the fir
 A period of play owned by one active Player, ending when the rules accept that Player's `PassTurn` Action.
 
 **Turn Number**:
-The 1-based count of Turns since the Game began. Every accepted `PassTurn` increments it.
+The 1-based count of Turns since the Game began. Every accepted `PassTurn` increments it. The declarative GameState holds it as an optional value (absent until the first Turn begins), and the First Turn condition is true when it is 1.
 
 **PassTurn**:
 An Action by the Active Player that ends their Turn, makes the next Player in the cyclic Player Order active and increments the Turn Number.
 
 **TurnPassed**:
-The Event fact that an accepted PassTurn ended a Turn, including the previous and next Active Player and the resulting Turn Number.
+The Toy Ruleset's Event fact (the declarative Ruleset uses TurnBegan) that an accepted PassTurn ended a Turn, including the previous and next Active Player and the resulting Turn Number.
 
 **State Transition**:
 The atomic application of one Action to a GameState, yielding either a new GameState and Event Trace or an error with no state change.
@@ -118,7 +118,7 @@ The component that turns file text into a Ruleset Draft and checks syntax only; 
 The location of an element in a Ruleset Definition, Card Catalog or Deck List, such as `card_types[creature].fields[cost]` or `inputs[1].cards[3]`; semantic errors address declarations by id and references (deck list elements) by position, syntax errors by position.
 
 **Zone**:
-A named place where cards are held, with a Visibility and an ordered flag (stored, not yet enforced).
+A named place where cards are held, with a Visibility and an ordered flag. A shuffle, a draw and a move take cards only from an ordered zone, which validation enforces (ADR-0013); a destination may be unordered.
 
 **Visibility**:
 Who may see a Zone's cards: hidden, owner or public.
@@ -145,7 +145,7 @@ A declared source of cards for a Game: the allowed Card Types (at least one, wit
 A 0-based position in the Player Order, such as the starting player.
 
 **Unsupported Section**:
-A behavior section of a ruleset file (`turn`, `actions`, `win_conditions`) that the Loader rejects explicitly instead of ignoring.
+A behavior section of a ruleset file (now only `win_conditions`) that the Loader rejects explicitly instead of ignoring.
 
 **FieldValue**:
 A value of one of the supported Field Types: a bool, an integer or a text. Its kind comes from the YAML scalar, so `5` is an integer and `"5"` is a text; int values have no minimum or maximum yet.
@@ -179,7 +179,10 @@ A Deck Input's optional `max_copies`: the most copies of one Card Definition an 
 ## Declarative Games
 
 **Declarative Ruleset**:
-The Ruleset that interprets a RulesetDefinition and a Card Catalog. Its GameState changes only by Event Application. Its Action and Rejection types have no variants until the first Action is added ([08]).
+The Ruleset that interprets a RulesetDefinition and a Card Catalog. Its GameState changes only by Event Application. Its Action is a Player and an Action Definition id, and its Rejection is one of Unknown Player, Not Active Player, Unknown Action, Action Not In Current Phase, Turn Number Overflow or EventRejected (ADR-0012).
+
+**EventRejected**:
+A declarative Rejection for an internal inconsistency: an Event the Ruleset generated was rejected because the GameState does not fit this Ruleset. It is never expected.
 
 **Seat**:
 A Player's 0-based position in the Player Order. `PlayerId(n)` sits at seat `n`, and Deck List `n` belongs to seat `n`.
@@ -194,10 +197,10 @@ One entry of the ruleset's `setup`: a single-key map naming a primitive (`shuffl
 A Setup Step that reorders a zone of each selected Player with the GameState's Random State. It emits one `ZoneShuffled` per Player, even for a zone of 0 or 1 cards.
 
 **Draw**:
-A Setup Step that moves `count` cards, one at a time, from the Top of an explicit `from` zone onto the Top of an explicit `to` zone. Drawing from an empty zone fails Game creation.
+A step that moves `count` cards, one at a time, from the Top of an explicit `from` zone onto the Top of an explicit `to` zone. As a Setup Step, drawing from an empty zone fails Game creation. In an Automatic Step it draws nothing more for that Player and emits one `DrawFromEmptyZone` per Player, and the transition succeeds.
 
 **Player Selector**:
-The value of a step's `player` key. The only selector is `each`: every Player in seat order, and a step runs fully for one Player before the next.
+The value of a step's `player` key, accepted by Setup Steps and Automatic Steps alike. `each` is every Player in seat order, and a step runs fully for one Player before the next. `active` is the Active Player of the GameState (the starting Player during setup).
 
 **Top**:
 The end of a zone's list. Placing a card appends it, so the first card placed is at the bottom; a draw takes the last card.
@@ -227,7 +230,66 @@ The typed error `GameState::apply` returns for an Event that does not fit the Ga
 The state Game creation starts from: Players by seat, the Active Player, the Random State of the Seed, every zone empty and no Card Instances.
 
 **Opening Position**:
-The GameState after Game creation: cards placed, setup run. The first Turn has not begun.
+The GameState after Game creation: cards placed, setup run, and, if the ruleset has a turn, the first Turn has begun and waits in its Action Phase. Without a turn, no Turn has begun.
 
 **Game Creation**:
 `DeclarativeRuleset::create_game`: from one Deck List per seat and a Seed it returns the Empty GameState and the Opening Position with its setup Event Trace. It is not on the Ruleset seam (ADR-0005).
+
+## The Turn Cycle
+
+**Phase**:
+One segment of a Turn, addressed by a Phase Id unique among the phases. It is either an Automatic Phase or the Action Phase.
+
+**Automatic Phase**:
+A phase with an `automatic` list of Automatic Steps, run in order when the phase begins.
+
+**Action Phase**:
+The phase with `actions` where the Game waits for the Active Player. A turn has exactly one (ADR-0012). The Game leaves it only through End Turn.
+
+**Automatic Step**:
+One entry of an Automatic Phase: a single-key map naming a primitive (Untap, Set State, Draw, Move) or an If Step.
+
+**Untap**:
+An Automatic Step that sets `tapped` to false on the cards of the listed zones of each selected Player. Like Set State, it touches only cards whose card type declares the state, and emits `CardStateChanged` only for a value that changes.
+
+**Set State**:
+An Automatic Step that sets an instance state to a value on every card of a zone of each selected Player whose card type declares it.
+
+**Move**:
+An Automatic Step that moves up to `count` cards, one at a time, from the Top of an ordered `from` zone onto the Top of `to`. It moves the cards there are (that is how the mana deck runs out) and emits no fact for a missing card. `position` is `top`, the Top of the source zone.
+
+**Condition**:
+What an If Step tests when it runs. The only one is First Turn.
+
+**First Turn**:
+The Condition that holds when the Turn Number is 1, the Game's first Turn; the Small Ruleset uses it so that the starting Player skips the Start-phase draw on that Turn only.
+
+**If Step**:
+An Automatic Step `if: <condition>` with a `then` list and an optional `else` list of Automatic Steps, run according to the Condition at the moment the step runs.
+
+**Action Definition**:
+A declared action of the ruleset: an id and a list of effects. The only effect is End Turn; parameters and costs arrive with [10].
+
+**End Turn**:
+The effect `end_turn: {}`. It runs every phase after the current one, then the next Player in seat order begins Turn n+1 and their phases run until the Action Phase, all in the same transition.
+
+**Action** (declarative):
+A Player and the id of an Action Definition they take. It is distinct from the Action Definition it names.
+
+**TurnBegan**:
+The Event that a Turn began for a Player with a Turn Number: it sets the Active Player and the Turn Number and clears the phase. Applying it does not check the sequence of Turn Numbers.
+
+**PhaseBegan**:
+The Event that a phase of the Turn in progress began; it requires a Turn in progress.
+
+**CardStateChanged**:
+The Event that an instance state of a card changed to a value of the same type as before.
+
+**DrawFromEmptyZone**:
+The Event that a draw found its source zone empty. It changes nothing and is emitted once per Player per draw step; win conditions use it in [09].
+
+**Unknown Action**:
+A Rejection: the Action names an action the ruleset does not declare.
+
+**Action Not In Current Phase**:
+A Rejection: the action is declared but the current phase does not list it, because there is no current phase, the phase is not an Action Phase, or it does not list the action.

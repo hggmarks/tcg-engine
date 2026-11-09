@@ -3,21 +3,25 @@
 //! Creation starts from the Empty GameState and applies Events, one at a time, each generated from
 //! the state the previous one produced (ADR-0010). First every card of every Deck List is created
 //! (seat 0 first; within a seat, the ruleset's Deck Inputs in order, then the Deck List entries in
-//! file order, each entry `count` times), then the Setup Steps run (ADR-0011).
+//! file order, each entry `count` times), then the Setup Steps run (ADR-0011). If the ruleset has a
+//! turn, the first Turn then begins and runs until the phase that waits for actions (ADR-0012).
 
 use std::fmt;
 
 use super::event::Event;
+use super::execution::Execution;
 use super::state::{ApplyError, CardInstanceId, GameState};
+use super::turn_cycle;
 use crate::card_catalog::{CardCatalog, CardId};
 use crate::deck_list::DeckList;
 use crate::player::{PlayerId, PlayerOrder};
 use crate::random::{RandomState, Seed};
-use crate::ruleset::{EventTrace, Ruleset, Transition};
+use crate::ruleset::{EventTrace, Transition};
 use crate::ruleset_definition::{
-    FieldValue, Initializer, PlayerSelector, RulesetDefinition, RulesetId, RulesetVersion,
-    SetupStep, StateName, ZoneId,
+    FieldValue, Initializer, RulesetDefinition, RulesetId, RulesetVersion, SetupStep, StateName,
+    ZoneId,
 };
+use crate::turn::TurnNumber;
 
 /// A Ruleset that interprets a [`RulesetDefinition`] and a [`CardCatalog`] (ADR-0004, ADR-0005).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,22 +30,14 @@ pub struct DeclarativeRuleset {
     catalog: CardCatalog,
 }
 
-/// An Action of the declarative Ruleset. It has no variants until the first Action is added (ticket [08]); ticket [10] gives Actions a
-/// representation.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Action {}
-
-/// The reason the declarative Ruleset refuses an Action. It has no variants until the first Action is added (ticket [08]).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Rejection {}
-
 /// The outcome of Game creation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GameCreation {
     /// The Empty GameState: Players by seat, the Active Player, the Random State of the Seed and
     /// every zone empty.
     pub empty: GameState,
-    /// The Opening Position and the Event Trace that, applied to `empty`, produces it.
+    /// The Opening Position and the Event Trace that, applied to `empty`, produces it. If the
+    /// ruleset has a turn, the first Turn has begun and the Game waits in its action phase.
     pub opening: Transition<GameState, Event>,
 }
 
@@ -180,20 +176,21 @@ impl DeclarativeRuleset {
             RandomState::from_seed(seed),
         );
 
-        let mut creation = Creation {
-            state: empty.clone(),
-            events: Vec::new(),
-        };
+        let mut execution = Execution::new(empty.clone());
         for (&player, deck) in order.players().iter().zip(decks) {
-            self.create_cards(&mut creation, player, deck)?;
+            self.create_cards(&mut execution, player, deck)?;
         }
-        self.run_setup(&mut creation)?;
+        self.run_setup(&mut execution)?;
+        if definition.turn().is_some() {
+            turn_cycle::begin_turn(definition, &mut execution, active_player, TurnNumber::FIRST)
+                .map_err(GameCreationError::EventRejected)?;
+        }
 
         Ok(GameCreation {
             empty,
             opening: Transition {
-                state: creation.state,
-                trace: EventTrace::new(creation.events),
+                state: execution.state,
+                trace: EventTrace::new(execution.events),
             },
         })
     }
@@ -215,7 +212,7 @@ impl DeclarativeRuleset {
     /// Creates the cards of one Player's Deck List, onto the zone of their Deck Input.
     fn create_cards(
         &self,
-        creation: &mut Creation,
+        execution: &mut Execution,
         player: PlayerId,
         deck: &DeckList,
     ) -> Result<(), GameCreationError> {
@@ -224,14 +221,18 @@ impl DeclarativeRuleset {
                 let card = entry.card();
                 let state = self.initial_state(card)?;
                 for _ in 0..entry.count().get() {
-                    let id = creation.next_card_id()?;
-                    creation.apply(Event::CardCreated {
-                        card: id,
-                        owner: player,
-                        definition: card.clone(),
-                        zone: input.zone().clone(),
-                        state: state.clone(),
-                    })?;
+                    let id = u32::try_from(execution.state.cards().len())
+                        .map(CardInstanceId)
+                        .map_err(|_| GameCreationError::TooManyCards)?;
+                    execution
+                        .apply(Event::CardCreated {
+                            card: id,
+                            owner: player,
+                            definition: card.clone(),
+                            zone: input.zone().clone(),
+                            state: state.clone(),
+                        })
+                        .map_err(GameCreationError::EventRejected)?;
                 }
             }
         }
@@ -266,20 +267,23 @@ impl DeclarativeRuleset {
     }
 
     /// Runs the Setup Steps in order; each step runs fully for one Player before the next.
-    fn run_setup(&self, creation: &mut Creation) -> Result<(), GameCreationError> {
+    fn run_setup(&self, execution: &mut Execution) -> Result<(), GameCreationError> {
+        let rejected = GameCreationError::EventRejected;
         for (step_index, step) in self.definition.setup().iter().enumerate() {
             match step {
                 SetupStep::Shuffle { player, zone } => {
-                    for player in creation.select(*player) {
-                        let mut order = creation.cards_of(player, zone)?;
-                        let mut random_state = creation.state.random_state().clone();
+                    for player in execution.select(*player) {
+                        let mut order = execution.cards_of(player, zone).map_err(rejected)?;
+                        let mut random_state = execution.state.random_state().clone();
                         random_state.shuffle(&mut order);
-                        creation.apply(Event::ZoneShuffled {
-                            player,
-                            zone: zone.clone(),
-                            order,
-                            random_state,
-                        })?;
+                        execution
+                            .apply(Event::ZoneShuffled {
+                                player,
+                                zone: zone.clone(),
+                                order,
+                                random_state,
+                            })
+                            .map_err(rejected)?;
                     }
                 }
                 SetupStep::Draw {
@@ -288,89 +292,33 @@ impl DeclarativeRuleset {
                     to,
                     count,
                 } => {
-                    for player in creation.select(*player) {
+                    for player in execution.select(*player) {
                         for _ in 0..count.get() {
-                            let Some(top) = creation.cards_of(player, from)?.last().copied() else {
+                            let top = execution
+                                .cards_of(player, from)
+                                .map_err(rejected)?
+                                .last()
+                                .copied();
+                            let Some(top) = top else {
                                 return Err(GameCreationError::SetupDrawFromEmptyZone {
                                     step: step_index,
                                     player,
                                     zone: from.clone(),
                                 });
                             };
-                            creation.apply(Event::CardMoved {
-                                card: top,
-                                player,
-                                from: from.clone(),
-                                to: to.clone(),
-                            })?;
+                            execution
+                                .apply(Event::CardMoved {
+                                    card: top,
+                                    player,
+                                    from: from.clone(),
+                                    to: to.clone(),
+                                })
+                                .map_err(rejected)?;
                         }
                     }
                 }
             }
         }
         Ok(())
-    }
-}
-
-/// The state being built and the Events applied to it so far.
-struct Creation {
-    state: GameState,
-    events: Vec<Event>,
-}
-
-impl Creation {
-    /// Applies `event` to the state and records it in the trace.
-    fn apply(&mut self, event: Event) -> Result<(), GameCreationError> {
-        self.state
-            .apply(&event)
-            .map_err(GameCreationError::EventRejected)?;
-        self.events.push(event);
-        Ok(())
-    }
-
-    /// The id the next created card gets.
-    fn next_card_id(&self) -> Result<CardInstanceId, GameCreationError> {
-        u32::try_from(self.state.cards().len())
-            .map(CardInstanceId)
-            .map_err(|_| GameCreationError::TooManyCards)
-    }
-
-    /// The Players a selector chooses, in seat order.
-    fn select(&self, selector: PlayerSelector) -> Vec<PlayerId> {
-        match selector {
-            PlayerSelector::Each => self.state.player_order().players().to_vec(),
-        }
-    }
-
-    /// The cards of a zone, bottom first.
-    fn cards_of(
-        &self,
-        player: PlayerId,
-        zone: &ZoneId,
-    ) -> Result<Vec<CardInstanceId>, GameCreationError> {
-        self.state
-            .zone(player, zone)
-            .map(<[CardInstanceId]>::to_vec)
-            .ok_or_else(|| {
-                GameCreationError::EventRejected(ApplyError::UnknownZone {
-                    player,
-                    zone: zone.clone(),
-                })
-            })
-    }
-}
-
-impl Ruleset for DeclarativeRuleset {
-    type State = GameState;
-    type Action = Action;
-    type Event = Event;
-    type Rejection = Rejection;
-
-    fn transition(
-        &self,
-        _state: &GameState,
-        action: &Action,
-    ) -> Result<Transition<GameState, Event>, Rejection> {
-        match *action {}
     }
 }

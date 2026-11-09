@@ -150,6 +150,16 @@ fn describe(event: &Event) -> String {
         Event::ZoneShuffled { player, zone, .. } => {
             format!("shuffled p{} {}", player.0, zone.as_str())
         }
+        // The ruleset these tests load has no turn, so none of these occur; they are described
+        // for completeness.
+        Event::TurnBegan { player, turn } => format!("turn {} began p{}", turn.get(), player.0),
+        Event::PhaseBegan { phase } => format!("phase {} began", phase.as_str()),
+        Event::CardStateChanged { card, state, .. } => {
+            format!("changed card {} {}", card.0, state.as_str())
+        }
+        Event::DrawFromEmptyZone { player, zone } => {
+            format!("empty p{} {}", player.0, zone.as_str())
+        }
     }
 }
 

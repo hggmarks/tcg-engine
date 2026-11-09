@@ -147,6 +147,8 @@ fn small_ruleset_draft() -> RulesetDraft {
             input("mana_deck", &["mana"], 10, None, "mana_deck"),
         ],
         setup: vec![],
+        actions: vec![],
+        turn: None,
     }
 }
 
@@ -468,52 +470,48 @@ fn forbidden_yaml_features_are_rejected() {
 }
 
 #[test]
-fn behavior_sections_are_unsupported() {
-    // `setup` is loaded (ticket #21); the other behavior sections are still only noticed.
-    let sections = [
-        ("turn", "turn:\n  phases: []\n"),
-        ("actions", "actions:\n  - id: attack\n"),
-        ("win_conditions", "win_conditions: []\n"),
-    ];
-    for (section, yaml) in sections {
-        let error = yaml_error(&format!("{FIXTURE}{yaml}"));
-        assert_eq!(
-            error.kind,
-            YamlErrorKind::UnsupportedSection {
-                section: section.to_string()
-            },
-            "{section}"
-        );
-        assert_eq!(error.path, path().key(section), "{section}");
-    }
+fn win_conditions_are_still_unsupported() {
+    // `setup` (ticket #21), `turn` and `actions` (ticket #22) are loaded; `win_conditions` is only
+    // noticed, until ticket [09].
+    let error = yaml_error(&format!("{FIXTURE}win_conditions: []\n"));
+    assert_eq!(
+        error.kind,
+        YamlErrorKind::UnsupportedSection {
+            section: "win_conditions".to_string()
+        }
+    );
+    assert_eq!(error.path, path().key("win_conditions"));
 
     // A section with an empty value is still present.
-    let error = yaml_error(&format!("{FIXTURE}turn:\n"));
+    let error = yaml_error(&format!("{FIXTURE}win_conditions:\n"));
     assert_eq!(
         error.kind,
         YamlErrorKind::UnsupportedSection {
-            section: "turn".to_string()
+            section: "win_conditions".to_string()
         }
     );
 
-    // With several present, the first in the fixed order turn, actions, win_conditions wins.
-    let error = yaml_error(&format!("{FIXTURE}win_conditions: []\nactions: []\n"));
+    // The turn and the actions are not unsupported any more: an empty turn is read, and the engine
+    // is the one to reject it.
+    let error = definition_error(&format!("{FIXTURE}turn:\n  phases: []\n"));
     assert_eq!(
         error.kind,
-        YamlErrorKind::UnsupportedSection {
-            section: "actions".to_string()
-        }
+        DefinitionErrorKind::InvalidActionPhaseCount { found: 0 }
     );
+}
 
-    // The real Small Ruleset has them all; it now fails at `turn`, after its `setup` loaded.
+#[test]
+fn the_real_small_ruleset_still_waits_for_action_parameters() {
+    // `play_creature` and `attack` have `params`, `cost` and richer effects, which tickets [10] and
+    // [11] add. The file loads up to them: its `setup` and `turn` are read.
     let error = yaml_error(SMALL_RULESET);
     assert_eq!(
         error.kind,
-        YamlErrorKind::UnsupportedSection {
-            section: "turn".to_string()
+        YamlErrorKind::UnknownKey {
+            key: "params".to_string()
         }
     );
-    assert_eq!(error.path, path().key("turn"));
+    assert_eq!(error.path, path().key("actions").index(0).key("params"));
 }
 
 // ---- the boundary between the loader and the engine

@@ -8,7 +8,7 @@ Every declared id and name matches `[a-z][a-z0-9_]*` and is not `true`, `false` 
 
 ## Ruleset structure
 
-See `small-ruleset/small-ruleset.yaml`. The structural sections are `meta`, `parameters`, `zones`, `card_types` and `inputs`. `setup` is loaded (see below); the other behavior sections (`turn`, `actions`, `win_conditions`) are not loaded yet, and a file that has one is rejected.
+See `small-ruleset/small-ruleset.yaml`. The structural sections are `meta`, `parameters`, `zones`, `card_types` and `inputs`. `setup`, `turn` and `actions` are loaded (see below); the other behavior section, `win_conditions`, is not loaded yet, and a file that has it is rejected.
 
 Each entry of `inputs` is `{ id, card_types, size, max_copies?, zone }`, with these constraints:
 
@@ -25,12 +25,49 @@ setup:
 ```
 
 - `setup` is an optional list of steps; absent means no steps. Each step is a single-key map naming a primitive: `shuffle` or `draw`. An unknown primitive is an unknown key.
-- `player` is the only key that chooses Players. Its only value is `each`: every Player in seat order, a step running fully for one Player before the next.
-- `shuffle: { player, zone }` shuffles the zone of each selected Player with the Game's seeded random state.
-- `draw: { player, from, to, count }` moves `count` cards (an unquoted integer of at least 1), one at a time, from the top of `from` onto the top of `to`. The top of a zone is the end of its list. Drawing from an empty zone fails Game creation.
-- Zones must be declared zones. Setup runs after each Player's cards are placed on the zone of their deck input, and is checked after `inputs`, steps in order. The decisions are in ADR-0011.
+- `player` is the only key that chooses Players. Its values are `each` (every Player in seat order, a step running fully for one Player before the next) and `active` (the Active Player, which during setup is the starting Player).
+- `shuffle: { player, zone }` shuffles the zone of each selected Player with the Game's seeded random state. `zone` must be an ordered zone.
+- `draw: { player, from, to, count }` moves `count` cards (an unquoted integer of at least 1), one at a time, from the top of `from` onto the top of `to`. The top of a zone is the end of its list. Drawing from an empty zone fails Game creation. `from` must be an ordered zone.
+- Zones must be declared zones; the source of a shuffle or a draw must also be `ordered: true` (ADR-0013). Setup runs after each Player's cards are placed on the zone of their deck input, and is checked after `inputs`, steps in order. The decisions are in ADR-0011.
 
 A card type's `fields` give the schema of a card: `{ name, type }` with `type` one of `int`, `bool`, `text`. Int values have no minimum or maximum.
+
+## Turn and actions
+
+```yaml
+turn:
+  phases:
+    - id: start
+      automatic:
+        - untap: { player: active, zones: [mana_zone, field] }
+        - set_state: { player: active, zone: field, state: recently_played, value: false }
+        - if: { first_turn: {} }
+          then: []
+          else:
+            - draw: { player: active, from: deck, to: hand, count: 1 }
+        - move: { player: active, from: mana_deck, to: mana_zone, count: 2, position: top }
+    - id: main
+      actions: [pass_turn]
+    - id: end
+      automatic: []
+
+actions:
+  - id: pass_turn
+    effects: [ { end_turn: {} } ]
+```
+
+- `turn` is optional; absent means the Game has no Turns (creation stops after setup and no Action is legal). `actions` is optional; absent means none.
+- `turn.phases` is a list of phases, each `{ id, automatic }` or `{ id, actions }`: exactly one of the two keys. `automatic` is a list of steps run in order when the phase begins; `actions` is a list of declared action ids the Active Player may take there. A turn has exactly one phase with `actions`: the Game waits in it, and `end_turn` is the only way out. Validation does not yet check that the action phase can be left (it may list no action, or none with `end_turn`, and the Game then waits there forever), nor that an action ends at most one Turn (`[end_turn, end_turn]` ends two); an action no phase lists loads and is always rejected. These are to be decided when effects are extended (ADR-0012). When the Game is created the first Turn begins and runs to that phase.
+- A step is a single-key map naming a primitive, or the `if` form. `player` is `each` or `active` (the Active Player). Steps run for the selected Players in seat order, the zones in the listed order and the cards bottom first.
+  - `untap: { player, zones }` sets `tapped` to false on the cards of the listed zones.
+  - `set_state: { player, zone, state, value }` sets the instance state `state` to `value` (a scalar of the state's type) on the cards of `zone`.
+  - `untap` and `set_state` change only the cards whose card type declares the state, and only when the value actually changes.
+  - `draw: { player, from, to, count }` moves up to `count` cards, one at a time, from the top of `from` onto the top of `to`. If `from` runs out, nothing more is drawn for that Player and one draw-from-empty fact is recorded per Player, not per missing card.
+  - `move: { player, from, to, count, position }` is the same without the fact: it moves the cards there are. `position` is `top` (the top of `from`).
+  - `if: <condition>`, `then: [steps]` and an optional `else: [steps]` are sibling keys of one list element. The only condition is `first_turn: {}`, true on the Game's first Turn (Turn Number 1).
+  - `from` of a `draw` and of a `move` must be an ordered zone (ADR-0013); `count` is an unquoted integer of at least 1.
+- Each action is `{ id, effects }`; the only effect is `end_turn: {}`: the phases after the current one run, then the next Player's Turn begins, in the same transition. Parameters, costs and the other effects are not readable yet: an action with `params` or `cost` is rejected by the loader as an unknown key.
+- Turn validation follows `actions`: phases are addressed by id in errors (`turn.phases[main].actions[0]`) and steps by position, with `then` and `else` as keys (`turn.phases[start].automatic[2].else[0].draw.from`). The decisions are in ADR-0012.
 
 ## Card catalog
 

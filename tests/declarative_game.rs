@@ -20,11 +20,12 @@ use tcg_engine::player::{PlayerId, PlayerOrder};
 use tcg_engine::random::{RandomState, Seed};
 use tcg_engine::ruleset::Ruleset;
 use tcg_engine::ruleset_definition::{
-    DefinitionError, DefinitionErrorKind, FieldTypeDraft, FieldValue, InitializerDraft,
-    InstanceStateDraft, MetaDraft, RulesetDefinition, RulesetDraft, SetupStepDraft, StateName,
-    ZoneId,
+    DefinitionError, DefinitionErrorKind, FieldType, FieldTypeDraft, FieldValue, InitializerDraft,
+    InstanceStateDraft, MetaDraft, PhaseId, RulesetDefinition, RulesetDraft, SetupStepDraft,
+    StateName, ZoneId,
 };
 use tcg_engine::runtime::Runtime;
+use tcg_engine::turn::TurnNumber;
 
 // ---- builders
 
@@ -405,6 +406,188 @@ fn apply_rejects_not_a_permutation() {
     }
 }
 
+// ---- apply: the Events of the Turn cycle (ticket #22)
+
+fn turn_began(player: u32, turn: u32) -> Event {
+    Event::TurnBegan {
+        player: p(player),
+        turn: TurnNumber::new(turn).expect("a Turn Number is at least 1"),
+    }
+}
+
+fn phase_began(id: &str) -> Event {
+    Event::PhaseBegan {
+        phase: PhaseId::new(id),
+    }
+}
+
+fn card_state_changed(card: u32, state: &str, value: FieldValue) -> Event {
+    Event::CardStateChanged {
+        card: instance(card),
+        state: StateName::new(state),
+        value,
+    }
+}
+
+fn draw_from_empty(player: u32, zone_id: &str) -> Event {
+    Event::DrawFromEmptyZone {
+        player: p(player),
+        zone: zone(zone_id),
+    }
+}
+
+#[test]
+fn the_empty_game_state_has_no_turn_in_progress() {
+    let empty = create().empty;
+    assert_eq!(empty.turn_number(), None);
+    assert_eq!(empty.phase(), None);
+}
+
+#[test]
+fn apply_turn_began_sets_the_active_player_and_turn_number_and_clears_the_phase() {
+    let mut state = create().empty;
+    // Turn Numbers are not sequence-checked by `apply`: the next Turn Number is the Ruleset's
+    // business, so a trace can start anywhere.
+    state
+        .apply(&turn_began(1, 7))
+        .expect("a Turn begins for a Player of the Game");
+    assert_eq!(state.active_player(), p(1));
+    assert_eq!(state.turn_number(), TurnNumber::new(7));
+    assert_eq!(state.phase(), None);
+
+    state
+        .apply(&phase_began("main"))
+        .expect("a phase begins during a Turn");
+    assert_eq!(state.phase(), Some(&PhaseId::new("main")));
+    state
+        .apply(&phase_began("end"))
+        .expect("another phase begins");
+    assert_eq!(state.phase(), Some(&PhaseId::new("end")));
+
+    // A new Turn clears the phase.
+    state
+        .apply(&turn_began(0, 8))
+        .expect("the next Turn begins");
+    assert_eq!(state.active_player(), p(0));
+    assert_eq!(state.turn_number(), TurnNumber::new(8));
+    assert_eq!(state.phase(), None);
+}
+
+#[test]
+fn apply_rejects_turn_began_for_an_unknown_player() {
+    assert_rejected_atomically(
+        create().empty,
+        &turn_began(9, 1),
+        ApplyError::UnknownPlayer { player: p(9) },
+    );
+}
+
+#[test]
+fn apply_rejects_phase_began_without_a_turn_in_progress() {
+    assert_rejected_atomically(
+        create().empty,
+        &phase_began("start"),
+        ApplyError::NoTurnInProgress,
+    );
+}
+
+#[test]
+fn apply_card_state_changed_sets_the_value_of_one_state() {
+    let mut state = state_after(&[some_card(0, 0, "deck"), some_card(1, 0, "deck")]);
+    let tapped = StateName::new("tapped");
+    state
+        .apply(&card_state_changed(0, "tapped", FieldValue::Bool(true)))
+        .expect("the card has the state");
+    assert_eq!(
+        state
+            .card(instance(0))
+            .and_then(|card| card.state_value(&tapped)),
+        Some(&FieldValue::Bool(true))
+    );
+    assert_eq!(
+        state
+            .card(instance(1))
+            .and_then(|card| card.state_value(&tapped)),
+        Some(&FieldValue::Bool(false)),
+        "only the named card changes"
+    );
+}
+
+#[test]
+fn apply_rejects_card_state_changed_for_an_unknown_card() {
+    assert_rejected_atomically(
+        state_after(&[some_card(0, 0, "deck")]),
+        &card_state_changed(7, "tapped", FieldValue::Bool(true)),
+        ApplyError::UnknownCard { card: instance(7) },
+    );
+}
+
+#[test]
+fn apply_rejects_card_state_changed_for_a_state_the_card_does_not_have() {
+    assert_rejected_atomically(
+        state_after(&[some_card(0, 0, "deck")]),
+        &card_state_changed(0, "recently_played", FieldValue::Bool(true)),
+        ApplyError::UnknownState {
+            card: instance(0),
+            state: StateName::new("recently_played"),
+        },
+    );
+}
+
+#[test]
+fn apply_rejects_card_state_changed_with_a_value_of_another_type() {
+    assert_rejected_atomically(
+        state_after(&[some_card(0, 0, "deck")]),
+        &card_state_changed(0, "tapped", FieldValue::Int(1)),
+        ApplyError::StateTypeMismatch {
+            card: instance(0),
+            state: StateName::new("tapped"),
+            expected: FieldType::Bool,
+            found: FieldType::Int,
+        },
+    );
+}
+
+#[test]
+fn apply_draw_from_empty_zone_is_a_fact_that_changes_nothing() {
+    let mut state = state_after(&[some_card(0, 0, "deck")]);
+    let before = state.clone();
+    state
+        .apply(&draw_from_empty(0, "hand"))
+        .expect("the hand is empty");
+    assert_eq!(state, before);
+}
+
+#[test]
+fn apply_rejects_draw_from_empty_zone_for_a_zone_that_is_not_empty() {
+    assert_rejected_atomically(
+        state_after(&[some_card(0, 0, "deck")]),
+        &draw_from_empty(0, "deck"),
+        ApplyError::ZoneNotEmpty {
+            player: p(0),
+            zone: zone("deck"),
+        },
+    );
+}
+
+#[test]
+fn apply_rejects_draw_from_empty_zone_for_an_unknown_player_or_zone() {
+    let state = create().empty;
+    assert_rejected_atomically(
+        state.clone(),
+        &draw_from_empty(9, "deck"),
+        ApplyError::UnknownPlayer { player: p(9) },
+    );
+    assert_rejected_atomically(
+        state,
+        &draw_from_empty(0, "nowhere"),
+        ApplyError::UnknownZone {
+            player: p(0),
+            zone: zone("nowhere"),
+        },
+    );
+}
+
 // ---- Game creation: errors, in the documented order
 
 /// A catalog validated against a definition whose id is `id` and version `version`, with the cards
@@ -586,14 +769,15 @@ fn setup_draw_from_an_empty_zone_fails_game_creation() {
         count,
     };
 
-    // The hand starts empty; the step index counts every step, shuffles included.
+    // The trash starts empty and is ordered (a setup draw needs an ordered source, ADR-0013); the
+    // step index counts every step, shuffles included.
     let ruleset = ruleset_from(|draft| {
         draft.setup = vec![
             SetupStepDraft::Shuffle {
                 player: "each".to_string(),
                 zone: "deck".to_string(),
             },
-            draw("hand", "deck", 1),
+            draw("trash", "deck", 1),
         ];
     });
     assert_eq!(
@@ -601,12 +785,15 @@ fn setup_draw_from_an_empty_zone_fails_game_creation() {
         GameCreationError::SetupDrawFromEmptyZone {
             step: 1,
             player: p(0),
-            zone: zone("hand"),
+            zone: zone("trash"),
         }
     );
 
-    // The Leader Zone has one card: the second draw of the step finds it empty.
-    let ruleset = ruleset_from(|draft| draft.setup = vec![draw("leader_zone", "hand", 2)]);
+    // The Leader Zone, made ordered here, has one card: the second draw of the step finds it empty.
+    let ruleset = ruleset_from(|draft| {
+        draft.zones[6].ordered = true;
+        draft.setup = vec![draw("leader_zone", "hand", 2)];
+    });
     assert_eq!(
         creation_error(&ruleset, &decks()),
         GameCreationError::SetupDrawFromEmptyZone {
@@ -708,7 +895,7 @@ fn a_ruleset_definition_with_a_bad_setup_never_reaches_game_creation() {
         RulesetDefinition::validate(draft),
         Err(DefinitionError {
             path: path().key("setup").index(0).key("draw").key("count"),
-            kind: DefinitionErrorKind::InvalidDrawCount,
+            kind: DefinitionErrorKind::InvalidCount,
         })
     );
 }
@@ -720,8 +907,8 @@ fn declarative_parts<R: Ruleset<State = GameState, Event = Event>>(_runtime: &Ru
 
 #[test]
 fn declarative_ruleset_plugs_into_the_runtime() {
-    // `Action` and `Rejection` have no variants until [10], so no Action can be written yet; the
-    // Runtime is built and the Ruleset it holds is reachable.
+    // The Runtime is built and the Ruleset it holds is reachable; the Turn cycle through the
+    // Runtime is tested in `tests/turn_cycle.rs`.
     let runtime = Runtime::new(ruleset());
     declarative_parts(&runtime);
     assert_eq!(runtime.ruleset().definition(), &small_definition());

@@ -35,7 +35,7 @@ pub enum YamlErrorKind {
     UnknownKey {
         key: String,
     },
-    /// A behavior section (`turn`, `actions`, `win_conditions`) that is not supported yet.
+    /// A behavior section (`win_conditions`) that is not supported yet.
     UnsupportedSection {
         section: String,
     },

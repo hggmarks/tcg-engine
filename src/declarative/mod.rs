@@ -3,12 +3,17 @@
 //! [`CardCatalog`](crate::card_catalog::CardCatalog) (ADR-0004, ADR-0005).
 //!
 //! Its [`GameState`] changes only by applying [`Event`]s (ADR-0010), and Game creation returns the
-//! Event Trace of its setup (ADR-0011). Names here are unprefixed, unlike the Toy Ruleset's.
+//! Event Trace of its setup and of the first Turn's start (ADR-0011, ADR-0012). Names here are
+//! unprefixed, unlike the Toy Ruleset's.
 
+mod action;
 mod creation;
 mod event;
+mod execution;
 mod state;
+mod turn_cycle;
 
-pub use creation::{Action, DeclarativeRuleset, GameCreation, GameCreationError, Rejection};
+pub use action::{Action, Rejection};
+pub use creation::{DeclarativeRuleset, GameCreation, GameCreationError};
 pub use event::Event;
 pub use state::{ApplyError, CardInstance, CardInstanceId, GameState, ZoneCards};
