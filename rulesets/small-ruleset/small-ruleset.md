@@ -95,6 +95,9 @@ The attacker chooses a target: a **tapped creature** of the opponent, or the **o
 ## Win Conditions
 - A player whose Leader has `current_life` ≤ 0 loses. The other player wins.
 - A player who needs to draw from an empty deck loses. The other player wins.
+- The win conditions are checked after every action and at the end of game creation (setup and the automatic phases of the first turn), once per transition and after everything the transition runs, including the automatic phases it triggers. For example, if passing the turn begins a turn whose Start phase finds the deck empty, that turn's phases still begin, and then the game ends.
+- The game ends at once: no action is accepted afterwards.
+- If both players lose at the same time, the game is drawn (no winner). That cannot happen in this ruleset: only the active player draws, once per turn.
 # Glossary: Small Ruleset 
 ## Game Structure
  

@@ -114,6 +114,9 @@ actions:
   - id: pass_turn
     effects: [ { end_turn: {} } ]
 
+# Checked after every action and at the end of game creation. `draw_from_empty` is a Player's loss
+# when a draw in that transition found the zone empty. `leader_dead` is an expression: the engine
+# rejects it as unsupported until [11] adds expressions.
 win_conditions:
   - id: leader_dead
     when: { lte: [{ ref: leader.current_life }, 0] }

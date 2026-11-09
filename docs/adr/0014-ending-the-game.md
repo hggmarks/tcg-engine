@@ -1,0 +1,17 @@
+# Ending the Game
+
+A ruleset's `win_conditions` is a list of `{ id, when, loser }`. `when: { draw_from_empty: <zone> }` with `loser: owner` holds for Player P iff the transition's Event Trace has `DrawFromEmptyZone { player: P, zone }`; `loser` can only be `owner`. A `when` written as an expression (the Small Ruleset's `leader_dead`) is read by the loader but rejected by validation as `UnsupportedWinCondition { operator }`, at `win_conditions[leader_dead].when`, following the `UnsupportedFieldType` precedent; ticket [11] gives expressions meaning. Win conditions are validated last, after `turn`: per condition the id (grammar, duplicate), then `when` (a zone must exist), then `loser` (`UnknownLoser`). The Unsupported Section mechanism of the loader, which only noticed `win_conditions`, is removed.
+
+**Timing.** Win conditions are evaluated once at the end of every accepted transition and at the end of Game creation (setup and the first Turn's automatic phases), over that transition's Event Trace and nothing else. They are not evaluated after each Event or step, so everything a transition runs still runs (a PassTurn whose next Start phase decks out still emits `PhaseBegan(main)`), and a loss that happens together with another is not turned into a win for whoever lost second.
+
+**Losses and reasons.** For each Player in seat order, the first win condition in declaration order that holds for them is their reason; a Player has one Loss even if several conditions hold or several empty draws happened. If any Player lost, the Game ends by emitting one `GameEnded { losses }` with the Losses in seat order, as the last Event of the trace. The winners are derived: the Players who did not lose (with 2 Players, the other one). If every Player lost, the Game is a **drawn game**: the Terminal Outcome has no winners. With more than 2 Players the Game still ends when any Player loses and the rest win: elimination (play continues among the remaining Players) is not supported. `move` from an empty zone emits no fact (ADR-0012), so only a `draw` can cause a loss.
+
+**State and Event Application.** The GameState holds `outcome: Option<TerminalOutcome>`, absent in the Empty GameState. `GameState::apply` of `GameEnded` only records the outcome the Ruleset decided; win-condition logic is not in `apply`. Once the outcome is set no Event applies (`ApplyError::GameAlreadyEnded`). `GameEnded` is rejected without a loser (`NoLoser`), with a loser not strictly after the previous one in seat order, which covers a duplicate and an unsorted list (`LosersOutOfSeatOrder`), and with a Player not in the Game (`UnknownPlayer`).
+
+**Game over.** `Rejection::GameOver` is checked first, before unknown Player: after the end every Action is rejected the same way, whoever takes it and whatever it is, and the GameState is unchanged.
+
+**Considered and kept.** A setup draw from an empty zone still fails Game creation with `SetupDrawFromEmptyZone` (ADR-0011): it is a deck or ruleset error, and turning it into a loss was considered and not done. Only Start-phase and later automatic draws can lose, and they are evaluated at the end of creation.
+
+Amends ADR-0010 (a new Event, the outcome in the GameState, nothing applies after the end) and ADR-0012 (a new first rejection, `GameOver`). No conflict with an accepted decision.
+
+**Status**: accepted

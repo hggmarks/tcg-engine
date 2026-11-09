@@ -10,4 +10,4 @@ A setup draw from an empty zone fails creation with a typed error (`SetupDrawFro
 
 **Status**: accepted
 
-Amended by ADR-0012: the `active` Player Selector now exists. Amended by ADR-0013: the `zone` of a shuffle and the `from` of a draw must be an ordered zone, and `InvalidDrawCount` is now `InvalidCount`.
+Amended by ADR-0012: the `active` Player Selector now exists. Amended by ADR-0013: the `zone` of a shuffle and the `from` of a draw must be an ordered zone, and `InvalidDrawCount` is now `InvalidCount`. Amended by ADR-0014: ticket [09] revisited the setup draw from an empty zone and kept it as a creation error.
