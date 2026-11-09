@@ -7,3 +7,5 @@ The declarative Ruleset's GameState has private fields, and the only function th
 `Action` and `Rejection` of the declarative Ruleset are empty enums until the first Action is added ([08]), so `transition` is `match *action {}`. There is no conflict with ADR-0002: a transition applies Events to a clone of the prior GameState, and `apply_trace` already does so. The Ruleset seam of ADR-0005 is unchanged, and creation stays off it.
 
 **Status**: accepted
+
+Amended by ADR-0012: the Opening Position includes the start of the first Turn when the ruleset has a turn, and `Action` and `Rejection` now have variants. Events `TurnBegan`, `PhaseBegan`, `CardStateChanged` and `DrawFromEmptyZone` were added.

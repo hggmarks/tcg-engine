@@ -9,3 +9,5 @@ Definition validation checks setup after the inputs (it joins the first-error or
 A setup draw from an empty zone fails creation with a typed error (`SetupDrawFromEmptyZone`); no rule is invented for it, and ticket [09] may revisit it. Creation trusts that each Deck List is legal (ADR-0009) and re-checks only what it needs to place cards without panicking: the catalog's ruleset id and version, the deck count, the Deck Inputs (ids and order) and card lookups. Event-sourced application is ADR-0010.
 
 **Status**: accepted
+
+Amended by ADR-0012: the `active` Player Selector now exists. Amended by ADR-0013: the `zone` of a shuffle and the `from` of a draw must be an ordered zone, and `InvalidDrawCount` is now `InvalidCount`.

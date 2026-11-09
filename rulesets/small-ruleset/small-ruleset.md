@@ -62,23 +62,30 @@ Before the first turn, in this order:
 Player 0 then takes the first turn.
 
 ## Turn
- 
+
+A turn has three phases, in order: Start, Main and End. Player 0's first turn begins as soon as setup ends. Turns are numbered from 1.
+
 ### 1. Start (automatic)
- 
-1. Untap all of the player's mana and creature cards.
-2. Clear `recently_played` on all of the player's cards.
-3. Draw 1 card from the main deck to the hand.
-4. Move 2 cards from the top of the mana deck to the Mana Zone.
+
+1. Untap the cards in the Mana Zone and on the Field (a card that has no `tapped` state is not affected).
+2. Clear `recently_played` on the cards on the Field (a card that has no `recently_played` state is not affected).
+3. Draw 1 card from the Top of the main deck to the hand. **The starting player (Player 0) skips this draw on the first turn of the game, turn 1, and only then**: Player 1 draws on turn 2 and Player 0 draws on turn 3. If the deck is empty, nothing is drawn and the player is considered to have needed to draw from an empty deck (see Win Conditions).
+4. Move 2 cards from the Top of the mana deck to the Mana Zone, one at a time. If the mana deck has fewer than 2 cards, move the cards that are there; when it is empty, nothing moves and the Mana Zone does not grow. Each player has 10 mana cards, so the mana deck runs out after the player's fifth turn (turns 1, 3, 5, 7 and 9 for Player 0) and the Mana Zone then holds 10 cards for the rest of the game.
+
 ### 2. Main
- 
+
 The player may do any of the following, in any order:
- 
+
 - **Play a creature** (from hand to field): pay the creature's cost by tapping mana cards. The creature enters with `recently_played`.
 - **Attack** with a creature that is neither tapped nor `recently_played`. This starts a combat, and the attacker becomes tapped.
+- **Pass the turn.** This ends Main; it is the only way to leave it.
+
+Only the active player acts, and only during Main.
+
 ### 3. End
- 
-The player passes the turn, and the turn passes to the opponent.
- 
+
+Passing the turn ends the turn: End has no steps of its own. The turn passes to the opponent, and the opponent's Start phase begins at once, in the same instant, so the game always waits in the active player's Main.
+
 ## Combat
  
 The attacker chooses a target: a **tapped creature** of the opponent, or the **opponent's Leader**.
@@ -97,8 +104,8 @@ The attacker chooses a target: a **tapped creature** of the opponent, or the **o
 | **Starting player** | The player who takes the first turn (Player 0). |
 | **Setup** | What happens before the first turn: place each player's cards, shuffle the main decks, then draw the starting hands. |
 | **Starting hand** | The 5 cards each player draws from the main deck at the start of the game. |
-| **Turn** | One player's complete sequence of phases: Start, Main, End. |
-| **Phase** | A segment of a turn. The phases are Start, Main, and End. |
+| **Turn** | One player's complete sequence of phases: Start, Main, End. Turns are numbered from 1; the first turn of the game is turn 1. |
+| **Phase** | A segment of a turn, run in order. Start and End are automatic: the game runs them by itself. Main is the phase where the game waits for the active player, who may play creatures, attack and pass the turn. |
 | **Game inputs** | What each player provides to start a game: one Leader, a main deck, and a mana deck. |
 | **Win condition** | A situation that ends the game and makes a player the winner. |
  
