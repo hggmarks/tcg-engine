@@ -22,6 +22,10 @@
 //! checks its `then` steps and then its `else` steps. A phase's action list checks each action for
 //! existing and then for repeating. `set_state` needs a state some card type declares, with a value
 //! of the type that card type gives it; `untap` needs the same of `tapped` and a bool.
+//!
+//! Win conditions come last, in declaration order: per condition its id (grammar, duplicate), then
+//! its `when` (an expression is unsupported; `draw_from_empty` needs a declared zone), then its
+//! `loser`. A win condition is addressed by id (`win_conditions[deck_out].when`).
 
 mod draft;
 mod error;
@@ -31,13 +35,15 @@ mod validate;
 pub use draft::{
     ActionDraft, AutomaticStepDraft, CardTypeDraft, ConditionDraft, DeckInputDraft, EffectDraft,
     FieldDraft, FieldTypeDraft, InitializerDraft, InstanceStateDraft, MetaDraft, ParametersDraft,
-    PhaseDraft, RulesetDraft, SetupStepDraft, TurnDraft, ZoneDraft,
+    PhaseDraft, RulesetDraft, SetupStepDraft, TurnDraft, WinConditionDraft, WinConditionWhenDraft,
+    ZoneDraft,
 };
 pub use error::{DefinitionError, DefinitionErrorKind, ReferenceTarget};
 pub use model::{
     ActionDefinition, ActionId, AutomaticStep, CardType, CardTypeId, Condition, DeckInput,
     DeckInputId, Effect, FieldName, FieldSchema, FieldType, FieldValue, Initializer,
-    InstanceStateSchema, Meta, Parameters, Phase, PhaseId, PhaseKind, PlayerCount, PlayerPosition,
-    PlayerSelector, Position, RulesetDefinition, RulesetId, RulesetVersion, SetupStep, StateName,
-    TurnStructure, Visibility, Zone, ZoneId,
+    InstanceStateSchema, Loser, Meta, Parameters, Phase, PhaseId, PhaseKind, PlayerCount,
+    PlayerPosition, PlayerSelector, Position, RulesetDefinition, RulesetId, RulesetVersion,
+    SetupStep, StateName, TurnStructure, Visibility, WinCondition, WinConditionId,
+    WinConditionWhen, Zone, ZoneId,
 };

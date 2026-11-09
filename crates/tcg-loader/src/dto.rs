@@ -12,7 +12,8 @@ use serde::Deserialize;
 use tcg_engine::ruleset_definition::{
     ActionDraft, AutomaticStepDraft, CardTypeDraft, ConditionDraft, DeckInputDraft, EffectDraft,
     FieldDraft, FieldTypeDraft, FieldValue, InitializerDraft, InstanceStateDraft, MetaDraft,
-    ParametersDraft, PhaseDraft, RulesetDraft, SetupStepDraft, TurnDraft, Visibility, ZoneDraft,
+    ParametersDraft, PhaseDraft, RulesetDraft, SetupStepDraft, TurnDraft, Visibility,
+    WinConditionDraft, WinConditionWhenDraft, ZoneDraft,
 };
 
 #[derive(Deserialize)]
@@ -31,9 +32,8 @@ pub(crate) struct RulesetDto {
     // error, not `None`.
     #[serde(default, deserialize_with = "some")]
     turn: Option<TurnDto>,
-    // `win_conditions` is not read, only noticed. `present` also counts an empty value.
-    #[serde(default, deserialize_with = "present")]
-    win_conditions: bool,
+    #[serde(default)]
+    win_conditions: Vec<WinConditionDto>,
 }
 
 /// A value of a key that is present: unlike `Option`, a null is not accepted as `None`.
@@ -43,9 +43,27 @@ fn some<'de, D: Deserializer<'de>, T: Deserialize<'de>>(
     T::deserialize(deserializer).map(Some)
 }
 
-fn present<'de, D: Deserializer<'de>>(deserializer: D) -> Result<bool, D::Error> {
-    IgnoredAny::deserialize(deserializer)?;
-    Ok(true)
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WinConditionDto {
+    id: String,
+    when: WinConditionWhenDto,
+    loser: String,
+}
+
+/// The `when` of a win condition: a single-key map. `draw_from_empty: <zone>` is the one condition
+/// the engine supports; the expression operators the Small Ruleset uses are read and ignored, so
+/// the engine can reject them by name (ticket [11] gives them meaning). Any other key is an unknown
+/// key of the map.
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum WinConditionWhenDto {
+    DrawFromEmpty(String),
+    Eq(IgnoredAny),
+    Lte(IgnoredAny),
+    Gte(IgnoredAny),
+    And(IgnoredAny),
+    IsCardType(IgnoredAny),
 }
 
 /// One Setup Step: a single-key map `{ <primitive>: { ... } }`. An unknown primitive is an unknown
@@ -381,12 +399,6 @@ struct InputDto {
 }
 
 impl RulesetDto {
-    /// The unsupported behavior section present, if any: only `win_conditions` is still not
-    /// loaded.
-    pub(crate) fn unsupported_section(&self) -> Option<&'static str> {
-        self.win_conditions.then_some("win_conditions")
-    }
-
     pub(crate) fn into_draft(self) -> RulesetDraft {
         RulesetDraft {
             meta: MetaDraft {
@@ -415,6 +427,33 @@ impl RulesetDto {
                 .map(ActionDto::into_draft)
                 .collect(),
             turn: self.turn.map(TurnDto::into_draft),
+            win_conditions: self
+                .win_conditions
+                .into_iter()
+                .map(WinConditionDto::into_draft)
+                .collect(),
+        }
+    }
+}
+
+impl WinConditionDto {
+    fn into_draft(self) -> WinConditionDraft {
+        let expression = |operator: &str| WinConditionWhenDraft::Expression {
+            operator: operator.to_string(),
+        };
+        WinConditionDraft {
+            id: self.id,
+            when: match self.when {
+                WinConditionWhenDto::DrawFromEmpty(zone) => {
+                    WinConditionWhenDraft::DrawFromEmpty { zone }
+                }
+                WinConditionWhenDto::Eq(_) => expression("eq"),
+                WinConditionWhenDto::Lte(_) => expression("lte"),
+                WinConditionWhenDto::Gte(_) => expression("gte"),
+                WinConditionWhenDto::And(_) => expression("and"),
+                WinConditionWhenDto::IsCardType(_) => expression("is_card_type"),
+            },
+            loser: self.loser,
         }
     }
 }

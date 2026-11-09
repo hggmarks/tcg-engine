@@ -43,12 +43,18 @@ pub enum DefinitionErrorKind {
     InvalidMaxCopies { max_copies: u32, size: u32 },
     /// `inputs[main_deck].card_types` (it is empty).
     NoCardTypes,
-    /// `inputs[main_deck].zone` or `inputs[main_deck].card_types[0]`; a step's zone; an action of a
+    /// `inputs[main_deck].zone` or `inputs[main_deck].card_types[0]`; a step's zone; the zone of a
+    /// win condition (`win_conditions[deck_out].when.draw_from_empty`); an action of a
     /// phase (`turn.phases[main].actions[0]`); the `state` of a `set_state`, or the step itself for
     /// an `untap` (no card type declares `tapped`).
     DanglingReference { target: ReferenceTarget, id: String },
     /// `card_types[c].fields[f].type` or `card_types[c].instance_state[s].type`.
     UnsupportedFieldType { field_type: FieldTypeDraft },
+    /// `win_conditions[leader_dead].when`: a condition written as an expression, named by its
+    /// operator (`lte`), which ticket [11] adds.
+    UnsupportedWinCondition { operator: String },
+    /// `win_conditions[deck_out].loser`: only `owner` exists.
+    UnknownLoser { loser: String },
     /// `setup[0].shuffle.player` or `turn.phases[start].automatic[0].untap.player`: only `each` and
     /// `active` exist.
     UnknownPlayerSelector { selector: String },
@@ -156,6 +162,13 @@ impl fmt::Display for DefinitionErrorKind {
             ),
             Self::UnsupportedFieldType { field_type } => {
                 write!(f, "the field type {field_type:?} is not supported yet")
+            }
+            Self::UnsupportedWinCondition { operator } => write!(
+                f,
+                "the win condition operator `{operator}` is not supported yet; only `draw_from_empty` is"
+            ),
+            Self::UnknownLoser { loser } => {
+                write!(f, "`{loser}` is not a loser; the only one is `owner`")
             }
             Self::InitializerTypeMismatch { declared, found } => {
                 write!(

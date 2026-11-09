@@ -212,7 +212,11 @@ fn unknown_win_condition_key_is_an_unknown_key() {
             key: "winner".to_string()
         }
     );
-    assert_eq!(error.path, path().key("win_conditions").index(0));
+    // The path ends with the unknown key, as for the unknown `params` of an action.
+    assert_eq!(
+        error.path,
+        path().key("win_conditions").index(0).key("winner")
+    );
 
     // An unknown condition primitive is an unknown key of the `when` map, like an unknown step
     // primitive is of its list element.
