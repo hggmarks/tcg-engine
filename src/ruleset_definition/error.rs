@@ -44,6 +44,10 @@ pub enum DefinitionErrorKind {
     DanglingReference { target: ReferenceTarget, id: String },
     /// `card_types[c].fields[f].type` or `card_types[c].instance_state[s].type`.
     UnsupportedFieldType { field_type: FieldTypeDraft },
+    /// `setup[0].shuffle.player` or `setup[1].draw.player`: only `each` exists.
+    UnknownPlayerSelector { selector: String },
+    /// `setup[1].draw.count` (it is 0).
+    InvalidDrawCount,
     /// `card_types[c].instance_state[s].init`.
     InitializerTypeMismatch {
         declared: FieldType,
@@ -97,6 +101,11 @@ impl fmt::Display for DefinitionErrorKind {
                 };
                 write!(f, "no {target} has the id `{id}`")
             }
+            Self::UnknownPlayerSelector { selector } => write!(
+                f,
+                "`{selector}` is not a player selector; the only one is `each`"
+            ),
+            Self::InvalidDrawCount => write!(f, "a draw must take at least 1 card"),
             Self::UnsupportedFieldType { field_type } => {
                 write!(f, "the field type {field_type:?} is not supported yet")
             }

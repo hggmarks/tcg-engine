@@ -40,6 +40,7 @@ pub struct RulesetDefinition {
     pub(super) zones: Vec<Zone>,
     pub(super) card_types: Vec<CardType>,
     pub(super) deck_inputs: Vec<DeckInput>,
+    pub(super) setup: Vec<SetupStep>,
 }
 
 impl RulesetDefinition {
@@ -79,6 +80,11 @@ impl RulesetDefinition {
     /// The deck inputs in declared order.
     pub fn deck_inputs(&self) -> &[DeckInput] {
         &self.deck_inputs
+    }
+
+    /// The Setup Steps in declared order; empty when the ruleset declares none.
+    pub fn setup(&self) -> &[SetupStep] {
+        &self.setup
     }
 }
 
@@ -304,4 +310,29 @@ impl DeckInput {
     pub fn zone(&self) -> &ZoneId {
         &self.zone
     }
+}
+
+/// Which Players a Setup Step applies to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlayerSelector {
+    /// Every Player, in seat order. A step runs fully for one Player before the next Player.
+    Each,
+}
+
+/// One step of Game setup, run after the cards of the Deck Lists are placed. Its zones exist in the
+/// Ruleset Definition it was validated with.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SetupStep {
+    /// Shuffles `zone` of each selected Player with the GameState's Random State.
+    Shuffle {
+        player: PlayerSelector,
+        zone: ZoneId,
+    },
+    /// Moves `count` cards, one at a time from the top of `from` onto the top of `to`.
+    Draw {
+        player: PlayerSelector,
+        from: ZoneId,
+        to: ZoneId,
+        count: NonZeroU32,
+    },
 }

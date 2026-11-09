@@ -5,8 +5,8 @@ use tcg_engine::card_catalog::{CardCatalog, CardCatalogDraft, CardDraft, Catalog
 use tcg_engine::definition_path::DefinitionPath;
 use tcg_engine::ruleset_definition::{
     CardTypeDraft, DeckInputDraft, FieldDraft, FieldTypeDraft, FieldValue, InitializerDraft,
-    InstanceStateDraft, MetaDraft, ParametersDraft, RulesetDefinition, RulesetDraft, Visibility,
-    ZoneDraft,
+    InstanceStateDraft, MetaDraft, ParametersDraft, RulesetDefinition, RulesetDraft,
+    SetupStepDraft, Visibility, ZoneDraft,
 };
 
 pub fn path() -> DefinitionPath {
@@ -69,7 +69,8 @@ fn input(
     }
 }
 
-/// The structure of the Small Ruleset (id `small`, version 1), without instance-state detail.
+/// The Small Ruleset (id `small`, version 1): its structure and its setup, without instance-state
+/// detail.
 pub fn small_draft() -> RulesetDraft {
     RulesetDraft {
         meta: MetaDraft {
@@ -112,6 +113,18 @@ pub fn small_draft() -> RulesetDraft {
             input("leader", "leader", 1, None, "leader_zone"),
             input("main_deck", "creature", 50, Some(4), "deck"),
             input("mana_deck", "mana", 10, None, "mana_deck"),
+        ],
+        setup: vec![
+            SetupStepDraft::Shuffle {
+                player: "each".to_string(),
+                zone: "deck".to_string(),
+            },
+            SetupStepDraft::Draw {
+                player: "each".to_string(),
+                from: "deck".to_string(),
+                to: "hand".to_string(),
+                count: 5,
+            },
         ],
     }
 }

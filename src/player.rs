@@ -2,6 +2,8 @@
 
 use std::fmt;
 
+use crate::ruleset_definition::PlayerCount;
+
 /// A strongly typed Player identity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PlayerId(pub u32);
@@ -54,6 +56,14 @@ impl PlayerOrder {
             seen.push(player);
         }
         Ok(Self { players })
+    }
+
+    /// The Player Order of a Game with `count` Players: `PlayerId(0)` to `PlayerId(count - 1)`, in
+    /// seat order.
+    pub fn by_seat(count: PlayerCount) -> PlayerOrder {
+        PlayerOrder {
+            players: (0..count.get()).map(PlayerId).collect(),
+        }
     }
 
     /// The Players in the caller's order.

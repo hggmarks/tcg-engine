@@ -5,13 +5,13 @@ use std::num::NonZeroU32;
 
 use super::draft::{
     CardTypeDraft, DeckInputDraft, FieldTypeDraft, InitializerDraft, InstanceStateDraft,
-    RulesetDraft,
+    RulesetDraft, SetupStepDraft,
 };
 use super::error::{DefinitionError, DefinitionErrorKind, ReferenceTarget};
 use super::model::{
     CardType, CardTypeId, DeckInput, DeckInputId, FieldName, FieldSchema, FieldType, Initializer,
-    InstanceStateSchema, Meta, Parameters, PlayerCount, PlayerPosition, RulesetDefinition,
-    RulesetId, RulesetVersion, StateName, Zone, ZoneId,
+    InstanceStateSchema, Meta, Parameters, PlayerCount, PlayerPosition, PlayerSelector,
+    RulesetDefinition, RulesetId, RulesetVersion, SetupStep, StateName, Zone, ZoneId,
 };
 use crate::definition_path::DefinitionPath;
 use crate::id::is_valid_id;
@@ -91,6 +91,7 @@ pub(super) fn validate(draft: RulesetDraft) -> Result<RulesetDefinition, Definit
         zones,
         card_types,
         inputs,
+        setup,
     } = draft;
 
     if !is_valid_id(&meta.id) {
@@ -148,6 +149,16 @@ pub(super) fn validate(draft: RulesetDraft) -> Result<RulesetDefinition, Definit
         valid_inputs.push(validate_input(input, &valid_zones, &valid_card_types)?);
     }
 
+    let setup_path = DefinitionPath::root().key("setup");
+    let mut valid_setup = Vec::with_capacity(setup.len());
+    for (index, step) in setup.iter().enumerate() {
+        valid_setup.push(validate_step(
+            step,
+            &valid_zones,
+            setup_path.clone().index(index),
+        )?);
+    }
+
     Ok(RulesetDefinition {
         meta: Meta {
             id: RulesetId::new(meta.id),
@@ -160,7 +171,78 @@ pub(super) fn validate(draft: RulesetDraft) -> Result<RulesetDefinition, Definit
         zones: valid_zones,
         card_types: valid_card_types,
         deck_inputs: valid_inputs,
+        setup: valid_setup,
     })
+}
+
+fn validate_selector(
+    selector: &str,
+    at: DefinitionPath,
+) -> Result<PlayerSelector, DefinitionError> {
+    match selector {
+        "each" => Ok(PlayerSelector::Each),
+        other => fail(
+            at,
+            DefinitionErrorKind::UnknownPlayerSelector {
+                selector: other.to_string(),
+            },
+        ),
+    }
+}
+
+/// A zone reference of a step. A reference that breaks the identifier grammar fails here too,
+/// because no declared zone has such an id.
+fn validate_zone_reference(
+    id: &str,
+    zones: &[Zone],
+    at: DefinitionPath,
+) -> Result<ZoneId, DefinitionError> {
+    if zones.iter().any(|zone| zone.id.as_str() == id) {
+        Ok(ZoneId::new(id))
+    } else {
+        fail(
+            at,
+            DefinitionErrorKind::DanglingReference {
+                target: ReferenceTarget::Zone,
+                id: id.to_string(),
+            },
+        )
+    }
+}
+
+fn validate_step(
+    step: &SetupStepDraft,
+    zones: &[Zone],
+    at: DefinitionPath,
+) -> Result<SetupStep, DefinitionError> {
+    match step {
+        SetupStepDraft::Shuffle { player, zone } => {
+            let at = at.key("shuffle");
+            let player = validate_selector(player, at.clone().key("player"))?;
+            let zone = validate_zone_reference(zone, zones, at.key("zone"))?;
+            Ok(SetupStep::Shuffle { player, zone })
+        }
+        SetupStepDraft::Draw {
+            player,
+            from,
+            to,
+            count,
+        } => {
+            let at = at.key("draw");
+            let player = validate_selector(player, at.clone().key("player"))?;
+            let from = validate_zone_reference(from, zones, at.clone().key("from"))?;
+            let to = validate_zone_reference(to, zones, at.clone().key("to"))?;
+            let Some(count) = NonZeroU32::new(*count) else {
+                return fail(at.key("count"), DefinitionErrorKind::InvalidDrawCount);
+            };
+            Ok(SetupStep::Draw {
+                player,
+                from,
+                to,
+                count,
+            })
+        }
+    }
 }
 
 fn validate_card_type(card_type: &CardTypeDraft) -> Result<CardType, DefinitionError> {

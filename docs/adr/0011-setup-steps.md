@@ -1,0 +1,11 @@
+# Setup steps
+
+A ruleset's `setup` is a list of Setup Steps, each a single-key map. Two primitives exist: `shuffle: { player, zone }` and `draw: { player, from, to, count }`. A draw names its source and destination zones explicitly on the step; this was chosen over declaring draw zones once at ruleset level because it is the simpler design: a step reads on its own, with no ruleset-level declaration to look up. `player` is the one key that chooses Players (the old sketch mixed `player` and `who`; `who` is gone; the `owner:` of an action parameter filters cards by owner and is a different concept), and its only value is `each`: every Player in seat order, with a step running fully for one Player before the next (player 0 draws all 5, then player 1). There is no `active` selector yet.
+
+Game creation first places every card of every Deck List (seat-major; per seat the ruleset's Deck Inputs in order, entries in file order, each entry `count` times, each onto its input's `zone`, appended so the first card listed is at the bottom), then runs the steps. The Top of a zone is the end of its list, and a draw takes the last card. A shuffle uses the GameState's own Random State, one stream (seat 0's zone, then seat 1's), and emits one `ZoneShuffled` per selected Player even for a zone of 0 or 1 cards. The Small Ruleset shuffles the main deck and not the mana deck (user decision), then draws 5.
+
+Definition validation checks setup after the inputs (it joins the first-error order of ADR-0008), steps in order; within a step: `player`, then the zones (`zone`, or `from`, then `to`), then `count` (at least 1). Errors are `UnknownPlayerSelector`, a `DanglingReference` to a zone, and `InvalidDrawCount`, at paths such as `setup[1].draw.from`. The loader reads `count` as an unquoted integer and reports an unknown primitive as an unknown key at `setup[i]`.
+
+A setup draw from an empty zone fails creation with a typed error (`SetupDrawFromEmptyZone`); no rule is invented for it, and ticket [09] may revisit it. Creation trusts that each Deck List is legal (ADR-0009) and re-checks only what it needs to place cards without panicking: the catalog's ruleset id and version, the deck count, the Deck Inputs (ids and order) and card lookups. Event-sourced application is ADR-0010.
+
+**Status**: accepted

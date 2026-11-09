@@ -1,11 +1,14 @@
 //! Acceptance tests for ticket #19: the YAML loader (syntax only) in front of the engine's
 //! `RulesetDefinition::validate`.
 
+use std::num::NonZeroU32;
+
 use tcg_engine::definition_path::DefinitionPath;
 use tcg_engine::ruleset_definition::{
     CardTypeDraft, DeckInputDraft, DefinitionError, DefinitionErrorKind, FieldDraft, FieldType,
     FieldTypeDraft, FieldValue, InitializerDraft, InstanceStateDraft, MetaDraft, ParametersDraft,
-    ReferenceTarget, RulesetDefinition, RulesetDraft, Visibility, ZoneDraft,
+    PlayerSelector, ReferenceTarget, RulesetDefinition, RulesetDraft, SetupStep, Visibility,
+    ZoneDraft, ZoneId,
 };
 use tcg_loader::{
     load_ruleset_definition, parse_ruleset_draft, LoadError, Location, YamlError, YamlErrorKind,
@@ -143,6 +146,7 @@ fn small_ruleset_draft() -> RulesetDraft {
             input("main_deck", &["creature"], 50, Some(4), "deck"),
             input("mana_deck", &["mana"], 10, None, "mana_deck"),
         ],
+        setup: vec![],
     }
 }
 
@@ -465,8 +469,8 @@ fn forbidden_yaml_features_are_rejected() {
 
 #[test]
 fn behavior_sections_are_unsupported() {
+    // `setup` is loaded (ticket #21); the other behavior sections are still only noticed.
     let sections = [
-        ("setup", "setup:\n  - draw: { player: each, count: 5 }\n"),
         ("turn", "turn:\n  phases: []\n"),
         ("actions", "actions:\n  - id: attack\n"),
         ("win_conditions", "win_conditions: []\n"),
@@ -484,16 +488,7 @@ fn behavior_sections_are_unsupported() {
     }
 
     // A section with an empty value is still present.
-    let error = yaml_error(&format!("{FIXTURE}setup:\n"));
-    assert_eq!(
-        error.kind,
-        YamlErrorKind::UnsupportedSection {
-            section: "setup".to_string()
-        }
-    );
-
-    // With several present, the first in the fixed order setup, turn, actions, win_conditions wins.
-    let error = yaml_error(&format!("{FIXTURE}win_conditions: []\nturn: {{}}\n"));
+    let error = yaml_error(&format!("{FIXTURE}turn:\n"));
     assert_eq!(
         error.kind,
         YamlErrorKind::UnsupportedSection {
@@ -501,15 +496,24 @@ fn behavior_sections_are_unsupported() {
         }
     );
 
-    // The real Small Ruleset has them all.
+    // With several present, the first in the fixed order turn, actions, win_conditions wins.
+    let error = yaml_error(&format!("{FIXTURE}win_conditions: []\nactions: []\n"));
+    assert_eq!(
+        error.kind,
+        YamlErrorKind::UnsupportedSection {
+            section: "actions".to_string()
+        }
+    );
+
+    // The real Small Ruleset has them all; it now fails at `turn`, after its `setup` loaded.
     let error = yaml_error(SMALL_RULESET);
     assert_eq!(
         error.kind,
         YamlErrorKind::UnsupportedSection {
-            section: "setup".to_string()
+            section: "turn".to_string()
         }
     );
-    assert_eq!(error.path, path().key("setup"));
+    assert_eq!(error.path, path().key("turn"));
 }
 
 // ---- the boundary between the loader and the engine
@@ -828,4 +832,137 @@ fn quoted_numbers_and_bools_are_rejected_in_format_keys() {
             error.kind
         );
     }
+}
+
+// ---- setup (ticket #21)
+
+/// The real Small Ruleset up to, and not including, its `turn:` line: the structure and `setup`.
+fn small_ruleset_through_setup() -> String {
+    let (before_turn, _) = SMALL_RULESET
+        .split_once("\nturn:")
+        .expect("the Small Ruleset has a turn section");
+    format!("{before_turn}\n")
+}
+
+#[test]
+fn setup_is_loaded_from_yaml() {
+    let definition = load_ruleset_definition(&small_ruleset_through_setup())
+        .expect("the real file, without its turn section, loads");
+    assert_eq!(
+        definition.setup(),
+        [
+            SetupStep::Shuffle {
+                player: PlayerSelector::Each,
+                zone: ZoneId::new("deck"),
+            },
+            SetupStep::Draw {
+                player: PlayerSelector::Each,
+                from: ZoneId::new("deck"),
+                to: ZoneId::new("hand"),
+                count: NonZeroU32::new(5).expect("5 is not zero"),
+            },
+        ]
+    );
+}
+
+#[test]
+fn setup_is_optional_and_means_no_steps() {
+    let definition = load_ruleset_definition(FIXTURE).expect("the fixture has no setup");
+    assert_eq!(definition.setup(), []);
+}
+
+#[test]
+fn setup_rejects_unknown_step() {
+    // An unknown primitive is an unknown key of its list element.
+    let error = yaml_error(&format!(
+        "{FIXTURE}setup:\n  - shuffle: {{ player: each, zone: deck }}\n  - untap: {{}}\n"
+    ));
+    assert_eq!(
+        error.kind,
+        YamlErrorKind::UnknownKey {
+            key: "untap".to_string()
+        }
+    );
+    assert_eq!(error.path, path().key("setup").index(1));
+
+    // An unknown key inside a step is reported inside it, positionally.
+    let error = yaml_error(&format!(
+        "{FIXTURE}setup:\n  - shuffle: {{ player: each, zone: deck, extra: 1 }}\n"
+    ));
+    assert_eq!(
+        error.kind,
+        YamlErrorKind::UnknownKey {
+            key: "extra".to_string()
+        }
+    );
+    assert_eq!(
+        error.path,
+        path().key("setup").index(0).key("shuffle").key("extra")
+    );
+}
+
+#[test]
+fn setup_rejects_quoted_count() {
+    let error = yaml_error(&format!(
+        "{FIXTURE}setup:\n  - shuffle: {{ player: each, zone: deck }}\n  - draw: {{ player: each, from: deck, to: hand, count: \"5\" }}\n"
+    ));
+    assert_eq!(
+        error.path,
+        path().key("setup").index(1).key("draw").key("count")
+    );
+    assert!(
+        matches!(error.kind, YamlErrorKind::Malformed { .. }),
+        "got {:?}",
+        error.kind
+    );
+}
+
+#[test]
+fn setup_meaning_is_checked_by_the_engine_with_positional_step_paths() {
+    // The loader does not know the player selectors or the zones: the engine reports them.
+    let error = definition_error(&format!(
+        "{FIXTURE}setup:\n  - shuffle: {{ player: each, zone: deck }}\n  - draw: {{ player: each, from: deck, to: nowhere, count: 5 }}\n"
+    ));
+    assert_eq!(
+        error,
+        DefinitionError {
+            path: path().key("setup").index(1).key("draw").key("to"),
+            kind: DefinitionErrorKind::DanglingReference {
+                target: ReferenceTarget::Zone,
+                id: "nowhere".to_string()
+            },
+        }
+    );
+}
+
+#[test]
+fn unknown_enum_values_outside_setup_stay_malformed() {
+    // Only an unknown Setup Step primitive is an unknown key; other unknown values are `Malformed`.
+    let error = yaml_error(&format!(
+        "{PREFIX}zones:\n  - {{ id: deck, visibility: secret, ordered: true }}\ncard_types: []\ninputs: []\n"
+    ));
+    assert_eq!(error.path, path().key("zones").index(0).key("visibility"));
+    assert!(
+        matches!(error.kind, YamlErrorKind::Malformed { .. }),
+        "visibility: secret gave {:?}",
+        error.kind
+    );
+
+    let error = yaml_error(&format!(
+        "{PREFIX}zones: []\ncard_types:\n  - id: c\n    fields:\n      - {{ name: f, type: float }}\n    instance_state: []\n    effects: false\ninputs: []\n"
+    ));
+    assert_eq!(
+        error.path,
+        path()
+            .key("card_types")
+            .index(0)
+            .key("fields")
+            .index(0)
+            .key("type")
+    );
+    assert!(
+        matches!(error.kind, YamlErrorKind::Malformed { .. }),
+        "type: float gave {:?}",
+        error.kind
+    );
 }

@@ -11,7 +11,8 @@ use serde::de::{self, Deserializer, IgnoredAny, MapAccess, Visitor};
 use serde::Deserialize;
 use tcg_engine::ruleset_definition::{
     CardTypeDraft, DeckInputDraft, FieldDraft, FieldTypeDraft, FieldValue, InitializerDraft,
-    InstanceStateDraft, MetaDraft, ParametersDraft, RulesetDraft, Visibility, ZoneDraft,
+    InstanceStateDraft, MetaDraft, ParametersDraft, RulesetDraft, SetupStepDraft, Visibility,
+    ZoneDraft,
 };
 
 #[derive(Deserialize)]
@@ -22,9 +23,9 @@ pub(crate) struct RulesetDto {
     zones: Vec<ZoneDto>,
     card_types: Vec<CardTypeDto>,
     inputs: Vec<InputDto>,
-    // The behavior sections are not read, only noticed. `present` also counts an empty value.
-    #[serde(default, deserialize_with = "present")]
-    setup: bool,
+    #[serde(default)]
+    setup: Vec<SetupStepDto>,
+    // The other behavior sections are not read, only noticed. `present` also counts an empty value.
     #[serde(default, deserialize_with = "present")]
     turn: bool,
     #[serde(default, deserialize_with = "present")]
@@ -36,6 +37,32 @@ pub(crate) struct RulesetDto {
 fn present<'de, D: Deserializer<'de>>(deserializer: D) -> Result<bool, D::Error> {
     IgnoredAny::deserialize(deserializer)?;
     Ok(true)
+}
+
+/// One Setup Step: a single-key map `{ <primitive>: { ... } }`. An unknown primitive is an unknown
+/// key of the list element.
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum SetupStepDto {
+    Shuffle(ShuffleDto),
+    Draw(DrawDto),
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ShuffleDto {
+    player: String,
+    zone: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DrawDto {
+    player: String,
+    from: String,
+    to: String,
+    #[serde(deserialize_with = "scalar::strict_u32")]
+    count: u32,
 }
 
 #[derive(Deserialize)]
@@ -177,10 +204,10 @@ struct InputDto {
 }
 
 impl RulesetDto {
-    /// The first behavior section present, in the order setup, turn, actions, win_conditions.
+    /// The first unsupported behavior section present, in the order turn, actions,
+    /// win_conditions.
     pub(crate) fn unsupported_section(&self) -> Option<&'static str> {
         [
-            ("setup", self.setup),
             ("turn", self.turn),
             ("actions", self.actions),
             ("win_conditions", self.win_conditions),
@@ -206,6 +233,11 @@ impl RulesetDto {
                 .map(CardTypeDto::into_draft)
                 .collect(),
             inputs: self.inputs.into_iter().map(InputDto::into_draft).collect(),
+            setup: self
+                .setup
+                .into_iter()
+                .map(SetupStepDto::into_draft)
+                .collect(),
         }
     }
 }
@@ -273,6 +305,23 @@ impl InputDto {
             size: self.size,
             max_copies: self.max_copies,
             zone: self.zone,
+        }
+    }
+}
+
+impl SetupStepDto {
+    fn into_draft(self) -> SetupStepDraft {
+        match self {
+            Self::Shuffle(step) => SetupStepDraft::Shuffle {
+                player: step.player,
+                zone: step.zone,
+            },
+            Self::Draw(step) => SetupStepDraft::Draw {
+                player: step.player,
+                from: step.from,
+                to: step.to,
+                count: step.count,
+            },
         }
     }
 }
