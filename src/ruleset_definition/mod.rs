@@ -29,15 +29,16 @@ mod model;
 mod validate;
 
 pub use draft::{
-    ActionDraft, AutomaticStepDraft, CardTypeDraft, ConditionDraft, DeckInputDraft, EffectDraft,
-    FieldDraft, FieldTypeDraft, InitializerDraft, InstanceStateDraft, MetaDraft, ParametersDraft,
-    PhaseDraft, RulesetDraft, SetupStepDraft, TurnDraft, ZoneDraft,
+    ActionDraft, AutomaticStepDraft, CardTypeDraft, ConditionDraft, CostDraft, DeckInputDraft,
+    EffectDraft, FieldDraft, FieldTypeDraft, InitializerDraft, InstanceStateDraft, MetaDraft,
+    ParamDraft, ParametersDraft, PhaseDraft, RefDraft, RulesetDraft, SetupStepDraft, TurnDraft,
+    ZoneDraft,
 };
-pub use error::{DefinitionError, DefinitionErrorKind, ReferenceTarget};
+pub use error::{DefinitionError, DefinitionErrorKind, RefType, ReferenceTarget};
 pub use model::{
-    ActionDefinition, ActionId, AutomaticStep, CardType, CardTypeId, Condition, DeckInput,
-    DeckInputId, Effect, FieldName, FieldSchema, FieldType, FieldValue, Initializer,
-    InstanceStateSchema, Meta, Parameters, Phase, PhaseId, PhaseKind, PlayerCount, PlayerPosition,
-    PlayerSelector, Position, RulesetDefinition, RulesetId, RulesetVersion, SetupStep, StateName,
-    TurnStructure, Visibility, Zone, ZoneId,
+    ActionDefinition, ActionId, AutomaticStep, CardRef, CardType, CardTypeId, CardValue, Condition,
+    Cost, DeckInput, DeckInputId, Effect, FieldName, FieldSchema, FieldType, FieldValue,
+    Initializer, InstanceStateSchema, Meta, Param, ParamName, Parameters, Phase, PhaseId,
+    PhaseKind, PlayerCount, PlayerPosition, PlayerSelector, Position, RulesetDefinition, RulesetId,
+    RulesetVersion, SetupStep, StateName, TurnStructure, ValueRef, Visibility, Zone, ZoneId,
 };

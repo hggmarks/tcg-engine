@@ -186,13 +186,16 @@ fn classify(error: SaphyrError, path: DefinitionPath) -> YamlError {
 /// Whether `path` is a single-key map `{ <primitive>: ... }` whose primitive is chosen by name: an
 /// element of `setup` (`setup[1]`), of an automatic phase or an `if` step
 /// (`turn.phases[0].automatic[2]`, `turn.phases[0].automatic[2].else[0]`) or of an action's
-/// `effects` (`actions[0].effects[0]`), or the condition of an `if` step
+/// `effects` or `cost` (`actions[0].effects[0]`, `actions[0].cost[0]`), or the condition of an `if` step
 /// (`turn.phases[0].automatic[2].if`).
 fn names_a_primitive(path: &DefinitionPath) -> bool {
     match path.segments() {
         [PathSegment::Key(key), PathSegment::Index(_)] if key == "setup" => true,
         [.., PathSegment::Key(key), PathSegment::Index(_)] => {
-            matches!(key.as_str(), "automatic" | "then" | "else" | "effects")
+            matches!(
+                key.as_str(),
+                "automatic" | "then" | "else" | "effects" | "cost"
+            )
         }
         [.., PathSegment::Key(key)] => key == "if",
         _ => false,

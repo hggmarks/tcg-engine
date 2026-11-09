@@ -1,26 +1,38 @@
 //! Actions of the declarative Ruleset and how it runs them.
 //!
-//! An Action names the Player who takes it and an action the ruleset declares. The Ruleset checks
-//! it in a fixed order (see [`Rejection`]), then runs the action's effects against a clone of the
-//! GameState, so a rejected Action changes nothing (ADR-0002).
+//! An Action names the Player who takes it, an action the ruleset declares and one argument for
+//! each of its params. The Ruleset checks it in a fixed order (see [`Rejection`]), then pays the
+//! action's costs and runs its effects against a clone of the GameState, so a rejected Action
+//! changes nothing (ADR-0002).
 
 use std::fmt;
 
+use super::action_effects;
+use super::arguments;
 use super::creation::DeclarativeRuleset;
 use super::event::Event;
 use super::execution::Execution;
-use super::state::{ApplyError, GameState};
+use super::state::{ApplyError, CardInstanceId, GameState};
 use super::turn_cycle;
 use crate::player::PlayerId;
 use crate::ruleset::{EventTrace, Ruleset, Transition};
-use crate::ruleset_definition::{ActionId, Effect, PhaseKind};
+use crate::ruleset_definition::{ActionId, CardTypeId, Effect, ParamName, PhaseKind, ZoneId};
 
-/// An Action of the declarative Ruleset: `player` takes the declared action `action`. Parameters
-/// and costs arrive with ticket [10].
+/// An Action of the declarative Ruleset: `player` takes the declared action `action`, with one
+/// argument for each of its params, in param order.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Action {
     pub player: PlayerId,
     pub action: ActionId,
+    /// One per param of the action, in param order.
+    pub arguments: Vec<Argument>,
+}
+
+/// The value an Action supplies for one param.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Argument {
+    /// A card instance.
+    Card(CardInstanceId),
 }
 
 /// The reason the declarative Ruleset refuses an Action, in the order the checks run.
@@ -35,11 +47,50 @@ pub enum Rejection {
     /// The action is declared, but the current phase does not list it: there is no current phase,
     /// the ruleset does not know it, or it is not a phase with actions.
     ActionNotInCurrentPhase { action: ActionId },
+    /// The Action has a different number of arguments than the action has params.
+    ArgumentCountMismatch { expected: usize, found: usize },
+    /// The argument for `param` names a card instance that does not exist.
+    UnknownCard {
+        param: ParamName,
+        card: CardInstanceId,
+    },
+    /// The card for `param` belongs to another Player than the one acting.
+    NotCardOwner {
+        param: ParamName,
+        card: CardInstanceId,
+        owner: PlayerId,
+    },
+    /// The card for `param` is not in the param's `zone` of the acting Player.
+    CardNotInZone {
+        param: ParamName,
+        card: CardInstanceId,
+        zone: ZoneId,
+    },
+    /// The card for `param` is not of the param's card type.
+    WrongCardType {
+        param: ParamName,
+        card: CardInstanceId,
+        expected: CardTypeId,
+        found: CardTypeId,
+    },
+    /// A cost resolved to a negative count.
+    NegativeCount { value: i64 },
+    /// A tap cost needs `required` untapped cards in the acting Player's `zone` and there are only
+    /// `available`.
+    NotEnoughUntappedCards {
+        zone: ZoneId,
+        required: u64,
+        available: u64,
+    },
     /// Ending the Turn would take the Turn Number above its maximum.
     TurnNumberOverflow,
     /// An Event the Ruleset generated was rejected: the GameState does not fit this ruleset, an
     /// internal inconsistency that is never expected.
     EventRejected(ApplyError),
+    /// The catalog or the GameState does not fit the ruleset: a card's definition is missing, or a
+    /// ref reads a value the card does not have or of another type. An internal inconsistency that
+    /// is never expected.
+    CardDataMismatch { card: CardInstanceId },
 }
 
 impl fmt::Display for Rejection {
@@ -59,8 +110,61 @@ impl fmt::Display for Rejection {
                 "the action `{}` is not allowed in the current phase",
                 action.as_str()
             ),
+            Self::ArgumentCountMismatch { expected, found } => {
+                write!(f, "the action takes {expected} arguments, found {found}")
+            }
+            Self::UnknownCard { param, card } => write!(
+                f,
+                "the card instance {} for `{}` does not exist",
+                card.0,
+                param.as_str()
+            ),
+            Self::NotCardOwner { param, card, owner } => write!(
+                f,
+                "the card instance {} for `{}` belongs to Player {}",
+                card.0,
+                param.as_str(),
+                owner.0
+            ),
+            Self::CardNotInZone { param, card, zone } => write!(
+                f,
+                "the card instance {} for `{}` is not in the zone `{}`",
+                card.0,
+                param.as_str(),
+                zone.as_str()
+            ),
+            Self::WrongCardType {
+                param,
+                card,
+                expected,
+                found,
+            } => write!(
+                f,
+                "the card instance {} for `{}` is a `{}`, not a `{}`",
+                card.0,
+                param.as_str(),
+                found.as_str(),
+                expected.as_str()
+            ),
+            Self::NegativeCount { value } => {
+                write!(f, "a cost resolved to the negative count {value}")
+            }
+            Self::NotEnoughUntappedCards {
+                zone,
+                required,
+                available,
+            } => write!(
+                f,
+                "the cost needs {required} untapped cards in `{}`, found {available}",
+                zone.as_str()
+            ),
             Self::TurnNumberOverflow => write!(f, "the Turn Number cannot go any higher"),
             Self::EventRejected(error) => write!(f, "an Event was rejected: {error}"),
+            Self::CardDataMismatch { card } => write!(
+                f,
+                "the card instance {} does not fit the ruleset data",
+                card.0
+            ),
         }
     }
 }
@@ -114,10 +218,16 @@ impl Ruleset for DeclarativeRuleset {
             });
         }
 
+        let bound = arguments::bind(self, state, declared, action)?;
+
         let mut execution = Execution::new(state.clone());
+        for cost in declared.costs() {
+            action_effects::pay(self, &mut execution, &bound, cost)?;
+        }
         for effect in declared.effects() {
             match effect {
                 Effect::EndTurn => turn_cycle::end_turn(definition, &mut execution)?,
+                other => action_effects::run(&mut execution, &bound, other)?,
             }
         }
         Ok(Transition {

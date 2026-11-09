@@ -112,8 +112,7 @@ fn priced_cut() -> String {
 }
 
 /// Two more actions of the hand and the field.
-const EXTRA_ACTIONS: &str = "\
-  - id: bounce
+const EXTRA_ACTIONS: &str = r"  - id: bounce
     params:
       - { name: card, zone: field, card_type: creature }
     effects:

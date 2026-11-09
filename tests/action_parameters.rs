@@ -4,27 +4,57 @@
 //! The same definitions read from the real Small Ruleset file, and playing creatures, are tested
 //! in the loader crate (`crates/tcg-loader/tests/play_creature.rs`).
 
-mod common;
-
-use common::{path, small_draft};
 use tcg_engine::declarative::{CardInstanceId, Rejection};
+use tcg_engine::definition_path::DefinitionPath;
 use tcg_engine::player::PlayerId;
 use tcg_engine::ruleset_definition::{
-    ActionDraft, ActionId, CardTypeId, CardValue, Cost, CostDraft, DefinitionError,
-    DefinitionErrorKind, Effect, EffectDraft, FieldName, FieldTypeDraft, FieldValue,
-    InitializerDraft, InstanceStateDraft, ParamDraft, ParamName, RefDraft, ReferenceTarget,
-    RulesetDefinition, RulesetDraft, StateName, ZoneId,
+    ActionDraft, ActionId, CardTypeDraft, CardTypeId, CardValue, Cost, CostDraft, DefinitionError,
+    DefinitionErrorKind, Effect, EffectDraft, FieldDraft, FieldName, FieldTypeDraft, FieldValue,
+    InitializerDraft, InstanceStateDraft, MetaDraft, ParamDraft, ParamName, ParametersDraft,
+    RefDraft, ReferenceTarget, RulesetDefinition, RulesetDraft, StateName, Visibility, ZoneDraft,
+    ZoneId,
 };
 
-/// The Small Ruleset structure whose creatures also have `recently_played`, with `play_creature`
-/// built from drafts.
-fn draft_with_play_creature(count: &str) -> RulesetDraft {
-    let mut draft = small_draft();
-    draft.card_types[1].instance_state.push(InstanceStateDraft {
-        name: "recently_played".to_string(),
+fn bool_state(name: &str) -> InstanceStateDraft {
+    InstanceStateDraft {
+        name: name.to_string(),
         state_type: FieldTypeDraft::Bool,
         init: InitializerDraft::Literal(FieldValue::Bool(false)),
-    });
+    }
+}
+
+/// A small ruleset with a hand, a field and a Mana Zone, and creatures that have a `cost` field and
+/// the states `tapped` and `recently_played`; `play_creature` is built from drafts.
+fn draft_with_play_creature(count: &str) -> RulesetDraft {
+    let zone = |id: &str| ZoneDraft {
+        id: id.to_string(),
+        visibility: Visibility::Public,
+        ordered: false,
+    };
+    let mut draft = RulesetDraft {
+        meta: MetaDraft {
+            id: "small".to_string(),
+            version: 1,
+        },
+        parameters: ParametersDraft {
+            players: 2,
+            starting_player: 0,
+        },
+        zones: vec![zone("hand"), zone("field"), zone("mana_zone")],
+        card_types: vec![CardTypeDraft {
+            id: "creature".to_string(),
+            fields: vec![FieldDraft {
+                name: "cost".to_string(),
+                field_type: FieldTypeDraft::Int,
+            }],
+            instance_state: vec![bool_state("tapped"), bool_state("recently_played")],
+            effects: false,
+        }],
+        inputs: vec![],
+        setup: vec![],
+        actions: vec![],
+        turn: None,
+    };
     draft.actions.push(ActionDraft {
         id: "play_creature".to_string(),
         params: vec![ParamDraft {
@@ -93,7 +123,7 @@ fn a_code_frontend_builds_an_action_with_params_cost_and_effects() {
 fn a_ref_to_an_instance_state_resolves_to_a_state() {
     // `price` is an int instance state of the creature and no field: the ref reads the state.
     let mut draft = draft_with_play_creature("card.price");
-    draft.card_types[1].instance_state.push(InstanceStateDraft {
+    draft.card_types[0].instance_state.push(InstanceStateDraft {
         name: "price".to_string(),
         state_type: FieldTypeDraft::Int,
         init: InitializerDraft::Literal(FieldValue::Int(1)),
@@ -115,7 +145,7 @@ fn a_code_frontend_gets_the_same_reference_errors_as_the_loader() {
     assert_eq!(
         error,
         DefinitionError {
-            path: path()
+            path: DefinitionPath::root()
                 .key("actions")
                 .id("play_creature")
                 .key("cost")

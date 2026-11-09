@@ -76,6 +76,8 @@ impl fmt::Display for CatalogErrorKind {
                     ReferenceTarget::Card => "card",
                     ReferenceTarget::Action => "action",
                     ReferenceTarget::InstanceState => "instance state",
+                    ReferenceTarget::Param => "param",
+                    ReferenceTarget::FieldOrInstanceState => "field or instance state",
                 };
                 write!(f, "no {target} has the id `{id}`")
             }
