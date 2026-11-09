@@ -143,10 +143,10 @@ fn classify(error: SaphyrError, path: DefinitionPath) -> YamlError {
         SaphyrError::SerdeUnknownField { field, .. } => {
             (YamlErrorKind::UnknownKey { key: field.clone() }, path)
         }
-        // An unknown step primitive, at exactly one step of a list: an unknown key of the list
-        // element. Any other unknown enum value (`visibility`, `type`, an effect) stays
-        // `Malformed`.
-        SaphyrError::SerdeUnknownVariant { variant, .. } if is_step(&path) => (
+        // An unknown primitive (of a step, an effect or a condition), at exactly the map that
+        // names it: an unknown key of that map. Any other unknown enum value (`visibility`,
+        // `type`) stays `Malformed`.
+        SaphyrError::SerdeUnknownVariant { variant, .. } if names_a_primitive(&path) => (
             YamlErrorKind::UnknownKey {
                 key: variant.clone(),
             },
@@ -183,15 +183,18 @@ fn classify(error: SaphyrError, path: DefinitionPath) -> YamlError {
     }
 }
 
-/// Whether `path` is exactly one step of a list of steps: an element of `setup`, such as
-/// `setup[1]`, or of an automatic phase or an `if` step, such as `turn.phases[0].automatic[2]` or
-/// `turn.phases[0].automatic[2].else[0]`.
-fn is_step(path: &DefinitionPath) -> bool {
+/// Whether `path` is a single-key map `{ <primitive>: ... }` whose primitive is chosen by name: an
+/// element of `setup` (`setup[1]`), of an automatic phase or an `if` step
+/// (`turn.phases[0].automatic[2]`, `turn.phases[0].automatic[2].else[0]`) or of an action's
+/// `effects` (`actions[0].effects[0]`), or the condition of an `if` step
+/// (`turn.phases[0].automatic[2].if`).
+fn names_a_primitive(path: &DefinitionPath) -> bool {
     match path.segments() {
         [PathSegment::Key(key), PathSegment::Index(_)] if key == "setup" => true,
         [.., PathSegment::Key(key), PathSegment::Index(_)] => {
-            matches!(key.as_str(), "automatic" | "then" | "else")
+            matches!(key.as_str(), "automatic" | "then" | "else" | "effects")
         }
+        [.., PathSegment::Key(key)] => key == "if",
         _ => false,
     }
 }
