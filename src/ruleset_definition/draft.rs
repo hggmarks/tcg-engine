@@ -16,6 +16,8 @@ pub struct RulesetDraft {
     pub actions: Vec<ActionDraft>,
     /// The turn structure. `None` means the Game has no Turns.
     pub turn: Option<TurnDraft>,
+    /// The win conditions, in order. Empty means none: the Game never ends.
+    pub win_conditions: Vec<WinConditionDraft>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -163,4 +165,22 @@ pub enum AutomaticStepDraft {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConditionDraft {
     FirstTurn,
+}
+
+/// An unvalidated win condition. `loser` is `owner`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WinConditionDraft {
+    pub id: String,
+    pub when: WinConditionWhenDraft,
+    pub loser: String,
+}
+
+/// An unvalidated `when`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WinConditionWhenDraft {
+    /// `draw_from_empty: <zone>`.
+    DrawFromEmpty { zone: String },
+    /// A condition written as an expression (`lte`, `and`, ...). The engine does not support it yet
+    /// ([11]): validation rejects it, naming the operator.
+    Expression { operator: String },
 }

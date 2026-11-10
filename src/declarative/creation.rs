@@ -4,12 +4,14 @@
 //! the state the previous one produced (ADR-0010). First every card of every Deck List is created
 //! (seat 0 first; within a seat, the ruleset's Deck Inputs in order, then the Deck List entries in
 //! file order, each entry `count` times), then the Setup Steps run (ADR-0011). If the ruleset has a
-//! turn, the first Turn then begins and runs until the phase that waits for actions (ADR-0012).
+//! turn, the first Turn then begins and runs until the phase that waits for actions (ADR-0012). The
+//! win conditions are then evaluated over the whole creation trace (ADR-0014).
 
 use std::fmt;
 
 use super::event::Event;
 use super::execution::Execution;
+use super::game_end;
 use super::state::{ApplyError, CardInstanceId, GameState};
 use super::turn_cycle;
 use crate::card_catalog::{CardCatalog, CardId};
@@ -185,6 +187,8 @@ impl DeclarativeRuleset {
             turn_cycle::begin_turn(definition, &mut execution, active_player, TurnNumber::FIRST)
                 .map_err(GameCreationError::EventRejected)?;
         }
+        game_end::end_game_if_lost(definition, &mut execution)
+            .map_err(GameCreationError::EventRejected)?;
 
         Ok(GameCreation {
             empty,

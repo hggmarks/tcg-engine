@@ -160,6 +160,7 @@ fn describe(event: &Event) -> String {
         Event::DrawFromEmptyZone { player, zone } => {
             format!("empty p{} {}", player.0, zone.as_str())
         }
+        Event::GameEnded { losses } => format!("ended with {} losses", losses.len()),
     }
 }
 

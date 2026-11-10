@@ -100,7 +100,7 @@ An Action by the Active Player that reduces the opposing Player's LifeTotal by a
 The Event fact that an accepted DealDamage Action reduced a target Player's LifeTotal, including source, target, amount, and resulting LifeTotal.
 
 **Terminal Outcome**:
-A domain fact that a game has ended and identifies its result; this is outside the first increment.
+How a Game ended. In the declarative Ruleset it is `GameState::outcome()`, absent while the Game is on, and holds the Losses and the winners: the Players who did not lose. It is set by applying `GameEnded` (ADR-0014). The Toy Ruleset has none.
 
 ## Ruleset Definitions
 
@@ -144,9 +144,6 @@ A declared source of cards for a Game: the allowed Card Types (at least one, wit
 **Player Position**:
 A 0-based position in the Player Order, such as the starting player.
 
-**Unsupported Section**:
-A behavior section of a ruleset file (now only `win_conditions`) that the Loader rejects explicitly instead of ignoring.
-
 **FieldValue**:
 A value of one of the supported Field Types: a bool, an integer or a text. Its kind comes from the YAML scalar, so `5` is an integer and `"5"` is a text; int values have no minimum or maximum yet.
 
@@ -179,7 +176,7 @@ A Deck Input's optional `max_copies`: the most copies of one Card Definition an 
 ## Declarative Games
 
 **Declarative Ruleset**:
-The Ruleset that interprets a RulesetDefinition and a Card Catalog. Its GameState changes only by Event Application. Its Action is a Player and an Action Definition id, and its Rejection is one of Unknown Player, Not Active Player, Unknown Action, Action Not In Current Phase, Turn Number Overflow or EventRejected (ADR-0012).
+The Ruleset that interprets a RulesetDefinition and a Card Catalog. Its GameState changes only by Event Application. Its Action is a Player and an Action Definition id, and its Rejection is one of Game Over, Unknown Player, Not Active Player, Unknown Action, Action Not In Current Phase, Turn Number Overflow or EventRejected, checked in that order (ADR-0012, ADR-0014).
 
 **EventRejected**:
 A declarative Rejection for an internal inconsistency: an Event the Ruleset generated was rejected because the GameState does not fit this Ruleset. It is never expected.
@@ -230,7 +227,7 @@ The typed error `GameState::apply` returns for an Event that does not fit the Ga
 The state Game creation starts from: Players by seat, the Active Player, the Random State of the Seed, every zone empty and no Card Instances.
 
 **Opening Position**:
-The GameState after Game creation: cards placed, setup run, and, if the ruleset has a turn, the first Turn has begun and waits in its Action Phase. Without a turn, no Turn has begun.
+The GameState after Game creation: cards placed, setup run, and, if the ruleset has a turn, the first Turn has begun and waits in its Action Phase. Without a turn, no Turn has begun. Win conditions are evaluated at the end of creation, so it may already hold a Terminal Outcome.
 
 **Game Creation**:
 `DeclarativeRuleset::create_game`: from one Deck List per seat and a Seed it returns the Empty GameState and the Opening Position with its setup Event Trace. It is not on the Ruleset seam (ADR-0005).
@@ -286,10 +283,27 @@ The Event that a phase of the Turn in progress began; it requires a Turn in prog
 The Event that an instance state of a card changed to a value of the same type as before.
 
 **DrawFromEmptyZone**:
-The Event that a draw found its source zone empty. It changes nothing and is emitted once per Player per draw step; win conditions use it in [09].
+The Event that a draw found its source zone empty. It changes nothing and is emitted once per Player per draw step; the `draw_from_empty` Win Condition reads it.
 
 **Unknown Action**:
 A Rejection: the Action names an action the ruleset does not declare.
 
 **Action Not In Current Phase**:
 A Rejection: the action is declared but the current phase does not list it, because there is no current phase, the phase is not an Action Phase, or it does not list the action.
+
+## Ending the Game
+
+**Win Condition**:
+A declared rule `{ id, when, loser }` of the ruleset's `win_conditions`. When its `when` holds for a Player, that Player is a loser of the Game, and the id is the reason. The only `when` supported is `draw_from_empty: <zone>`, the only `loser` is `owner`, and a condition written as an expression is rejected by validation as unsupported until [11]. Absent means the Game never ends.
+
+**Loss**:
+A Player who lost and the Win Condition id that made them lose. A Player has at most one Loss: for each Player in seat order, the first Win Condition in declaration order that holds for them is their reason.
+
+**Drawn Game**:
+A Game in which every Player lost in the same transition, so it has no winner: the Terminal Outcome has no winners. It is not the Draw step; In the Small Ruleset deck-out alone cannot cause it, because only the Active Player draws.
+
+**GameEnded**:
+The Event that the Game ended, with its Losses in seat order. Applying it sets the Terminal Outcome; no Event applies after it, and it is the last Event of the trace that emits it. A `GameEnded` without a Loss, with a Player twice or out of seat order, or with a Player not in the Game is an Apply Error.
+
+**Game Over**:
+A Rejection: the Game has ended, so every Action is rejected, whoever takes it and whatever it is. It is checked before Unknown Player.

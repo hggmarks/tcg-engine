@@ -39,6 +39,11 @@ id_type!(
     /// The identity of a phase, unique among the phases of the turn.
     PhaseId
 );
+id_type!(
+    /// The identity of a win condition, unique among the win conditions. It is the reason a Player
+    /// lost.
+    WinConditionId
+);
 
 /// A validated Ruleset Definition (the typed model ADR-0004 first called `Ruleset`).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,6 +56,7 @@ pub struct RulesetDefinition {
     pub(super) setup: Vec<SetupStep>,
     pub(super) actions: Vec<ActionDefinition>,
     pub(super) turn: Option<TurnStructure>,
+    pub(super) win_conditions: Vec<WinCondition>,
 }
 
 impl RulesetDefinition {
@@ -110,6 +116,12 @@ impl RulesetDefinition {
     /// Turns.
     pub fn turn(&self) -> Option<&TurnStructure> {
         self.turn.as_ref()
+    }
+
+    /// The win conditions in declared order; empty when the ruleset declares none, and the Game
+    /// then never ends.
+    pub fn win_conditions(&self) -> &[WinCondition] {
+        &self.win_conditions
     }
 }
 
@@ -487,4 +499,42 @@ pub enum AutomaticStep {
         then: Vec<AutomaticStep>,
         otherwise: Vec<AutomaticStep>,
     },
+}
+
+/// A declared win condition: when it holds for a Player, that Player loses (ADR-0014). Its id is
+/// unique among the win conditions.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WinCondition {
+    pub(super) id: WinConditionId,
+    pub(super) when: WinConditionWhen,
+    pub(super) loser: Loser,
+}
+
+impl WinCondition {
+    pub fn id(&self) -> &WinConditionId {
+        &self.id
+    }
+
+    pub fn when(&self) -> &WinConditionWhen {
+        &self.when
+    }
+
+    pub fn loser(&self) -> Loser {
+        self.loser
+    }
+}
+
+/// When a win condition holds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WinConditionWhen {
+    /// A draw from this zone found it empty, in the transition being evaluated. The zone exists in
+    /// the Ruleset Definition it was validated with.
+    DrawFromEmpty(ZoneId),
+}
+
+/// Which Player loses when a win condition holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Loser {
+    /// The Player the condition holds for: for `draw_from_empty`, the Player who drew.
+    Owner,
 }

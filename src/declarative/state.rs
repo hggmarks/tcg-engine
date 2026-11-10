@@ -9,7 +9,9 @@ use super::event::Event;
 use crate::card_catalog::CardId;
 use crate::player::{PlayerId, PlayerOrder};
 use crate::random::RandomState;
-use crate::ruleset_definition::{FieldType, FieldValue, PhaseId, StateName, ZoneId};
+use crate::ruleset_definition::{
+    FieldType, FieldValue, PhaseId, StateName, WinConditionId, ZoneId,
+};
 use crate::turn::TurnNumber;
 
 /// The identity of a card instance, unique within one Game. Ids are dense from 0, in creation
@@ -76,8 +78,41 @@ impl ZoneCards {
     }
 }
 
+/// A Player who lost, and the id of the win condition that made them lose (ADR-0014).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Loss {
+    pub player: PlayerId,
+    pub reason: WinConditionId,
+}
+
+/// How a Game ended: who lost and why, and who won. It is built only by applying `GameEnded`
+/// (ADR-0014), so its winners are always the Players who did not lose.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TerminalOutcome {
+    winners: Vec<PlayerId>,
+    losses: Vec<Loss>,
+}
+
+impl TerminalOutcome {
+    /// The Players who did not lose, in seat order. Empty for a drawn game.
+    pub fn winners(&self) -> &[PlayerId] {
+        &self.winners
+    }
+
+    /// The losses, one per Player who lost, in seat order.
+    pub fn losses(&self) -> &[Loss] {
+        &self.losses
+    }
+
+    /// Whether every Player lost at the same time, so nobody won.
+    pub fn is_drawn_game(&self) -> bool {
+        self.winners.is_empty()
+    }
+}
+
 /// The complete state of one declarative Game: Players by seat, the Active Player, the Turn Number
-/// and phase, each Player's zones, every card instance and the Random State.
+/// and phase, each Player's zones, every card instance, the Random State and, once the Game has
+/// ended, its Terminal Outcome.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GameState {
     player_order: PlayerOrder,
@@ -87,6 +122,7 @@ pub struct GameState {
     zones: Vec<(PlayerId, Vec<ZoneCards>)>,
     cards: Vec<CardInstance>,
     random_state: RandomState,
+    outcome: Option<TerminalOutcome>,
 }
 
 /// Why an Event cannot be applied. The GameState is unchanged.
@@ -124,6 +160,13 @@ pub enum ApplyError {
     ZoneNotEmpty { player: PlayerId, zone: ZoneId },
     /// A phase began, but no Turn has begun.
     NoTurnInProgress,
+    /// The Game has ended: no Event applies after `GameEnded`.
+    GameAlreadyEnded,
+    /// `GameEnded` names no loser.
+    NoLoser,
+    /// `GameEnded` lists `player` at or before the position of the loser before them in seat
+    /// order: a Player listed twice, or the losses not in seat order.
+    LosersOutOfSeatOrder { player: PlayerId },
 }
 
 impl fmt::Display for ApplyError {
@@ -174,6 +217,13 @@ impl fmt::Display for ApplyError {
                 player.0
             ),
             Self::NoTurnInProgress => write!(f, "no Turn is in progress"),
+            Self::GameAlreadyEnded => write!(f, "the Game has already ended"),
+            Self::NoLoser => write!(f, "a Game cannot end without a loser"),
+            Self::LosersOutOfSeatOrder { player } => write!(
+                f,
+                "Player {} is not listed after the previous loser in seat order",
+                player.0
+            ),
         }
     }
 }
@@ -211,6 +261,7 @@ impl GameState {
             zones,
             cards: Vec::new(),
             random_state,
+            outcome: None,
         }
     }
 
@@ -268,10 +319,20 @@ impl GameState {
         &self.random_state
     }
 
+    /// The Terminal Outcome; `None` while the Game is on.
+    pub fn outcome(&self) -> Option<&TerminalOutcome> {
+        self.outcome.as_ref()
+    }
+
     /// The single function through which a GameState changes.
     ///
-    /// Atomic: the Event is fully checked first, so on `Err` the state is unchanged.
+    /// Atomic: the Event is fully checked first, so on `Err` the state is unchanged. Once the Game
+    /// has ended no Event applies. `GameEnded` only records what the Ruleset decided, which
+    /// Players lost; it holds no win-condition logic.
     pub fn apply(&mut self, event: &Event) -> Result<(), ApplyError> {
+        if self.outcome.is_some() {
+            return Err(ApplyError::GameAlreadyEnded);
+        }
         match event {
             Event::CardCreated {
                 card,
@@ -389,7 +450,43 @@ impl GameState {
                 }
                 Ok(())
             }
+            Event::GameEnded { losses } => {
+                self.outcome = Some(self.outcome_of(losses)?);
+                Ok(())
+            }
         }
+    }
+
+    /// The Terminal Outcome of a Game that ends with `losses`: the winners are the Players who did
+    /// not lose.
+    fn outcome_of(&self, losses: &[Loss]) -> Result<TerminalOutcome, ApplyError> {
+        if losses.is_empty() {
+            return Err(ApplyError::NoLoser);
+        }
+        let players = self.player_order.players();
+        let mut previous: Option<usize> = None;
+        for loss in losses {
+            let Some(seat) = players.iter().position(|&member| member == loss.player) else {
+                return Err(ApplyError::UnknownPlayer {
+                    player: loss.player,
+                });
+            };
+            if previous.is_some_and(|before| seat <= before) {
+                return Err(ApplyError::LosersOutOfSeatOrder {
+                    player: loss.player,
+                });
+            }
+            previous = Some(seat);
+        }
+        let winners = players
+            .iter()
+            .copied()
+            .filter(|player| !losses.iter().any(|loss| loss.player == *player))
+            .collect();
+        Ok(TerminalOutcome {
+            winners,
+            losses: losses.to_vec(),
+        })
     }
 
     /// Applies `events` in order to a clone of this state and returns the result; this state is

@@ -6,15 +6,15 @@ use std::num::NonZeroU32;
 use super::draft::{
     ActionDraft, AutomaticStepDraft, CardTypeDraft, ConditionDraft, DeckInputDraft, EffectDraft,
     FieldTypeDraft, InitializerDraft, InstanceStateDraft, PhaseDraft, RulesetDraft, SetupStepDraft,
-    TurnDraft,
+    TurnDraft, WinConditionDraft, WinConditionWhenDraft,
 };
 use super::error::{DefinitionError, DefinitionErrorKind, ReferenceTarget};
 use super::model::{
     ActionDefinition, ActionId, AutomaticStep, CardType, CardTypeId, Condition, DeckInput,
-    DeckInputId, Effect, FieldName, FieldSchema, FieldType, Initializer, InstanceStateSchema, Meta,
-    Parameters, Phase, PhaseId, PhaseKind, PlayerCount, PlayerPosition, PlayerSelector, Position,
-    RulesetDefinition, RulesetId, RulesetVersion, SetupStep, StateName, TurnStructure, Zone,
-    ZoneId,
+    DeckInputId, Effect, FieldName, FieldSchema, FieldType, Initializer, InstanceStateSchema,
+    Loser, Meta, Parameters, Phase, PhaseId, PhaseKind, PlayerCount, PlayerPosition,
+    PlayerSelector, Position, RulesetDefinition, RulesetId, RulesetVersion, SetupStep, StateName,
+    TurnStructure, WinCondition, WinConditionId, WinConditionWhen, Zone, ZoneId,
 };
 use crate::definition_path::DefinitionPath;
 use crate::id::is_valid_id;
@@ -97,6 +97,7 @@ pub(super) fn validate(draft: RulesetDraft) -> Result<RulesetDefinition, Definit
         setup,
         actions,
         turn,
+        win_conditions,
     } = draft;
 
     if !is_valid_id(&meta.id) {
@@ -185,6 +186,15 @@ pub(super) fn validate(draft: RulesetDraft) -> Result<RulesetDefinition, Definit
         None => None,
     };
 
+    let win_conditions_path = DefinitionPath::root().key("win_conditions");
+    let mut seen = Seen::new(win_conditions_path.clone());
+    let mut valid_win_conditions = Vec::with_capacity(win_conditions.len());
+    for (index, condition) in win_conditions.iter().enumerate() {
+        check_id(&win_conditions_path, index, "id", &condition.id)?;
+        seen.insert(&condition.id, index)?;
+        valid_win_conditions.push(validate_win_condition(condition, &valid_zones)?);
+    }
+
     Ok(RulesetDefinition {
         meta: Meta {
             id: RulesetId::new(meta.id),
@@ -200,6 +210,7 @@ pub(super) fn validate(draft: RulesetDraft) -> Result<RulesetDefinition, Definit
         setup: valid_setup,
         actions: valid_actions,
         turn: valid_turn,
+        win_conditions: valid_win_conditions,
     })
 }
 
@@ -208,6 +219,45 @@ struct Context<'a> {
     zones: &'a [Zone],
     card_types: &'a [CardType],
     actions: &'a [ActionDefinition],
+}
+
+fn validate_win_condition(
+    condition: &WinConditionDraft,
+    zones: &[Zone],
+) -> Result<WinCondition, DefinitionError> {
+    let at = DefinitionPath::root()
+        .key("win_conditions")
+        .id(&condition.id);
+    let when_at = at.clone().key("when");
+    let when = match &condition.when {
+        WinConditionWhenDraft::Expression { operator } => {
+            return fail(
+                when_at,
+                DefinitionErrorKind::UnsupportedWinCondition {
+                    operator: operator.clone(),
+                },
+            )
+        }
+        WinConditionWhenDraft::DrawFromEmpty { zone } => WinConditionWhen::DrawFromEmpty(
+            validate_zone_reference(zone, zones, when_at.key("draw_from_empty"))?,
+        ),
+    };
+    let loser = match condition.loser.as_str() {
+        "owner" => Loser::Owner,
+        other => {
+            return fail(
+                at.key("loser"),
+                DefinitionErrorKind::UnknownLoser {
+                    loser: other.to_string(),
+                },
+            )
+        }
+    };
+    Ok(WinCondition {
+        id: WinConditionId::new(&condition.id),
+        when,
+        loser,
+    })
 }
 
 fn validate_action(action: &ActionDraft) -> ActionDefinition {

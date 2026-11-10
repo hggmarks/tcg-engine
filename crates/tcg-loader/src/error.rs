@@ -35,10 +35,6 @@ pub enum YamlErrorKind {
     UnknownKey {
         key: String,
     },
-    /// A behavior section (`win_conditions`) that is not supported yet.
-    UnsupportedSection {
-        section: String,
-    },
     /// Anything else that makes the text not a ruleset: bad syntax, a missing key, a wrong type.
     Malformed {
         message: String,
@@ -82,9 +78,6 @@ impl fmt::Display for YamlError {
         match &self.kind {
             YamlErrorKind::ForbiddenFeature { feature } => write!(f, "{feature}")?,
             YamlErrorKind::UnknownKey { key } => write!(f, "unknown key `{key}`")?,
-            YamlErrorKind::UnsupportedSection { section } => {
-                write!(f, "the section `{section}` is not supported yet")?
-            }
             YamlErrorKind::Malformed { message } => write!(f, "{message}")?,
         }
         if !self.path.segments().is_empty() {

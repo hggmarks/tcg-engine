@@ -8,4 +8,4 @@ The declarative Ruleset's GameState has private fields, and the only function th
 
 **Status**: accepted
 
-Amended by ADR-0012: the Opening Position includes the start of the first Turn when the ruleset has a turn, and `Action` and `Rejection` now have variants. Events `TurnBegan`, `PhaseBegan`, `CardStateChanged` and `DrawFromEmptyZone` were added.
+Amended by ADR-0014: a `GameEnded` Event was added, the GameState holds an optional Terminal Outcome, and once it is set no Event applies. Amended by ADR-0012: the Opening Position includes the start of the first Turn when the ruleset has a turn, and `Action` and `Rejection` now have variants. Events `TurnBegan`, `PhaseBegan`, `CardStateChanged` and `DrawFromEmptyZone` were added.

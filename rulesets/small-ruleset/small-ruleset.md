@@ -70,7 +70,7 @@ A turn has three phases, in order: Start, Main and End. Player 0's first turn be
 1. Untap the cards in the Mana Zone and on the Field (a card that has no `tapped` state is not affected).
 2. Clear `recently_played` on the cards on the Field (a card that has no `recently_played` state is not affected).
 3. Draw 1 card from the Top of the main deck to the hand. **The starting player (Player 0) skips this draw on the first turn of the game, turn 1, and only then**: Player 1 draws on turn 2 and Player 0 draws on turn 3. If the deck is empty, nothing is drawn and the player is considered to have needed to draw from an empty deck (see Win Conditions).
-4. Move 2 cards from the Top of the mana deck to the Mana Zone, one at a time. If the mana deck has fewer than 2 cards, move the cards that are there; when it is empty, nothing moves and the Mana Zone does not grow. Each player has 10 mana cards, so the mana deck runs out after the player's fifth turn (turns 1, 3, 5, 7 and 9 for Player 0) and the Mana Zone then holds 10 cards for the rest of the game.
+4. Move 2 cards from the Top of the mana deck to the Mana Zone, one at a time. If the mana deck has fewer than 2 cards, move the cards that are there; when it is empty, nothing moves and the Mana Zone does not grow, and an empty mana deck never makes the player lose. Each player has 10 mana cards, so the mana deck runs out after the player's fifth turn (turns 1, 3, 5, 7 and 9 for Player 0) and the Mana Zone then holds 10 cards for the rest of the game.
 
 ### 2. Main
 
@@ -84,7 +84,7 @@ Only the active player acts, and only during Main.
 
 ### 3. End
 
-Passing the turn ends the turn: End has no steps of its own. The turn passes to the opponent, and the opponent's Start phase begins at once, in the same instant, so the game always waits in the active player's Main.
+Passing the turn ends the turn: End has no steps of its own. The turn passes to the opponent, and the opponent's Start phase begins at once, in the same instant, so the game always waits in the active player's Main until the game ends.
 
 ## Combat
  
@@ -95,6 +95,9 @@ The attacker chooses a target: a **tapped creature** of the opponent, or the **o
 ## Win Conditions
 - A player whose Leader has `current_life` ≤ 0 loses. The other player wins.
 - A player who needs to draw from an empty deck loses. The other player wins.
+- The win conditions are checked after every action and at the end of game creation (setup and the automatic phases of the first turn), once per transition and after everything the transition runs, including the automatic phases it triggers. For example, if passing the turn begins a turn whose Start phase finds the deck empty, that turn's phases still begin, and then the game ends.
+- The game ends at once: no action is accepted afterwards.
+- If both players lose at the same time, the game is drawn (no winner). Deck-out alone cannot make both players lose at once, because only the active player draws, once per turn.
 # Glossary: Small Ruleset 
 ## Game Structure
  
@@ -107,7 +110,7 @@ The attacker chooses a target: a **tapped creature** of the opponent, or the **o
 | **Turn** | One player's complete sequence of phases: Start, Main, End. Turns are numbered from 1; the first turn of the game is turn 1. |
 | **Phase** | A segment of a turn, run in order. Start and End are automatic: the game runs them by itself. Main is the phase where the game waits for the active player, who may play creatures, attack and pass the turn. |
 | **Game inputs** | What each player provides to start a game: one Leader, a main deck, and a mana deck. |
-| **Win condition** | A situation that ends the game and makes a player the winner. |
+| **Win condition** | A situation that makes a player lose; the game then ends and the other player wins. |
  
 ## Zones
  
@@ -179,4 +182,4 @@ The attacker chooses a target: a **tapped creature** of the opponent, or the **o
 |---|---|
 | **Main deck** | 50 cards, creatures only, max 4 copies of each. Does not include the Leader. |
 | **Mana deck** | 10 cards, mana only. |
-| **Empty deck** | A deck with no cards left. Needing to draw from one makes the player lose. |
+| **Empty deck** | A deck with no cards left. Needing to draw from one makes the player lose. An empty mana deck never does. |
