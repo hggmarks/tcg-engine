@@ -230,4 +230,9 @@ fn the_new_rejections_name_what_went_wrong() {
 
     let shown = text(Rejection::CardDataMismatch { card });
     assert!(shown.contains('7'), "{shown}");
+
+    let shown = text(Rejection::UnboundParam {
+        param: ParamName::new("target"),
+    });
+    assert!(shown.contains("target"), "{shown}");
 }

@@ -856,6 +856,24 @@ fn a_tap_cost_needs_a_card_type_that_declares_tapped() {
 }
 
 #[test]
+fn a_tap_cost_rejects_a_card_type_that_declares_tapped_as_another_type() {
+    let yaml = edit(
+        &small_cut(),
+        "      - { name: tapped,           type: bool, init: false }\n",
+        "      - { name: tapped,           type: int,  init: 0 }\n",
+    );
+    assert_definition_error(
+        &yaml,
+        in_play_creature().key("cost").index(0).key("tap"),
+        DefinitionErrorKind::StateValueTypeMismatch {
+            state: "tapped".to_string(),
+            declared: FieldType::Int,
+            found: FieldType::Bool,
+        },
+    );
+}
+
+#[test]
 fn an_action_is_validated_params_then_cost_then_effects() {
     // Errors in all three: the param's, then (once fixed) the cost's, then the effects'.
     let all_wrong = edit(

@@ -48,7 +48,7 @@ pub enum Rejection {
     /// the ruleset does not know it, or it is not a phase with actions.
     ActionNotInCurrentPhase { action: ActionId },
     /// The Action has a different number of arguments than the action has params.
-    ArgumentCountMismatch { expected: usize, found: usize },
+    ArgumentCountMismatch { expected: u64, found: u64 },
     /// The argument for `param` names a card instance that does not exist.
     UnknownCard {
         param: ParamName,
@@ -91,6 +91,9 @@ pub enum Rejection {
     /// ref reads a value the card does not have or of another type. An internal inconsistency that
     /// is never expected.
     CardDataMismatch { card: CardInstanceId },
+    /// A ref names a param that no argument was bound to. Validation guarantees every ref names a
+    /// param of its action, so this is an internal inconsistency that is never expected.
+    UnboundParam { param: ParamName },
 }
 
 impl fmt::Display for Rejection {
@@ -165,6 +168,9 @@ impl fmt::Display for Rejection {
                 "the card instance {} does not fit the ruleset data",
                 card.0
             ),
+            Self::UnboundParam { param } => {
+                write!(f, "the param `{}` has no argument", param.as_str())
+            }
         }
     }
 }
@@ -222,7 +228,7 @@ impl Ruleset for DeclarativeRuleset {
 
         let mut execution = Execution::new(state.clone());
         for cost in declared.costs() {
-            action_effects::pay(self, &mut execution, &bound, cost)?;
+            action_effects::pay(self, &mut execution, &bound, action.player, cost)?;
         }
         for effect in declared.effects() {
             match effect {

@@ -10,17 +10,19 @@ use super::creation::DeclarativeRuleset;
 use super::event::Event;
 use super::execution::Execution;
 use super::state::CardInstanceId;
+use crate::player::PlayerId;
 use crate::ruleset_definition::{CardValue, Cost, Effect, FieldValue, StateName, ValueRef, ZoneId};
 
-/// Pays one cost.
+/// Pays one cost on behalf of `player`, the acting Player.
 pub(super) fn pay(
     ruleset: &DeclarativeRuleset,
     execution: &mut Execution,
     bound: &BoundCards,
+    player: PlayerId,
     cost: &Cost,
 ) -> Result<(), Rejection> {
     match cost {
-        Cost::Tap { zone, count } => tap(ruleset, execution, bound, zone, count),
+        Cost::Tap { zone, count } => tap(ruleset, execution, bound, player, zone, count),
     }
 }
 
@@ -30,6 +32,7 @@ fn tap(
     ruleset: &DeclarativeRuleset,
     execution: &mut Execution,
     bound: &BoundCards,
+    player: PlayerId,
     zone: &ZoneId,
     count: &ValueRef,
 ) -> Result<(), Rejection> {
@@ -42,7 +45,6 @@ fn tap(
     };
 
     let tapped = StateName::new("tapped");
-    let player = execution.state.active_player();
     let untapped: Vec<CardInstanceId> = execution
         .cards_of(player, zone)
         .map_err(Rejection::EventRejected)?
@@ -83,6 +85,7 @@ pub(super) fn run(
     effect: &Effect,
 ) -> Result<(), Rejection> {
     match effect {
+        // End Turn is handled by the Turn cycle, in `transition`, not here.
         Effect::EndTurn => Ok(()),
         Effect::Move { card, to } => {
             let card = bound.card(card.param())?;

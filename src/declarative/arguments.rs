@@ -22,11 +22,8 @@ impl BoundCards {
             .iter()
             .find(|(name, _)| name == param)
             .map(|(_, card)| *card)
-            .ok_or_else(|| Rejection::CardDataMismatch {
-                card: self
-                    .cards
-                    .first()
-                    .map_or(CardInstanceId(0), |(_, card)| *card),
+            .ok_or_else(|| Rejection::UnboundParam {
+                param: param.clone(),
             })
     }
 }
@@ -41,8 +38,8 @@ pub(super) fn bind(
     let params = declared.params();
     if params.len() != action.arguments.len() {
         return Err(Rejection::ArgumentCountMismatch {
-            expected: params.len(),
-            found: action.arguments.len(),
+            expected: u64::try_from(params.len()).unwrap_or(u64::MAX),
+            found: u64::try_from(action.arguments.len()).unwrap_or(u64::MAX),
         });
     }
     let mut cards = Vec::with_capacity(params.len());

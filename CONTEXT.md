@@ -118,7 +118,7 @@ The component that turns file text into a Ruleset Draft and checks syntax only; 
 The location of an element in a Ruleset Definition, Card Catalog or Deck List, such as `card_types[creature].fields[cost]` or `inputs[1].cards[3]`; semantic errors address declarations by id and references (deck list elements) by position, syntax errors by position.
 
 **Zone**:
-A named place where cards are held, with a Visibility and an ordered flag. A shuffle, a draw and a move take cards only from an ordered zone, which validation enforces (ADR-0013); a destination may be unordered.
+A named place where cards are held, with a Visibility and an ordered flag. A shuffle, a draw and a move step that take cards from the Top take them only from an ordered zone, which validation enforces (ADR-0013); a destination may be unordered. A `move` effect of an action takes a named card from any zone.
 
 **Visibility**:
 Who may see a Zone's cards: hidden, owner or public.
@@ -156,7 +156,7 @@ The number of Players in a Game, as the ruleset's `parameters.players`; at least
 ## Card Catalogs and Deck Lists
 
 **Identifier**:
-A declared name (ruleset id, zone, card type, field name, instance-state name, Deck Input, card) matching `[a-z][a-z0-9_]*` and not `true`, `false` or `null`, whether or not the YAML scalar is quoted. The engine checks it; a reference that breaks it fails as a dangling reference.
+A declared name (ruleset id, zone, card type, field name, instance-state name, Deck Input, card) matching `[a-z][a-z0-9_]*` and not `true`, `false` or `null`, whether or not the YAML scalar is quoted. The engine checks it; a reference that breaks it fails as a dangling reference, except the text of a Ref, which fails as `InvalidReference` (ADR-0015).
 
 **Card Catalog**:
 The validated, typed set of Card Definitions of one ruleset id and version, in file order. It is built only by `CardCatalog::validate` against an already loaded Ruleset Definition (stage 2 of loading).
@@ -179,13 +179,16 @@ A Deck Input's optional `max_copies`: the most copies of one Card Definition an 
 ## Declarative Games
 
 **Declarative Ruleset**:
-The Ruleset that interprets a RulesetDefinition and a Card Catalog. Its GameState changes only by Event Application. Its Action is a Player, an Action Definition id and one Argument per Action Parameter, and its Rejection is one of Unknown Player, Not Active Player, Unknown Action, Action Not In Current Phase, Argument Count Mismatch, Unknown Card, Not Card Owner, Card Not In Zone, Wrong Card Type, Negative Count, Not Enough Untapped Cards, Turn Number Overflow, EventRejected or CardDataMismatch (ADR-0012, ADR-0015).
+The Ruleset that interprets a RulesetDefinition and a Card Catalog. Its GameState changes only by Event Application. Its Action is a Player, an Action Definition id and one Argument per Action Parameter, and its Rejection is one of Unknown Player, Not Active Player, Unknown Action, Action Not In Current Phase, Argument Count Mismatch, Unknown Card, Not Card Owner, Card Not In Zone, Wrong Card Type, Negative Count, Not Enough Untapped Cards, Turn Number Overflow, EventRejected, CardDataMismatch or UnboundParam (ADR-0012, ADR-0015).
 
 **EventRejected**:
 A declarative Rejection for an internal inconsistency: an Event the Ruleset generated was rejected because the GameState does not fit this Ruleset. It is never expected.
 
 **CardDataMismatch**:
-A declarative Rejection for an internal inconsistency: a card's definition is missing from the catalog, or a Ref reads a value the card does not have or of another type. It is never expected.
+A declarative Rejection for an internal inconsistency: a card's definition is missing from the catalog, or a Ref reads a value the card does not have or of another type. It is never expected, and it is only for card data.
+
+**UnboundParam**:
+A declarative Rejection for an internal inconsistency: a Ref names a parameter that no Argument was bound to. Validation guarantees every Ref names a parameter of its action, so it is never expected.
 
 **Seat**:
 A Player's 0-based position in the Player Order. `PlayerId(n)` sits at seat `n`, and Deck List `n` belongs to seat `n`.
