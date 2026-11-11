@@ -1,4 +1,4 @@
-//! Paying the costs and running the effects of an Action Definition (ADR-0015).
+//! Paying the costs and running the effects of an Action Definition (ADR-0015, ADR-0016).
 //!
 //! Everything here runs on the Execution's clone of the GameState, so an Action that fails half
 //! way changes nothing (ADR-0002). Refs were resolved to a field or an instance state when the
@@ -9,9 +9,11 @@ use super::arguments::BoundCards;
 use super::creation::DeclarativeRuleset;
 use super::event::Event;
 use super::execution::Execution;
+use super::expression;
 use super::state::CardInstanceId;
+use super::turn_cycle;
 use crate::player::PlayerId;
-use crate::ruleset_definition::{CardValue, Cost, Effect, FieldValue, StateName, ValueRef, ZoneId};
+use crate::ruleset_definition::{Cost, Effect, FieldValue, StateName, ValueRef, ZoneId};
 
 /// Pays one cost on behalf of `player`, the acting Player.
 pub(super) fn pay(
@@ -37,7 +39,8 @@ fn tap(
     count: &ValueRef,
 ) -> Result<(), Rejection> {
     let card = bound.card(count.param())?;
-    let FieldValue::Int(value) = read(ruleset, execution, card, count.value())? else {
+    let FieldValue::Int(value) = expression::read(ruleset, &execution.state, card, count.value())?
+    else {
         return Err(Rejection::CardDataMismatch { card });
     };
     let Ok(required) = u64::try_from(value) else {
@@ -78,15 +81,16 @@ fn tap(
     Ok(())
 }
 
-/// Runs one effect other than `end_turn`, which the Turn cycle owns.
+/// Runs one effect. An `if` runs the effects of the branch its condition picks, on the state the
+/// effects before it produced; `end_turn` is the Turn cycle's.
 pub(super) fn run(
+    ruleset: &DeclarativeRuleset,
     execution: &mut Execution,
     bound: &BoundCards,
     effect: &Effect,
 ) -> Result<(), Rejection> {
     match effect {
-        // End Turn is handled by the Turn cycle, in `transition`, not here.
-        Effect::EndTurn => Ok(()),
+        Effect::EndTurn => turn_cycle::end_turn(ruleset.definition(), execution),
         Effect::Move { card, to } => {
             let card = bound.card(card.param())?;
             let (Some(from), Some(instance)) =
@@ -104,40 +108,67 @@ pub(super) fn run(
         }
         Effect::SetState { card, state, value } => {
             let card = bound.card(card.param())?;
-            let current = execution
+            change_state(execution, card, state, value.clone())
+        }
+        Effect::AddState {
+            card,
+            state,
+            amount,
+        } => {
+            let card = bound.card(card.param())?;
+            let Some(FieldValue::Int(current)) = execution
                 .state
                 .card(card)
-                .and_then(|instance| instance.state_value(state));
-            if current == Some(value) {
-                return Ok(());
-            }
-            execution
-                .apply(Event::CardStateChanged {
+                .and_then(|instance| instance.state_value(state))
+            else {
+                return Err(Rejection::CardDataMismatch { card });
+            };
+            let Some(sum) = current.checked_add(*amount) else {
+                return Err(Rejection::StateOverflow {
                     card,
                     state: state.clone(),
-                    value: value.clone(),
-                })
-                .map_err(Rejection::EventRejected)
+                });
+            };
+            change_state(execution, card, state, FieldValue::Int(sum))
+        }
+        Effect::If {
+            condition,
+            then,
+            otherwise,
+        } => {
+            let branch = if expression::holds(ruleset, &execution.state, bound, condition)? {
+                then
+            } else {
+                otherwise
+            };
+            for effect in branch {
+                run(ruleset, execution, bound, effect)?;
+            }
+            Ok(())
         }
     }
 }
 
-/// The value a ref reads on `card`: a field of its definition or its instance state.
-fn read(
-    ruleset: &DeclarativeRuleset,
-    execution: &Execution,
+/// Sets the instance state `state` of `card` to `value` if it changes: an unchanged value emits no
+/// Event.
+fn change_state(
+    execution: &mut Execution,
     card: CardInstanceId,
-    value: &CardValue,
-) -> Result<FieldValue, Rejection> {
-    let mismatch = || Rejection::CardDataMismatch { card };
-    let instance = execution.state.card(card).ok_or_else(mismatch)?;
-    match value {
-        CardValue::Field(name) => ruleset
-            .catalog()
-            .card(instance.definition())
-            .and_then(|definition| definition.field(name))
-            .cloned()
-            .ok_or_else(mismatch),
-        CardValue::State(name) => instance.state_value(name).cloned().ok_or_else(mismatch),
+    state: &StateName,
+    value: FieldValue,
+) -> Result<(), Rejection> {
+    let current = execution
+        .state
+        .card(card)
+        .and_then(|instance| instance.state_value(state));
+    if current == Some(&value) {
+        return Ok(());
     }
+    execution
+        .apply(Event::CardStateChanged {
+            card,
+            state: state.clone(),
+            value,
+        })
+        .map_err(Rejection::EventRejected)
 }

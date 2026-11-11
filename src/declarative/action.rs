@@ -3,7 +3,8 @@
 //! An Action names the Player who takes it, an action the ruleset declares and one argument for
 //! each of its params. The Ruleset checks it in a fixed order that starts with whether the Game is
 //! over (see [`Rejection`]), then pays the action's costs and runs its effects against a clone of
-//! the GameState, so a rejected Action changes nothing (ADR-0002).
+//! the GameState, so a rejected Action changes nothing (ADR-0002). An effect may be an `if` that
+//! picks the effects to run from an expression (ADR-0016).
 
 use std::fmt;
 
@@ -14,10 +15,9 @@ use super::event::Event;
 use super::execution::Execution;
 use super::game_end;
 use super::state::{ApplyError, CardInstanceId, GameState};
-use super::turn_cycle;
 use crate::player::PlayerId;
 use crate::ruleset::{EventTrace, Ruleset, Transition};
-use crate::ruleset_definition::{ActionId, CardTypeId, Effect, ParamName, PhaseKind, ZoneId};
+use crate::ruleset_definition::{ActionId, CardTypeId, ParamName, PhaseKind, StateName, ZoneId};
 
 /// An Action of the declarative Ruleset: `player` takes the declared action `action`, with one
 /// argument for each of its params, in param order.
@@ -63,7 +63,13 @@ pub enum Rejection {
         card: CardInstanceId,
         owner: PlayerId,
     },
-    /// The card for `param` is not in the param's `zone` of the acting Player.
+    /// The card for `param` belongs to the acting Player, but the param takes only an Opponent's
+    /// card (`owner: opponent`).
+    NotOpponentCard {
+        param: ParamName,
+        card: CardInstanceId,
+    },
+    /// The card for `param` is not in the param's `zone` of its owner.
     CardNotInZone {
         param: ParamName,
         card: CardInstanceId,
@@ -76,6 +82,17 @@ pub enum Rejection {
         expected: CardTypeId,
         found: CardTypeId,
     },
+    /// The card for `param` is of the right owner, zone and card type, but the `where` condition of
+    /// the param does not hold for it.
+    WhereConditionNotMet {
+        param: ParamName,
+        card: CardInstanceId,
+    },
+    /// The param has several alternatives and the card fits none of them.
+    NoAlternativeMatched {
+        param: ParamName,
+        card: CardInstanceId,
+    },
     /// A cost resolved to a negative count.
     NegativeCount { value: i64 },
     /// A tap cost needs `required` untapped cards in the acting Player's `zone` and there are only
@@ -84,6 +101,12 @@ pub enum Rejection {
         zone: ZoneId,
         required: u64,
         available: u64,
+    },
+    /// Adding to the instance state `state` of `card` would go beyond what an int can hold, in
+    /// either direction.
+    StateOverflow {
+        card: CardInstanceId,
+        state: StateName,
     },
     /// Ending the Turn would take the Turn Number above its maximum.
     TurnNumberOverflow,
@@ -94,6 +117,9 @@ pub enum Rejection {
     /// ref reads a value the card does not have or of another type. An internal inconsistency that
     /// is never expected.
     CardDataMismatch { card: CardInstanceId },
+    /// An expression has a value of another type than its operator or slot needs. Validation
+    /// guarantees the types, so this is an internal inconsistency that is never expected.
+    ExpressionTypeMismatch,
     /// A ref names a param that no argument was bound to. Validation guarantees every ref names a
     /// param of its action, so this is an internal inconsistency that is never expected.
     UnboundParam { param: ParamName },
@@ -133,9 +159,15 @@ impl fmt::Display for Rejection {
                 param.as_str(),
                 owner.0
             ),
+            Self::NotOpponentCard { param, card } => write!(
+                f,
+                "the card instance {} for `{}` belongs to the acting Player, not to an opponent",
+                card.0,
+                param.as_str()
+            ),
             Self::CardNotInZone { param, card, zone } => write!(
                 f,
-                "the card instance {} for `{}` is not in the zone `{}`",
+                "the card instance {} for `{}` is not in the zone `{}` of its owner",
                 card.0,
                 param.as_str(),
                 zone.as_str()
@@ -153,6 +185,18 @@ impl fmt::Display for Rejection {
                 found.as_str(),
                 expected.as_str()
             ),
+            Self::WhereConditionNotMet { param, card } => write!(
+                f,
+                "the card instance {} for `{}` does not meet the `where` condition",
+                card.0,
+                param.as_str()
+            ),
+            Self::NoAlternativeMatched { param, card } => write!(
+                f,
+                "the card instance {} for `{}` fits none of its alternatives",
+                card.0,
+                param.as_str()
+            ),
             Self::NegativeCount { value } => {
                 write!(f, "a cost resolved to the negative count {value}")
             }
@@ -165,12 +209,22 @@ impl fmt::Display for Rejection {
                 "the cost needs {required} untapped cards in `{}`, found {available}",
                 zone.as_str()
             ),
+            Self::StateOverflow { card, state } => write!(
+                f,
+                "adding to the state `{}` of the card instance {} overflows",
+                state.as_str(),
+                card.0
+            ),
             Self::TurnNumberOverflow => write!(f, "the Turn Number cannot go any higher"),
             Self::EventRejected(error) => write!(f, "an Event was rejected: {error}"),
             Self::CardDataMismatch { card } => write!(
                 f,
                 "the card instance {} does not fit the ruleset data",
                 card.0
+            ),
+            Self::ExpressionTypeMismatch => write!(
+                f,
+                "an expression has a value of another type than its operator needs"
             ),
             Self::UnboundParam { param } => {
                 write!(f, "the param `{}` has no argument", param.as_str())
@@ -238,12 +292,9 @@ impl Ruleset for DeclarativeRuleset {
             action_effects::pay(self, &mut execution, &bound, action.player, cost)?;
         }
         for effect in declared.effects() {
-            match effect {
-                Effect::EndTurn => turn_cycle::end_turn(definition, &mut execution)?,
-                other => action_effects::run(&mut execution, &bound, other)?,
-            }
+            action_effects::run(self, &mut execution, &bound, effect)?;
         }
-        game_end::end_game_if_lost(definition, &mut execution).map_err(Rejection::EventRejected)?;
+        game_end::end_game_if_lost(self, &mut execution)?;
         Ok(Transition {
             state: execution.state,
             trace: EventTrace::new(execution.events),

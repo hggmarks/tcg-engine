@@ -9,6 +9,7 @@
 
 use std::fmt;
 
+use super::action::Rejection;
 use super::event::Event;
 use super::execution::Execution;
 use super::game_end;
@@ -69,6 +70,9 @@ pub enum GameCreationError {
     },
     /// An Event creation generated was rejected: an internal inconsistency, never expected.
     EventRejected(ApplyError),
+    /// Evaluating a win condition at the end of creation failed: the GameState or the catalog does
+    /// not fit the ruleset, an internal inconsistency that is never expected.
+    WinConditionRejected(Rejection),
 }
 
 impl fmt::Display for GameCreationError {
@@ -104,6 +108,9 @@ impl fmt::Display for GameCreationError {
                 player.0
             ),
             Self::EventRejected(error) => write!(f, "an Event was rejected: {error}"),
+            Self::WinConditionRejected(rejection) => {
+                write!(f, "a win condition could not be evaluated: {rejection}")
+            }
         }
     }
 }
@@ -187,8 +194,10 @@ impl DeclarativeRuleset {
             turn_cycle::begin_turn(definition, &mut execution, active_player, TurnNumber::FIRST)
                 .map_err(GameCreationError::EventRejected)?;
         }
-        game_end::end_game_if_lost(definition, &mut execution)
-            .map_err(GameCreationError::EventRejected)?;
+        game_end::end_game_if_lost(self, &mut execution).map_err(|rejection| match rejection {
+            Rejection::EventRejected(error) => GameCreationError::EventRejected(error),
+            other => GameCreationError::WinConditionRejected(other),
+        })?;
 
         Ok(GameCreation {
             empty,

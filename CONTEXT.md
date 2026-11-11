@@ -176,13 +176,16 @@ A Deck Input's optional `max_copies`: the most copies of one Card Definition an 
 ## Declarative Games
 
 **Declarative Ruleset**:
-The Ruleset that interprets a RulesetDefinition and a Card Catalog. Its GameState changes only by Event Application. Its Action is a Player, an Action Definition id and one Argument per Action Parameter, and its Rejection is one of Game Over (checked before every other), Unknown Player, Not Active Player, Unknown Action, Action Not In Current Phase, Argument Count Mismatch, Unknown Card, Not Card Owner, Card Not In Zone, Wrong Card Type, Negative Count, Not Enough Untapped Cards, Turn Number Overflow, EventRejected, CardDataMismatch or UnboundParam (ADR-0012, ADR-0014, ADR-0015).
+The Ruleset that interprets a RulesetDefinition and a Card Catalog. Its GameState changes only by Event Application. Its Action is a Player, an Action Definition id and one Argument per Action Parameter, and its Rejection is one of Game Over (checked before every other), Unknown Player, Not Active Player, Unknown Action, Action Not In Current Phase, Argument Count Mismatch, Unknown Card, Not Card Owner, Not Opponent Card, Card Not In Zone, Wrong Card Type, Where Condition Not Met, No Alternative Matched, Negative Count, Not Enough Untapped Cards, State Overflow, Turn Number Overflow, EventRejected, CardDataMismatch, ExpressionTypeMismatch or UnboundParam (ADR-0012, ADR-0014, ADR-0015, ADR-0016).
 
 **EventRejected**:
 A declarative Rejection for an internal inconsistency: an Event the Ruleset generated was rejected because the GameState does not fit this Ruleset. It is never expected.
 
 **CardDataMismatch**:
 A declarative Rejection for an internal inconsistency: a card's definition is missing from the catalog, or a Ref reads a value the card does not have or of another type. It is never expected, and it is only for card data.
+
+**ExpressionTypeMismatch**:
+A declarative Rejection for an internal inconsistency: an Expression evaluated to a value of another type than its operator or slot needs. Validation guarantees the types, so it is never expected.
 
 **UnboundParam**:
 A declarative Rejection for an internal inconsistency: a Ref names a parameter that no Argument was bound to. Validation guarantees every Ref names a parameter of its action, so it is never expected.
@@ -262,7 +265,7 @@ An Automatic Step that sets an instance state to a value on every card of a zone
 An Automatic Step that moves up to `count` cards, one at a time, from the Top of an ordered `from` zone onto the Top of `to`. It moves the cards there are (that is how the mana deck runs out) and emits no fact for a missing card. `position` is `top`, the Top of the source zone.
 
 **Condition**:
-What an If Step tests when it runs. The only one is First Turn.
+What an automatic If Step tests when it runs. The only one is First Turn. (The `if` of an Action Effect and the `where` of a param test an Expression instead.)
 
 **First Turn**:
 The Condition that holds when the Turn Number is 1, the Game's first Turn; the Small Ruleset uses it so that the starting Player skips the Start-phase draw on that Turn only.
@@ -274,13 +277,34 @@ An Automatic Step `if: <condition>` with a `then` list and an optional `else` li
 A declared action of the ruleset: an id, a list of Action Parameters, a list of Costs and a list of Action Effects. An action without parameters or costs (`pass_turn`) is valid.
 
 **Action Parameter**:
-A card an Action supplies: a name unique within its action, a zone and a card type. The card must be an instance of that card type in that zone of the acting Player, who is also its owner (an `owner` key arrives with [11]). Arguments bind to parameters by position.
+A card an Action supplies: a name unique within its action and one or more Param Alternatives. Written as `{ name, zone, card_type, owner?, where? }` (one alternative) or `{ name, one_of: [...] }`. Arguments bind to parameters by position; the card must fit one of the alternatives.
+
+**Param Alternative**:
+One way to fill an Action Parameter: `{ zone, card_type, owner?, where? }`. The card is an instance of that card type in that zone of its owner, who is the acting Player (`owner` absent) or an Opponent (`owner: opponent`), and the Where Condition holds. The first alternative the card fits binds it. A parameter's possible card types are those of its alternatives, in order, each once; a Ref to it must resolve on every one of them.
+
+**Where Condition**:
+The bool Expression `where` of a Param Alternative. It reads its own parameter, typed as that alternative's card type alone, and the parameters declared before it, on the GameState before the costs are paid.
+
+**Opponent**:
+Any Player other than the acting Player. With two Players it is the other one; the engine does not assume two.
+
+**Expression**:
+A literal scalar, a Value Ref, or one operator over Expressions: `eq: [a, b]` (same type), `gte: [a, b]` and `lte: [a, b]` (ints), `and: [e, ...]` (bools; `and: []` holds) and `is_card_type: [<card ref>, <card type id>]`. The types are the Field Types and the operators give bool; a Card Ref is not a value. Checked at load, depth-first and left to right.
+
+**Subject**:
+The card type an expression Win Condition is about: the first name of its Refs (`leader` in `leader.current_life`). The expression must read exactly one.
+
+**Add State**:
+The Action Effect `add_state: { card, state, amount }`. It adds the integer literal `amount` to an int instance state with checked arithmetic: an overflow in either direction is a State Overflow Rejection, and a sum equal to the current value emits no Event.
+
+**If Effect**:
+The Action Effect `if: <expression>`, `then: [effects]` and an optional `else: [effects]`, siblings of one list element, run by the Expression at the moment the effect runs. When the condition is exactly `is_card_type: [<param>, T]` it narrows the parameter's possible card types: to T in `then`, to the others in `else`.
 
 **Argument**:
 The value an Action supplies for one Action Parameter; today only a Card Instance Id.
 
 **Ref**:
-A reference inside an Action Definition to a parameter: `<param>` is a Card Ref (the card) and `<param>.<name>` is a Value Ref (a field of the card's definition or one of its instance states). The name is resolved at load against the parameter's card type to a field or a state, and a name that is both is an `AmbiguousReference`. A Ref is also type-checked at load against the slot that holds it.
+A reference inside an Action Definition to a parameter: `<param>` is a Card Ref (the card) and `<param>.<name>` is a Value Ref (a field of the card's definition or one of its instance states). The name is resolved at load against every possible card type of the parameter to a field or a state, of one kind and one type on all of them (`InconsistentReference` otherwise), and a name that is both is an `AmbiguousReference`. A Ref is also type-checked at load against the slot that holds it. In an expression Win Condition the first name is a card type id, the Subject.
 
 **Cost**:
 What an action pays before its effects run. The only Cost is Tap. Paying is atomic: the whole transition runs on a clone of the GameState (ADR-0002).
@@ -289,7 +313,7 @@ What an action pays before its effects run. The only Cost is Tap. Paying is atom
 The Cost `tap: { zone, count }`. It needs `count` (a Value Ref to an int, so `tap.count` takes a Ref and no literal yet) untapped cards in that zone of the acting Player and taps the first `count` of them in zone list order, bottom first, even in an unordered zone. An untapped card is one whose card type declares `tapped` and whose value is false. A count of 0 taps nothing.
 
 **Action Effect**:
-What an action does once its costs are paid, built from engine primitives: End Turn, `move: { card, to }` (the card goes from the zone it is in onto the Top of `to`, a zone of its owner) and `set_state: { card, state, value }` (an Event only if the value changes). Distinct from a **Card Effect**: an ability written on a card (`effects` on a card type or card), which is out of scope until a later ticket.
+What an action does once its costs are paid, built from engine primitives: End Turn, `move: { card, to }` (the card goes from the zone it is in onto the Top of `to`, a zone of its owner), `set_state: { card, state, value }` (an Event only if the value changes), Add State and If Effect. Distinct from a **Card Effect**: an ability written on a card (`effects` on a card type or card), which is out of scope until a later ticket.
 
 **Card Effect**:
 An ability carried by a card definition. It is not an Action Effect and no primitive for it exists yet.
@@ -325,13 +349,25 @@ A Rejection: the Action has a different number of Arguments than the action has 
 A Rejection: an Argument names a Card Instance Id that does not exist.
 
 **Not Card Owner**:
-A Rejection: the card of an Argument belongs to another Player than the acting one.
+A Rejection: the card of an Argument belongs to another Player than the acting one, for a parameter that takes the acting Player's cards.
+
+**Not Opponent Card**:
+A Rejection: the card of an Argument belongs to the acting Player, for a parameter with `owner: opponent`.
 
 **Card Not In Zone**:
-A Rejection: the card of an Argument is not in the parameter's zone of the acting Player.
+A Rejection: the card of an Argument is not in the parameter's zone of its owner.
 
 **Wrong Card Type**:
 A Rejection: the card of an Argument is not of the parameter's card type.
+
+**Where Condition Not Met**:
+A Rejection: the card of an Argument has the owner, zone and card type of a parameter with one alternative, but its Where Condition does not hold.
+
+**No Alternative Matched**:
+A Rejection: the parameter has several alternatives and the card of the Argument fits none. For one alternative the Rejection is the first check that fails, in the order owner, zone, card type, where.
+
+**State Overflow**:
+A Rejection: an Add State would take an int instance state beyond what an int can hold, in either direction. The GameState is unchanged.
 
 **Negative Count**:
 A Rejection: a Cost's count resolved to a negative value.
@@ -342,7 +378,7 @@ A Rejection: a Tap Cost needs more untapped cards in the zone than the acting Pl
 ## Ending the Game
 
 **Win Condition**:
-A declared rule `{ id, when, loser }` of the ruleset's `win_conditions`. When its `when` holds for a Player, that Player is a loser of the Game, and the id is the reason. The only `when` supported is `draw_from_empty: <zone>`, the only `loser` is `owner`, and a condition written as an expression is rejected by validation as unsupported until [11]. Absent means the Game never ends.
+A declared rule `{ id, when, loser }` of the ruleset's `win_conditions`. When its `when` holds for a Player, that Player is a loser of the Game, and the id is the reason. A `when` is `draw_from_empty: <zone>` (holds for a Player when a draw of theirs in the transition found the zone empty) or an Expression about one Subject (holds for a Player when some card instance of the Subject owned by them, in any zone, in `state.cards()` order, makes it true in the GameState the transition produced). The only `loser` is `owner`: the Player the condition holds for, for an expression the owner of that card instance. Absent means the Game never ends.
 
 **Loss**:
 A Player who lost and the Win Condition id that made them lose. A Player has at most one Loss: for each Player in seat order, the first Win Condition in declaration order that holds for them is their reason.

@@ -1,14 +1,19 @@
-//! Ending the Game: evaluating the win conditions (ADR-0014).
+//! Ending the Game: evaluating the win conditions (ADR-0014, ADR-0016).
 //!
 //! The win conditions are evaluated once at the end of every accepted transition and of Game
-//! creation, over the Events of that transition only, never one Event at a time: so a loss that
-//! happens together with another is not turned into a win for whoever lost second.
+//! creation, never one Event at a time: so a loss that happens together with another is not turned
+//! into a win for whoever lost second. `draw_from_empty` reads the Events of that transition; an
+//! expression reads the GameState the transition produced.
 
+use super::action::Rejection;
+use super::arguments::BoundCards;
+use super::creation::DeclarativeRuleset;
 use super::event::Event;
 use super::execution::Execution;
-use super::state::{ApplyError, Loss};
+use super::expression;
+use super::state::Loss;
 use crate::player::PlayerId;
-use crate::ruleset_definition::{Loser, RulesetDefinition, WinCondition, WinConditionWhen};
+use crate::ruleset_definition::{Loser, ParamName, WinCondition, WinConditionWhen};
 
 /// Ends the Game if some Player lost in the transition `execution` has run, by applying one
 /// `GameEnded` Event.
@@ -17,41 +22,69 @@ use crate::ruleset_definition::{Loser, RulesetDefinition, WinCondition, WinCondi
 /// that holds for them: a Player loses once. If any Player lost, the Game ends and the others win;
 /// if all of them lost, it is a drawn game.
 pub(super) fn end_game_if_lost(
-    definition: &RulesetDefinition,
+    ruleset: &DeclarativeRuleset,
     execution: &mut Execution,
-) -> Result<(), ApplyError> {
-    let losses: Vec<Loss> = execution
-        .state
-        .player_order()
-        .players()
-        .iter()
-        .filter_map(|&player| {
-            definition
-                .win_conditions()
-                .iter()
-                .find(|condition| loses(condition, player, &execution.events))
-                .map(|condition| Loss {
+) -> Result<(), Rejection> {
+    let mut losses: Vec<Loss> = Vec::new();
+    for &player in execution.state.player_order().players() {
+        for condition in ruleset.definition().win_conditions() {
+            if loses(ruleset, execution, condition, player)? {
+                losses.push(Loss {
                     player,
                     reason: condition.id().clone(),
-                })
-        })
-        .collect();
+                });
+                break;
+            }
+        }
+    }
     if losses.is_empty() {
         return Ok(());
     }
-    execution.apply(Event::GameEnded { losses })
+    execution
+        .apply(Event::GameEnded { losses })
+        .map_err(Rejection::EventRejected)
 }
 
-/// Whether `condition` makes `player` lose, given the Events of the transition.
-fn loses(condition: &WinCondition, player: PlayerId, events: &[Event]) -> bool {
+/// Whether `condition` makes `player` lose, given the Events of the transition and the GameState
+/// it produced.
+fn loses(
+    ruleset: &DeclarativeRuleset,
+    execution: &Execution,
+    condition: &WinCondition,
+    player: PlayerId,
+) -> Result<bool, Rejection> {
     match (condition.when(), condition.loser()) {
         // The Owner of a `draw_from_empty` is the Player who drew.
-        (WinConditionWhen::DrawFromEmpty(zone), Loser::Owner) => events.iter().any(|event| {
-            matches!(
-                event,
-                Event::DrawFromEmptyZone { player: drew, zone: from }
-                    if *drew == player && from == zone
-            )
-        }),
+        (WinConditionWhen::DrawFromEmpty(zone), Loser::Owner) => {
+            Ok(execution.events.iter().any(|event| {
+                matches!(
+                    event,
+                    Event::DrawFromEmptyZone { player: drew, zone: from }
+                        if *drew == player && from == zone
+                )
+            }))
+        }
+        // The Owner of an expression is the owner of a card instance of the Subject, in any zone,
+        // that makes it true.
+        (WinConditionWhen::Expression { subject, condition }, Loser::Owner) => {
+            let name = ParamName::new(subject.as_str());
+            for instance in execution.state.cards() {
+                if instance.owner() != player {
+                    continue;
+                }
+                let is_subject = ruleset
+                    .catalog()
+                    .card(instance.definition())
+                    .is_some_and(|definition| definition.card_type() == subject);
+                if !is_subject {
+                    continue;
+                }
+                let bound = BoundCards::of(name.clone(), instance.id());
+                if expression::holds(ruleset, &execution.state, &bound, condition)? {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
+        }
     }
 }

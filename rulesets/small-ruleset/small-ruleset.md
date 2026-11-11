@@ -88,12 +88,12 @@ Passing the turn ends the turn: End has no steps of its own. The turn passes to 
 
 ## Combat
  
-The attacker chooses a target: a **tapped creature** of the opponent, or the **opponent's Leader**.
+The attacker chooses a target: a **tapped creature** of an opponent, or an **opponent's Leader**. An opponent is any player other than the attacking player (with two players, simply the other one). The attacker becomes tapped as soon as the attack is accepted, even when nothing else happens.
  
-- **Against a creature**: the attacker never dies. The target creature dies only if the attacker's `power` is greater than or equal to the target's `power`. A creature that dies goes to the trash.
-- **Against a Leader**: if the attacker's `power` is greater than or equal to the Leader's `power`, the Leader's owner loses 1 life. Otherwise, nothing happens, a leader can always be attacked, ``tapped`` or not.
+- **Against a creature**: the attacker never dies. The target creature dies only if the attacker's `power` is greater than or equal to the target's `power`. A creature that dies goes to the top of its owner's trash.
+- **Against a Leader**: if the attacker's `power` is greater than or equal to the Leader's `power`, the Leader's owner loses 1 life. Otherwise, nothing happens, a leader can always be attacked, ``tapped`` or not, even while its owner has untapped creatures.
 ## Win Conditions
-- A player whose Leader has `current_life` ≤ 0 loses. The other player wins.
+- A player whose Leader has `current_life` ≤ 0 loses. The other player wins. This is checked for each Leader, so a Leader created with 0 life or below makes its owner lose at the end of game creation, and if both players have such a Leader the game is drawn.
 - A player who needs to draw from an empty deck loses. The other player wins.
 - The win conditions are checked after every action and at the end of game creation (setup and the automatic phases of the first turn), once per transition and after everything the transition runs, including the automatic phases it triggers. For example, if passing the turn begins a turn whose Start phase finds the deck empty, that turn's phases still begin, and then the game ends.
 - The game ends at once: no action is accepted afterwards.
@@ -172,8 +172,9 @@ The attacker chooses a target: a **tapped creature** of the opponent, or the **o
 |---|---|
 | **Combat** | The resolution that starts when a creature attacks. |
 | **Attacker** | The creature that is attacking. It must be neither tapped nor recently played. |
-| **Target** | What the attacker is attacking: a tapped opposing creature or the opposing Leader. |
-| **Dies** | A creature leaves the field and goes to its owner's trash. |
+| **Opponent** | Any player other than the attacking player. |
+| **Target** | What the attacker is attacking: a tapped creature of an opponent or an opponent's Leader. |
+| **Dies** | A creature leaves the field and goes to the top of its owner's trash. |
 | **Leader damage** | When the attacker's `power` is ≥ the Leader's `power`, the Leader's `current_life` is reduced by 1. |
  
 ## Decks

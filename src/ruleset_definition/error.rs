@@ -63,13 +63,13 @@ pub enum DefinitionErrorKind {
     /// (`actions[play_creature].params[card].zone`); the zone of a cost or of a `move`; the cost
     /// itself for a `tap` when no card type declares `tapped`; the slot of a ref to a param the
     /// action lacks or to a name its card type lacks; the `state` of an action's `set_state` when
-    /// the card type of its card lacks it.
+    /// the card type of its card lacks it, or a possible card type of it when the param has
+    /// several; a ref to a name that is not a param, or in a win condition not a card type
+    /// (`win_conditions[leader_dead].when.lte[0]`); the `owner`, `where` and `one_of` keys of a
+    /// param are addressed at the param or at `one_of[i]`.
     DanglingReference { target: ReferenceTarget, id: String },
     /// `card_types[c].fields[f].type` or `card_types[c].instance_state[s].type`.
     UnsupportedFieldType { field_type: FieldTypeDraft },
-    /// `win_conditions[leader_dead].when`: a condition written as an expression, named by its
-    /// operator (`lte`), which ticket [11] adds.
-    UnsupportedWinCondition { operator: String },
     /// `win_conditions[deck_out].loser`: only `owner` exists.
     UnknownLoser { loser: String },
     /// `setup[0].shuffle.player` or `turn.phases[start].automatic[0].untap.player`: only `each` and
@@ -115,6 +115,33 @@ pub enum DefinitionErrorKind {
     AmbiguousReference { name: String },
     /// The slot of a ref: it evaluates to `found` but the slot needs `expected`.
     ReferenceTypeMismatch { expected: RefType, found: RefType },
+    /// `actions[attack].params[target].owner` or `...one_of[1].owner`: only `opponent` exists.
+    UnknownOwner { owner: String },
+    /// `actions[attack].params[target].one_of`: the list is empty, and a param needs at least one
+    /// alternative.
+    NoAlternatives,
+    /// The offending expression, such as `actions[attack].params[attacker].where.and[0]`: it has
+    /// type `found` but its operator or its slot needs `expected`. For `eq`, `expected` is the
+    /// type of the first operand and the path is the second.
+    ExpressionTypeMismatch {
+        expected: FieldType,
+        found: FieldType,
+    },
+    /// The operand of an expression, such as `...where.eq[0]`: a Card Ref (`{ ref: <param> }`)
+    /// names a card and is not a value; only `is_card_type` takes one.
+    CardRefNotAValue { reference: String },
+    /// The slot of a ref to a param that several card types may fill: the name is a field or an
+    /// instance state of a different kind or type on `other` than on `card_type`, the first card
+    /// type the param may take.
+    InconsistentReference {
+        name: String,
+        card_type: String,
+        other: String,
+    },
+    /// `win_conditions[leader_dead].when`: an expression win condition reads the card type it is
+    /// about (the Subject) through its refs, and exactly one; `found` is how many different card
+    /// types its refs name.
+    InvalidSubjectCount { found: usize },
 }
 
 impl fmt::Display for DefinitionErrorKind {
@@ -198,13 +225,32 @@ impl fmt::Display for DefinitionErrorKind {
             Self::ReferenceTypeMismatch { expected, found } => {
                 write!(f, "the ref is {found:?} but the slot needs {expected:?}")
             }
+            Self::UnknownOwner { owner } => {
+                write!(f, "`{owner}` is not an owner; the only one is `opponent`")
+            }
+            Self::NoAlternatives => write!(f, "a param needs at least one alternative"),
+            Self::ExpressionTypeMismatch { expected, found } => {
+                write!(f, "the expression is {found:?} but {expected:?} is needed")
+            }
+            Self::CardRefNotAValue { reference } => write!(
+                f,
+                "`{reference}` is a card, not a value: only `is_card_type` takes a card"
+            ),
+            Self::InconsistentReference {
+                name,
+                card_type,
+                other,
+            } => write!(
+                f,
+                "`{name}` is not the same on `{card_type}` and `{other}`: a ref to a param that takes several card types needs one kind and one type"
+            ),
+            Self::InvalidSubjectCount { found } => write!(
+                f,
+                "an expression win condition must read exactly one card type, found {found}"
+            ),
             Self::UnsupportedFieldType { field_type } => {
                 write!(f, "the field type {field_type:?} is not supported yet")
             }
-            Self::UnsupportedWinCondition { operator } => write!(
-                f,
-                "the win condition operator `{operator}` is not supported yet; only `draw_from_empty` is"
-            ),
             Self::UnknownLoser { loser } => {
                 write!(f, "`{loser}` is not a loser; the only one is `owner`")
             }

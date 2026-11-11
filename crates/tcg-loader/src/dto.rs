@@ -7,13 +7,14 @@
 use std::fmt;
 
 use crate::scalar::{self, ScalarDto};
-use serde::de::{self, Deserializer, IgnoredAny, MapAccess, Visitor};
+use serde::de::{self, Deserializer, IgnoredAny, MapAccess, SeqAccess, Visitor};
 use serde::Deserialize;
 use tcg_engine::ruleset_definition::{
     ActionDraft, AutomaticStepDraft, CardTypeDraft, ConditionDraft, CostDraft, DeckInputDraft,
-    EffectDraft, FieldDraft, FieldTypeDraft, FieldValue, InitializerDraft, InstanceStateDraft,
-    MetaDraft, ParamDraft, ParametersDraft, PhaseDraft, RefDraft, RulesetDraft, SetupStepDraft,
-    TurnDraft, Visibility, WinConditionDraft, WinConditionWhenDraft, ZoneDraft,
+    EffectDraft, ExpressionDraft, FieldDraft, FieldTypeDraft, FieldValue, InitializerDraft,
+    InstanceStateDraft, MetaDraft, ParamAlternativeDraft, ParamCardsDraft, ParamDraft,
+    ParametersDraft, PhaseDraft, RefDraft, RulesetDraft, SetupStepDraft, TurnDraft, Visibility,
+    WinConditionDraft, WinConditionWhenDraft, ZoneDraft,
 };
 
 #[derive(Deserialize)]
@@ -52,18 +53,248 @@ struct WinConditionDto {
 }
 
 /// The `when` of a win condition: a single-key map. `draw_from_empty: <zone>` is the one condition
-/// the engine supports; the expression operators the Small Ruleset uses are read and ignored, so
-/// the engine can reject them by name (ticket [11] gives them meaning). Any other key is an unknown
-/// key of the map.
-#[derive(Deserialize)]
-#[serde(rename_all = "snake_case")]
+/// that is not an expression; any other key is the operator of an expression, and an unknown
+/// operator is an unknown key of the map.
 enum WinConditionWhenDto {
     DrawFromEmpty(String),
-    Eq(IgnoredAny),
-    Lte(IgnoredAny),
-    Gte(IgnoredAny),
-    And(IgnoredAny),
-    IsCardType(IgnoredAny),
+    Expression(ExpressionDto),
+}
+
+impl<'de> Deserialize<'de> for WinConditionWhenDto {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct WhenVisitor;
+
+        impl<'de> Visitor<'de> for WhenVisitor {
+            type Value = WinConditionWhenDto;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("`draw_from_empty: <zone>` or an expression")
+            }
+
+            fn visit_map<A: MapAccess<'de>>(
+                self,
+                mut map: A,
+            ) -> Result<WinConditionWhenDto, A::Error> {
+                let Some(key) = map.next_key::<String>()? else {
+                    return Err(de::Error::custom("a `when` names one condition"));
+                };
+                if key == "draw_from_empty" {
+                    let zone = map.next_value()?;
+                    only_one_key(&mut map, "a `when` names one condition")?;
+                    return Ok(WinConditionWhenDto::DrawFromEmpty(zone));
+                }
+                read_operator(&key, &mut map).map(WinConditionWhenDto::Expression)
+            }
+
+            // A scalar is an expression too: validation rejects what is not a bool.
+            fn visit_bool<E: de::Error>(self, value: bool) -> Result<WinConditionWhenDto, E> {
+                Ok(literal_when(scalar::from_bool(value)))
+            }
+
+            fn visit_i64<E: de::Error>(self, value: i64) -> Result<WinConditionWhenDto, E> {
+                Ok(literal_when(scalar::from_i64(value)))
+            }
+
+            fn visit_u64<E: de::Error>(self, value: u64) -> Result<WinConditionWhenDto, E> {
+                scalar::from_u64(value).map(literal_when)
+            }
+
+            fn visit_str<E: de::Error>(self, value: &str) -> Result<WinConditionWhenDto, E> {
+                Ok(literal_when(scalar::from_str(value)))
+            }
+        }
+
+        deserializer.deserialize_any(WhenVisitor)
+    }
+}
+
+fn literal_when(value: FieldValue) -> WinConditionWhenDto {
+    WinConditionWhenDto::Expression(ExpressionDto::Literal(value))
+}
+
+/// Fails if the map has another key: a single-key map names one operator.
+fn only_one_key<'de, A: MapAccess<'de>>(
+    map: &mut A,
+    message: &'static str,
+) -> Result<(), A::Error> {
+    if map.next_key::<IgnoredAny>()?.is_some() {
+        return Err(de::Error::custom(message));
+    }
+    Ok(())
+}
+
+/// An expression: a literal scalar, `{ ref: <text> }`, or a single-key map with an operator
+/// (`eq`, `gte`, `lte` over two expressions, `and` over a list, `is_card_type` over a card ref and
+/// a card type id). The operands of `eq`, `gte`, `lte` and `is_card_type` are exactly two. An
+/// unknown operator is an unknown key of the map. No `untagged`: a visitor reads the shape.
+enum ExpressionDto {
+    Literal(FieldValue),
+    Ref(String),
+    Eq(Box<ExpressionDto>, Box<ExpressionDto>),
+    Gte(Box<ExpressionDto>, Box<ExpressionDto>),
+    Lte(Box<ExpressionDto>, Box<ExpressionDto>),
+    And(Vec<ExpressionDto>),
+    IsCardType(String, String),
+}
+
+/// `ref` and the operators, for the error of an unknown one.
+const EXPRESSION_KEYS: &[&str] = &["ref", "eq", "gte", "lte", "and", "is_card_type"];
+
+/// Reads the value of the operator `key`, whose key was just read from `map`, and checks that it
+/// was the only key.
+fn read_operator<'de, A: MapAccess<'de>>(
+    key: &str,
+    map: &mut A,
+) -> Result<ExpressionDto, A::Error> {
+    let expression = match key {
+        "ref" => ExpressionDto::Ref(map.next_value()?),
+        "eq" => {
+            let Pair(left, right) = map.next_value()?;
+            ExpressionDto::Eq(Box::new(left), Box::new(right))
+        }
+        "gte" => {
+            let Pair(left, right) = map.next_value()?;
+            ExpressionDto::Gte(Box::new(left), Box::new(right))
+        }
+        "lte" => {
+            let Pair(left, right) = map.next_value()?;
+            ExpressionDto::Lte(Box::new(left), Box::new(right))
+        }
+        "and" => ExpressionDto::And(map.next_value()?),
+        "is_card_type" => {
+            let CardTypeTest(card, card_type) = map.next_value()?;
+            ExpressionDto::IsCardType(card, card_type)
+        }
+        other => return Err(de::Error::unknown_variant(other, EXPRESSION_KEYS)),
+    };
+    only_one_key(map, "an expression names one operator")?;
+    Ok(expression)
+}
+
+impl<'de> Deserialize<'de> for ExpressionDto {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct ExpressionVisitor;
+
+        impl<'de> Visitor<'de> for ExpressionVisitor {
+            type Value = ExpressionDto;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("an expression: a bool, an integer, a text or a map with an operator")
+            }
+
+            fn visit_bool<E: de::Error>(self, value: bool) -> Result<ExpressionDto, E> {
+                Ok(ExpressionDto::Literal(scalar::from_bool(value)))
+            }
+
+            fn visit_i64<E: de::Error>(self, value: i64) -> Result<ExpressionDto, E> {
+                Ok(ExpressionDto::Literal(scalar::from_i64(value)))
+            }
+
+            fn visit_u64<E: de::Error>(self, value: u64) -> Result<ExpressionDto, E> {
+                scalar::from_u64(value).map(ExpressionDto::Literal)
+            }
+
+            fn visit_str<E: de::Error>(self, value: &str) -> Result<ExpressionDto, E> {
+                Ok(ExpressionDto::Literal(scalar::from_str(value)))
+            }
+
+            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<ExpressionDto, A::Error> {
+                let Some(key) = map.next_key::<String>()? else {
+                    return Err(de::Error::custom("an expression names one operator"));
+                };
+                read_operator(&key, &mut map)
+            }
+        }
+
+        deserializer.deserialize_any(ExpressionVisitor)
+    }
+}
+
+/// The two operands of `eq`, `gte` and `lte`: a list of exactly two expressions.
+struct Pair(ExpressionDto, ExpressionDto);
+
+impl<'de> Deserialize<'de> for Pair {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct PairVisitor;
+
+        impl<'de> Visitor<'de> for PairVisitor {
+            type Value = Pair;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("a list of exactly two operands")
+            }
+
+            fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Pair, A::Error> {
+                let left = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(0, &self))?;
+                let right = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(1, &self))?;
+                if seq.next_element::<IgnoredAny>()?.is_some() {
+                    return Err(de::Error::invalid_length(3, &self));
+                }
+                Ok(Pair(left, right))
+            }
+        }
+
+        deserializer.deserialize_seq(PairVisitor)
+    }
+}
+
+/// The operands of `is_card_type`: a list of exactly a card ref and a card type id.
+struct CardTypeTest(String, String);
+
+impl<'de> Deserialize<'de> for CardTypeTest {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct TestVisitor;
+
+        impl<'de> Visitor<'de> for TestVisitor {
+            type Value = CardTypeTest;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("a list of a card ref and a card type id")
+            }
+
+            fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<CardTypeTest, A::Error> {
+                let card: RefDto = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(0, &self))?;
+                let card_type = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(1, &self))?;
+                if seq.next_element::<IgnoredAny>()?.is_some() {
+                    return Err(de::Error::invalid_length(3, &self));
+                }
+                Ok(CardTypeTest(card.reference, card_type))
+            }
+        }
+
+        deserializer.deserialize_seq(TestVisitor)
+    }
+}
+
+impl ExpressionDto {
+    fn into_draft(self) -> ExpressionDraft {
+        let boxed = |expression: Box<ExpressionDto>| Box::new(expression.into_draft());
+        match self {
+            Self::Literal(value) => ExpressionDraft::Literal(value),
+            Self::Ref(reference) => ExpressionDraft::Ref(RefDraft(reference)),
+            Self::Eq(left, right) => ExpressionDraft::Eq(boxed(left), boxed(right)),
+            Self::Gte(left, right) => ExpressionDraft::Gte(boxed(left), boxed(right)),
+            Self::Lte(left, right) => ExpressionDraft::Lte(boxed(left), boxed(right)),
+            Self::And(operands) => ExpressionDraft::And(
+                operands
+                    .into_iter()
+                    .map(ExpressionDto::into_draft)
+                    .collect(),
+            ),
+            Self::IsCardType(card, card_type) => ExpressionDraft::IsCardType {
+                card: RefDraft(card),
+                card_type,
+            },
+        }
+    }
 }
 
 /// One Setup Step: a single-key map `{ <primitive>: { ... } }`. An unknown primitive is an unknown
@@ -108,14 +339,80 @@ struct ActionDto {
     effects: Vec<EffectDto>,
 }
 
-/// A param: `{ name, zone, card_type }`. `where`, `owner` and `one_of` are unknown keys until
-/// ticket [11].
+/// A param: the simple form `{ name, zone, card_type, owner?, where? }` or `{ name, one_of: [...] }`
+/// with alternatives `{ zone, card_type, owner?, where? }`. The two forms cannot be mixed and one
+/// of them is needed. The keys are read into `RawParamDto` and the combination is checked when it
+/// becomes a `ParamDto`, so a wrong one is a syntax error at the param.
+struct ParamDto(ParamDraft);
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct ParamDto {
+struct RawParamDto {
     name: String,
+    #[serde(default, deserialize_with = "some")]
+    zone: Option<String>,
+    #[serde(default, deserialize_with = "some")]
+    card_type: Option<String>,
+    #[serde(default, deserialize_with = "some")]
+    owner: Option<String>,
+    #[serde(default, rename = "where", deserialize_with = "some")]
+    condition: Option<ExpressionDto>,
+    #[serde(default, deserialize_with = "some")]
+    one_of: Option<Vec<AlternativeDto>>,
+}
+
+/// An alternative of a `one_of`: `{ zone, card_type, owner?, where? }`.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AlternativeDto {
     zone: String,
     card_type: String,
+    #[serde(default, deserialize_with = "some")]
+    owner: Option<String>,
+    #[serde(default, rename = "where", deserialize_with = "some")]
+    condition: Option<ExpressionDto>,
+}
+
+impl AlternativeDto {
+    fn into_draft(self) -> ParamAlternativeDraft {
+        ParamAlternativeDraft {
+            zone: self.zone,
+            card_type: self.card_type,
+            owner: self.owner,
+            condition: self.condition.map(ExpressionDto::into_draft),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ParamDto {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let raw = RawParamDto::deserialize(deserializer)?;
+        let cards = match (raw.one_of, raw.zone, raw.card_type) {
+            (Some(listed), None, None) if raw.owner.is_none() && raw.condition.is_none() => {
+                ParamCardsDraft::OneOf(listed.into_iter().map(AlternativeDto::into_draft).collect())
+            }
+            (Some(_), _, _) => {
+                return Err(de::Error::custom(
+                    "a param with `one_of` takes no `zone`, `card_type`, `owner` or `where`",
+                ))
+            }
+            (None, Some(zone), Some(card_type)) => ParamCardsDraft::Single(ParamAlternativeDraft {
+                zone,
+                card_type,
+                owner: raw.owner,
+                condition: raw.condition.map(ExpressionDto::into_draft),
+            }),
+            (None, _, _) => {
+                return Err(de::Error::custom(
+                    "a param needs `zone` and `card_type`, or `one_of`",
+                ))
+            }
+        };
+        Ok(ParamDto(ParamDraft {
+            name: raw.name,
+            cards,
+        }))
+    }
 }
 
 /// `{ ref: <param> }` or `{ ref: <param>.<name> }`. The text is kept as is: the engine parses it.
@@ -140,13 +437,19 @@ struct TapDto {
     count: RefDto,
 }
 
-/// One effect of an action: a single-key map `{ <primitive>: { ... } }`.
-#[derive(Deserialize)]
-#[serde(rename_all = "snake_case")]
+/// One effect of an action: either a single-key map `{ <primitive>: { ... } }`, or the sibling-key
+/// form `{ if: <expression>, then: [...], else: [...] }` where `then` is required and `else` is
+/// optional, like an `if` step.
 enum EffectDto {
-    EndTurn(EmptyDto),
+    EndTurn,
     Move(MoveEffectDto),
     SetState(SetStateEffectDto),
+    AddState(AddStateEffectDto),
+    If {
+        condition: ExpressionDto,
+        then: Vec<EffectDto>,
+        otherwise: Vec<EffectDto>,
+    },
 }
 
 #[derive(Deserialize)]
@@ -162,6 +465,105 @@ struct SetStateEffectDto {
     card: RefDto,
     state: String,
     value: ScalarDto,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AddStateEffectDto {
+    card: RefDto,
+    state: String,
+    #[serde(deserialize_with = "scalar::strict_i64")]
+    amount: i64,
+}
+
+/// The keys an effect may have, for the error of an unknown one.
+const EFFECT_KEYS: &[&str] = &[
+    "end_turn",
+    "move",
+    "set_state",
+    "add_state",
+    "if",
+    "then",
+    "else",
+];
+
+impl<'de> Deserialize<'de> for EffectDto {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct EffectVisitor;
+
+        impl<'de> Visitor<'de> for EffectVisitor {
+            type Value = EffectDto;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("an effect: one primitive, or `if` with `then` and optionally `else`")
+            }
+
+            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<EffectDto, A::Error> {
+                let mut primitive: Option<EffectDto> = None;
+                let mut condition: Option<ExpressionDto> = None;
+                let mut then: Option<Vec<EffectDto>> = None;
+                let mut otherwise: Option<Vec<EffectDto>> = None;
+
+                // An unknown key is an unknown variant at the list element, like an unknown cost
+                // or step primitive.
+                while let Some(key) = map.next_key::<String>()? {
+                    let found = match key.as_str() {
+                        "end_turn" => {
+                            let EmptyDto {} = map.next_value()?;
+                            Some(EffectDto::EndTurn)
+                        }
+                        "move" => Some(EffectDto::Move(map.next_value()?)),
+                        "set_state" => Some(EffectDto::SetState(map.next_value()?)),
+                        "add_state" => Some(EffectDto::AddState(map.next_value()?)),
+                        "if" => {
+                            condition = Some(map.next_value()?);
+                            None
+                        }
+                        "then" => {
+                            then = Some(map.next_value()?);
+                            None
+                        }
+                        "else" => {
+                            otherwise = Some(map.next_value()?);
+                            None
+                        }
+                        other => return Err(de::Error::unknown_variant(other, EFFECT_KEYS)),
+                    };
+                    if let Some(found) = found {
+                        if primitive.replace(found).is_some() {
+                            return Err(de::Error::custom("an effect names only one primitive"));
+                        }
+                    }
+                }
+
+                match (primitive, condition, then, otherwise) {
+                    (Some(primitive), None, None, None) => Ok(primitive),
+                    (None, Some(condition), Some(then), otherwise) => Ok(EffectDto::If {
+                        condition,
+                        then,
+                        otherwise: otherwise.unwrap_or_default(),
+                    }),
+                    (None, Some(_), None, _) => {
+                        Err(de::Error::custom("an `if` effect needs a `then` list"))
+                    }
+                    (Some(_), Some(_), _, _) => Err(de::Error::custom(
+                        "an `if` effect cannot also name a primitive",
+                    )),
+                    (None, None, Some(_), _) | (None, None, None, Some(_)) => Err(
+                        de::Error::custom("`then` and `else` belong to an `if` effect"),
+                    ),
+                    (Some(_), None, _, _) => Err(de::Error::custom(
+                        "`then` and `else` belong to an `if` effect",
+                    )),
+                    (None, None, None, None) => {
+                        Err(de::Error::custom("an effect names a primitive or an `if`"))
+                    }
+                }
+            }
+        }
+
+        deserializer.deserialize_map(EffectVisitor)
+    }
 }
 
 #[derive(Deserialize)]
@@ -491,20 +893,15 @@ impl RulesetDto {
 
 impl WinConditionDto {
     fn into_draft(self) -> WinConditionDraft {
-        let expression = |operator: &str| WinConditionWhenDraft::Expression {
-            operator: operator.to_string(),
-        };
         WinConditionDraft {
             id: self.id,
             when: match self.when {
                 WinConditionWhenDto::DrawFromEmpty(zone) => {
                     WinConditionWhenDraft::DrawFromEmpty { zone }
                 }
-                WinConditionWhenDto::Eq(_) => expression("eq"),
-                WinConditionWhenDto::Lte(_) => expression("lte"),
-                WinConditionWhenDto::Gte(_) => expression("gte"),
-                WinConditionWhenDto::And(_) => expression("and"),
-                WinConditionWhenDto::IsCardType(_) => expression("is_card_type"),
+                WinConditionWhenDto::Expression(expression) => {
+                    WinConditionWhenDraft::Expression(expression.into_draft())
+                }
             },
             loser: self.loser,
         }
@@ -515,15 +912,7 @@ impl ActionDto {
     fn into_draft(self) -> ActionDraft {
         ActionDraft {
             id: self.id,
-            params: self
-                .params
-                .into_iter()
-                .map(|param| ParamDraft {
-                    name: param.name,
-                    zone: param.zone,
-                    card_type: param.card_type,
-                })
-                .collect(),
+            params: self.params.into_iter().map(|param| param.0).collect(),
             cost: self
                 .cost
                 .into_iter()
@@ -534,22 +923,42 @@ impl ActionDto {
                     },
                 })
                 .collect(),
-            effects: self
-                .effects
-                .into_iter()
-                .map(|effect| match effect {
-                    EffectDto::EndTurn(_) => EffectDraft::EndTurn,
-                    EffectDto::Move(step) => EffectDraft::Move {
-                        card: RefDraft(step.card.reference),
-                        to: step.to,
-                    },
-                    EffectDto::SetState(step) => EffectDraft::SetState {
-                        card: RefDraft(step.card.reference),
-                        state: step.state,
-                        value: step.value.0,
-                    },
-                })
-                .collect(),
+            effects: EffectDto::into_drafts(self.effects),
+        }
+    }
+}
+
+impl EffectDto {
+    fn into_drafts(effects: Vec<EffectDto>) -> Vec<EffectDraft> {
+        effects.into_iter().map(EffectDto::into_draft).collect()
+    }
+
+    fn into_draft(self) -> EffectDraft {
+        match self {
+            Self::EndTurn => EffectDraft::EndTurn,
+            Self::Move(step) => EffectDraft::Move {
+                card: RefDraft(step.card.reference),
+                to: step.to,
+            },
+            Self::SetState(step) => EffectDraft::SetState {
+                card: RefDraft(step.card.reference),
+                state: step.state,
+                value: step.value.0,
+            },
+            Self::AddState(step) => EffectDraft::AddState {
+                card: RefDraft(step.card.reference),
+                state: step.state,
+                amount: step.amount,
+            },
+            Self::If {
+                condition,
+                then,
+                otherwise,
+            } => EffectDraft::If {
+                condition: condition.into_draft(),
+                then: Self::into_drafts(then),
+                otherwise: Self::into_drafts(otherwise),
+            },
         }
     }
 }

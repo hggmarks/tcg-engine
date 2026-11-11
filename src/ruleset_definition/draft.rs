@@ -111,12 +111,49 @@ pub struct ActionDraft {
     pub effects: Vec<EffectDraft>,
 }
 
-/// An unvalidated param: its name, and the zone and card type of the card it takes.
+/// An unvalidated param: its name and the cards it may take, as one or more alternatives.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParamDraft {
     pub name: String,
+    pub cards: ParamCardsDraft,
+}
+
+/// The two ways a param is written. `Single` is the simple form `{ name, zone, card_type, owner?,
+/// where? }`, one alternative; `OneOf` is `{ name, one_of: [alternative, ...] }`. Validation
+/// rejects an empty `OneOf`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ParamCardsDraft {
+    Single(ParamAlternativeDraft),
+    OneOf(Vec<ParamAlternativeDraft>),
+}
+
+/// An unvalidated alternative of a param: the zone and card type of the card it takes, who owns
+/// it and a condition on it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParamAlternativeDraft {
     pub zone: String,
     pub card_type: String,
+    /// `owner`: `opponent` is the only value. An absent key is `None`, the acting Player.
+    pub owner: Option<String>,
+    /// The `where` key.
+    pub condition: Option<ExpressionDraft>,
+}
+
+/// An unvalidated expression: a literal scalar, a ref, or one operator over expressions.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExpressionDraft {
+    Literal(FieldValue),
+    /// `{ ref: <param>.<name> }`; a ref to a card without a name is not a value.
+    Ref(RefDraft),
+    Eq(Box<ExpressionDraft>, Box<ExpressionDraft>),
+    Gte(Box<ExpressionDraft>, Box<ExpressionDraft>),
+    Lte(Box<ExpressionDraft>, Box<ExpressionDraft>),
+    And(Vec<ExpressionDraft>),
+    /// `is_card_type: [<card ref>, <card type id>]`.
+    IsCardType {
+        card: RefDraft,
+        card_type: String,
+    },
 }
 
 /// The text of a ref, such as `card` or `card.cost`; the engine parses it.
@@ -139,6 +176,19 @@ pub enum EffectDraft {
         card: RefDraft,
         state: String,
         value: FieldValue,
+    },
+    /// Adds the integer `amount` to the int instance state `state` of `card`.
+    AddState {
+        card: RefDraft,
+        state: String,
+        amount: i64,
+    },
+    /// Runs `then` if the condition holds when the effect runs, `otherwise` (the `else` key) if
+    /// not.
+    If {
+        condition: ExpressionDraft,
+        then: Vec<EffectDraft>,
+        otherwise: Vec<EffectDraft>,
     },
 }
 
@@ -209,7 +259,6 @@ pub struct WinConditionDraft {
 pub enum WinConditionWhenDraft {
     /// `draw_from_empty: <zone>`.
     DrawFromEmpty { zone: String },
-    /// A condition written as an expression (`lte`, `and`, ...). The engine does not support it yet
-    /// ([11]): validation rejects it, naming the operator.
-    Expression { operator: String },
+    /// A condition written as an expression (`lte`, `and`, ...). Its refs start with a card type id.
+    Expression(ExpressionDraft),
 }

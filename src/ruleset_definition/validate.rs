@@ -5,24 +5,24 @@ use std::num::NonZeroU32;
 
 use super::draft::{
     ActionDraft, AutomaticStepDraft, CardTypeDraft, ConditionDraft, CostDraft, DeckInputDraft,
-    EffectDraft, FieldTypeDraft, InitializerDraft, InstanceStateDraft, ParamDraft, PhaseDraft,
-    RefDraft, RulesetDraft, SetupStepDraft, TurnDraft, WinConditionDraft, WinConditionWhenDraft,
+    EffectDraft, FieldTypeDraft, InitializerDraft, InstanceStateDraft, ParamAlternativeDraft,
+    ParamCardsDraft, ParamDraft, PhaseDraft, RulesetDraft, SetupStepDraft, TurnDraft,
+    WinConditionDraft, WinConditionWhenDraft,
 };
-use super::error::{DefinitionError, DefinitionErrorKind, RefType, ReferenceTarget};
+use super::error::{DefinitionError, DefinitionErrorKind, ReferenceTarget};
+use super::expression::{
+    check_condition, fail, params_read, validate_card_ref, validate_value_ref, Refs, ScopedParam,
+};
 use super::model::{
-    ActionDefinition, ActionId, AutomaticStep, CardRef, CardType, CardTypeId, CardValue, Condition,
-    Cost, DeckInput, DeckInputId, Effect, FieldName, FieldSchema, FieldType, Initializer,
-    InstanceStateSchema, Loser, Meta, Param, ParamName, Parameters, Phase, PhaseId, PhaseKind,
-    PlayerCount, PlayerPosition, PlayerSelector, Position, RulesetDefinition, RulesetId,
-    RulesetVersion, SetupStep, StateName, TurnStructure, ValueRef, WinCondition, WinConditionId,
-    WinConditionWhen, Zone, ZoneId,
+    ActionDefinition, ActionId, AutomaticStep, CardType, CardTypeId, Condition, Cost, DeckInput,
+    DeckInputId, Effect, Expression, FieldName, FieldSchema, FieldType, Initializer,
+    InstanceStateSchema, Loser, Meta, Param, ParamAlternative, ParamName, ParamOwner, Parameters,
+    Phase, PhaseId, PhaseKind, PlayerCount, PlayerPosition, PlayerSelector, Position,
+    RulesetDefinition, RulesetId, RulesetVersion, SetupStep, StateName, TurnStructure,
+    WinCondition, WinConditionId, WinConditionWhen, Zone, ZoneId,
 };
 use crate::definition_path::DefinitionPath;
 use crate::id::is_valid_id;
-
-fn fail<T>(path: DefinitionPath, kind: DefinitionErrorKind) -> Result<T, DefinitionError> {
-    Err(DefinitionError { path, kind })
-}
 
 /// Rejects an id that breaks the identifier grammar. `key` is the key that holds the id in the
 /// element at `index` of `list`.
@@ -193,7 +193,11 @@ pub(super) fn validate(draft: RulesetDraft) -> Result<RulesetDefinition, Definit
     for (index, condition) in win_conditions.iter().enumerate() {
         check_id(&win_conditions_path, index, "id", &condition.id)?;
         seen.insert(&condition.id, index)?;
-        valid_win_conditions.push(validate_win_condition(condition, &valid_zones)?);
+        valid_win_conditions.push(validate_win_condition(
+            condition,
+            &valid_zones,
+            &valid_card_types,
+        )?);
     }
 
     Ok(RulesetDefinition {
@@ -225,19 +229,38 @@ struct Context<'a> {
 fn validate_win_condition(
     condition: &WinConditionDraft,
     zones: &[Zone],
+    card_types: &[CardType],
 ) -> Result<WinCondition, DefinitionError> {
     let at = DefinitionPath::root()
         .key("win_conditions")
         .id(&condition.id);
     let when_at = at.clone().key("when");
     let when = match &condition.when {
-        WinConditionWhenDraft::Expression { operator } => {
-            return fail(
-                when_at,
-                DefinitionErrorKind::UnsupportedWinCondition {
-                    operator: operator.clone(),
-                },
-            )
+        WinConditionWhenDraft::Expression(draft) => {
+            // Every card type is a name a ref may start with, and takes only itself.
+            let refs = Refs {
+                zones,
+                card_types,
+                params: card_types
+                    .iter()
+                    .map(|card_type| ScopedParam {
+                        name: ParamName::new(card_type.id.as_str()),
+                        types: vec![card_type.id.clone()],
+                    })
+                    .collect(),
+                missing: ReferenceTarget::CardType,
+            };
+            let condition = check_condition(draft, &refs, when_at.clone())?;
+            let subject = match params_read(&condition).as_slice() {
+                [subject] => CardTypeId::new(subject.as_str()),
+                other => {
+                    return fail(
+                        when_at,
+                        DefinitionErrorKind::InvalidSubjectCount { found: other.len() },
+                    )
+                }
+            };
+            WinConditionWhen::Expression { subject, condition }
         }
         WinConditionWhenDraft::DrawFromEmpty { zone } => WinConditionWhen::DrawFromEmpty(
             validate_zone_reference(zone, zones, when_at.key("draw_from_empty"))?,
@@ -272,44 +295,39 @@ fn validate_action(
     let params_path = at.clone().key("params");
     let mut seen = Seen::new(params_path.clone());
     let mut params = Vec::with_capacity(action.params.len());
+    // The params declared so far, which a `where` may read.
+    let mut scope: Vec<ScopedParam> = Vec::with_capacity(action.params.len());
     for (index, param) in action.params.iter().enumerate() {
         check_id(&params_path, index, "name", &param.name)?;
         seen.insert(&param.name, index)?;
-        params.push(validate_param(
+        let param = validate_param(
             param,
             zones,
             card_types,
+            &scope,
             params_path.clone().id(&param.name),
-        )?);
+        )?;
+        scope.push(ScopedParam::of_alternatives(
+            param.name.clone(),
+            &param.alternatives,
+        ));
+        params.push(param);
     }
+
+    let refs = Refs {
+        zones,
+        card_types,
+        params: scope,
+        missing: ReferenceTarget::Param,
+    };
 
     let cost_path = at.clone().key("cost");
     let mut costs = Vec::with_capacity(action.cost.len());
     for (index, cost) in action.cost.iter().enumerate() {
-        costs.push(validate_cost(
-            cost,
-            &Refs {
-                zones,
-                card_types,
-                params: &params,
-            },
-            cost_path.clone().index(index),
-        )?);
+        costs.push(validate_cost(cost, &refs, cost_path.clone().index(index))?);
     }
 
-    let effects_path = at.key("effects");
-    let mut effects = Vec::with_capacity(action.effects.len());
-    for (index, effect) in action.effects.iter().enumerate() {
-        effects.push(validate_effect(
-            effect,
-            &Refs {
-                zones,
-                card_types,
-                params: &params,
-            },
-            effects_path.clone().index(index),
-        )?);
-    }
+    let effects = validate_effects(&action.effects, &refs, at.key("effects"))?;
 
     Ok(ActionDefinition {
         id: ActionId::new(&action.id),
@@ -319,36 +337,109 @@ fn validate_action(
     })
 }
 
-/// What the refs of an action are checked against.
-struct Refs<'a> {
+/// What a param is validated against: the zones, the card types and the params before it.
+struct ParamScope<'a> {
     zones: &'a [Zone],
     card_types: &'a [CardType],
-    params: &'a [Param],
+    earlier: &'a [ScopedParam],
 }
 
+/// A param: each alternative in order, and in each its zone, its card type, its owner and its
+/// `where`. `at` is the param; the alternatives of a `one_of` are at `one_of[i]` and the one
+/// alternative of the simple form is the param itself.
 fn validate_param(
     param: &ParamDraft,
     zones: &[Zone],
     card_types: &[CardType],
+    earlier: &[ScopedParam],
     at: DefinitionPath,
 ) -> Result<Param, DefinitionError> {
-    let zone = validate_zone_reference(&param.zone, zones, at.clone().key("zone"))?;
-    if !card_types
+    let name = ParamName::new(&param.name);
+    let scope = ParamScope {
+        zones,
+        card_types,
+        earlier,
+    };
+    let mut alternatives = Vec::new();
+    match &param.cards {
+        ParamCardsDraft::Single(alternative) => {
+            alternatives.push(validate_alternative(alternative, &name, &scope, at)?);
+        }
+        ParamCardsDraft::OneOf(listed) => {
+            let list = at.key("one_of");
+            if listed.is_empty() {
+                return fail(list, DefinitionErrorKind::NoAlternatives);
+            }
+            for (index, alternative) in listed.iter().enumerate() {
+                alternatives.push(validate_alternative(
+                    alternative,
+                    &name,
+                    &scope,
+                    list.clone().index(index),
+                )?);
+            }
+        }
+    }
+    Ok(Param { name, alternatives })
+}
+
+fn validate_alternative(
+    alternative: &ParamAlternativeDraft,
+    name: &ParamName,
+    scope: &ParamScope<'_>,
+    at: DefinitionPath,
+) -> Result<ParamAlternative, DefinitionError> {
+    let zone = validate_zone_reference(&alternative.zone, scope.zones, at.clone().key("zone"))?;
+    if !scope
+        .card_types
         .iter()
-        .any(|card_type| card_type.id.as_str() == param.card_type)
+        .any(|card_type| card_type.id.as_str() == alternative.card_type)
     {
         return fail(
             at.key("card_type"),
             DefinitionErrorKind::DanglingReference {
                 target: ReferenceTarget::CardType,
-                id: param.card_type.clone(),
+                id: alternative.card_type.clone(),
             },
         );
     }
-    Ok(Param {
-        name: ParamName::new(&param.name),
+    let card_type = CardTypeId::new(&alternative.card_type);
+    let owner = match alternative.owner.as_deref() {
+        None => ParamOwner::Actor,
+        Some("opponent") => ParamOwner::Opponent,
+        Some(other) => {
+            return fail(
+                at.key("owner"),
+                DefinitionErrorKind::UnknownOwner {
+                    owner: other.to_string(),
+                },
+            )
+        }
+    };
+    let condition = match &alternative.condition {
+        None => None,
+        Some(draft) => {
+            // The `where` reads the params before this one and, typed as this alternative's card
+            // type alone, the param itself.
+            let mut params = scope.earlier.to_vec();
+            params.push(ScopedParam {
+                name: name.clone(),
+                types: vec![card_type.clone()],
+            });
+            let refs = Refs {
+                zones: scope.zones,
+                card_types: scope.card_types,
+                params,
+                missing: ReferenceTarget::Param,
+            };
+            Some(check_condition(draft, &refs, at.key("where"))?)
+        }
+    };
+    Ok(ParamAlternative {
         zone,
-        card_type: CardTypeId::new(&param.card_type),
+        card_type,
+        owner,
+        condition,
     })
 }
 
@@ -368,6 +459,19 @@ fn validate_cost(
     }
 }
 
+/// The effects of the list at `list`, in order.
+fn validate_effects(
+    effects: &[EffectDraft],
+    refs: &Refs<'_>,
+    list: DefinitionPath,
+) -> Result<Vec<Effect>, DefinitionError> {
+    effects
+        .iter()
+        .enumerate()
+        .map(|(index, effect)| validate_effect(effect, refs, list.clone().index(index)))
+        .collect()
+}
+
 fn validate_effect(
     effect: &EffectDraft,
     refs: &Refs<'_>,
@@ -384,28 +488,13 @@ fn validate_effect(
         EffectDraft::SetState { card, state, value } => {
             let at = at.key("set_state");
             let card = validate_card_ref(card, refs, at.clone().key("card"))?;
-            let card_type = param_card_type(refs, &card.param);
-            let declared = card_type.and_then(|card_type| {
-                card_type
-                    .instance_state
-                    .iter()
-                    .find(|schema| schema.name.as_str() == state)
-            });
-            let Some(declared) = declared else {
-                return fail(
-                    at.key("state"),
-                    DefinitionErrorKind::DanglingReference {
-                        target: ReferenceTarget::InstanceState,
-                        id: state.clone(),
-                    },
-                );
-            };
-            if declared.state_type != value.field_type() {
+            let declared = declared_states(refs, &card.param, state, at.clone().key("state"))?;
+            if let Some(&declared) = declared.iter().find(|&&one| one != value.field_type()) {
                 return fail(
                     at.key("value"),
                     DefinitionErrorKind::StateValueTypeMismatch {
                         state: state.clone(),
-                        declared: declared.state_type,
+                        declared,
                         found: value.field_type(),
                     },
                 );
@@ -416,164 +505,101 @@ fn validate_effect(
                 value: value.clone(),
             })
         }
-    }
-}
-
-/// The card type of the param named `param`, if the action declares it.
-fn param_card_type<'a>(refs: &Refs<'a>, param: &ParamName) -> Option<&'a CardType> {
-    let declared = refs
-        .params
-        .iter()
-        .find(|candidate| &candidate.name == param)?;
-    refs.card_types
-        .iter()
-        .find(|card_type| card_type.id == declared.card_type)
-}
-
-/// A ref taken apart: the param it names and, for `<param>.<name>`, the name.
-struct ParsedRef<'a> {
-    param: &'a str,
-    name: Option<&'a str>,
-}
-
-/// `<id>` or `<id>.<id>`.
-fn parse_ref<'a>(
-    reference: &'a RefDraft,
-    at: &DefinitionPath,
-) -> Result<ParsedRef<'a>, DefinitionError> {
-    let invalid = || DefinitionError {
-        path: at.clone(),
-        kind: DefinitionErrorKind::InvalidReference {
-            reference: reference.0.clone(),
-        },
-    };
-    let (param, name) = match reference.0.split_once('.') {
-        Some((param, name)) => (param, Some(name)),
-        None => (reference.0.as_str(), None),
-    };
-    if !is_valid_id(param) || name.is_some_and(|name| !is_valid_id(name)) {
-        return Err(invalid());
-    }
-    Ok(ParsedRef { param, name })
-}
-
-/// The param a ref names, or the dangling reference.
-fn find_param<'a>(
-    refs: &Refs<'a>,
-    param: &str,
-    at: &DefinitionPath,
-) -> Result<&'a Param, DefinitionError> {
-    refs.params
-        .iter()
-        .find(|declared| declared.name.as_str() == param)
-        .ok_or_else(|| DefinitionError {
-            path: at.clone(),
-            kind: DefinitionErrorKind::DanglingReference {
-                target: ReferenceTarget::Param,
-                id: param.to_string(),
-            },
-        })
-}
-
-/// A ref that must be a card: `{ ref: <param> }`.
-fn validate_card_ref(
-    reference: &RefDraft,
-    refs: &Refs<'_>,
-    at: DefinitionPath,
-) -> Result<CardRef, DefinitionError> {
-    let parsed = parse_ref(reference, &at)?;
-    let param = find_param(refs, parsed.param, &at)?;
-    match parsed.name {
-        None => Ok(CardRef {
-            param: param.name.clone(),
-        }),
-        Some(name) => {
-            let (_, found) = resolve_name(refs, param, name, &at)?;
-            fail(
-                at,
-                DefinitionErrorKind::ReferenceTypeMismatch {
-                    expected: RefType::Card,
-                    found: RefType::Value(found),
-                },
-            )
+        EffectDraft::AddState {
+            card,
+            state,
+            amount,
+        } => {
+            let at = at.key("add_state");
+            let card = validate_card_ref(card, refs, at.clone().key("card"))?;
+            let declared = declared_states(refs, &card.param, state, at.clone().key("state"))?;
+            if let Some(&declared) = declared.iter().find(|&&one| one != FieldType::Int) {
+                return fail(
+                    at.key("amount"),
+                    DefinitionErrorKind::StateValueTypeMismatch {
+                        state: state.clone(),
+                        declared,
+                        found: FieldType::Int,
+                    },
+                );
+            }
+            Ok(Effect::AddState {
+                card,
+                state: StateName::new(state),
+                amount: *amount,
+            })
+        }
+        EffectDraft::If {
+            condition,
+            then,
+            otherwise,
+        } => {
+            let condition = check_condition(condition, refs, at.clone().key("if"))?;
+            // A condition that is exactly `is_card_type` narrows what the param may be in each
+            // branch: the one type in `then`, the other types in `else` (all of them, if nothing
+            // would be left).
+            let (then_refs, else_refs) = match &condition {
+                Expression::IsCardType { card, card_type } => {
+                    let types = refs.types_of(&card.param);
+                    let mut others: Vec<CardTypeId> = types
+                        .iter()
+                        .filter(|candidate| *candidate != card_type)
+                        .cloned()
+                        .collect();
+                    if others.is_empty() {
+                        others = types.to_vec();
+                    }
+                    (
+                        refs.narrowed(&card.param, vec![card_type.clone()]),
+                        refs.narrowed(&card.param, others),
+                    )
+                }
+                _ => (refs.clone(), refs.clone()),
+            };
+            let then = validate_effects(then, &then_refs, at.clone().key("then"))?;
+            let otherwise = validate_effects(otherwise, &else_refs, at.key("else"))?;
+            Ok(Effect::If {
+                condition,
+                then,
+                otherwise,
+            })
         }
     }
 }
 
-/// A ref that must be a value of type `expected`: `{ ref: <param>.<name> }`.
-fn validate_value_ref(
-    reference: &RefDraft,
-    expected: FieldType,
+/// The types that the card types the param `param` may take give the instance state `state`, one
+/// for each, in order. Every possible card type must declare it: `at` is the path of a state that
+/// one lacks.
+fn declared_states(
     refs: &Refs<'_>,
+    param: &ParamName,
+    state: &str,
     at: DefinitionPath,
-) -> Result<ValueRef, DefinitionError> {
-    let parsed = parse_ref(reference, &at)?;
-    let param = find_param(refs, parsed.param, &at)?;
-    let Some(name) = parsed.name else {
-        return fail(
-            at,
-            DefinitionErrorKind::ReferenceTypeMismatch {
-                expected: RefType::Value(expected),
-                found: RefType::Card,
-            },
-        );
-    };
-    let (value, found) = resolve_name(refs, param, name, &at)?;
-    if found != expected {
-        return fail(
-            at,
-            DefinitionErrorKind::ReferenceTypeMismatch {
-                expected: RefType::Value(expected),
-                found: RefType::Value(found),
-            },
-        );
-    }
-    Ok(ValueRef {
-        param: param.name.clone(),
-        value,
-    })
-}
-
-/// What `name` is on the card type of `param`: a field or an instance state, and its type.
-fn resolve_name(
-    refs: &Refs<'_>,
-    param: &Param,
-    name: &str,
-    at: &DefinitionPath,
-) -> Result<(CardValue, FieldType), DefinitionError> {
-    let card_type = refs
-        .card_types
-        .iter()
-        .find(|card_type| card_type.id == param.card_type);
-    let field = card_type.and_then(|card_type| {
-        card_type
-            .fields
+) -> Result<Vec<FieldType>, DefinitionError> {
+    let mut declared = Vec::new();
+    for id in refs.types_of(param) {
+        let schema = refs
+            .card_types
             .iter()
-            .find(|field| field.name.as_str() == name)
-    });
-    let state = card_type.and_then(|card_type| {
-        card_type
-            .instance_state
-            .iter()
-            .find(|state| state.name.as_str() == name)
-    });
-    match (field, state) {
-        (Some(_), Some(_)) => Err(DefinitionError {
-            path: at.clone(),
-            kind: DefinitionErrorKind::AmbiguousReference {
-                name: name.to_string(),
-            },
-        }),
-        (Some(field), None) => Ok((CardValue::Field(field.name.clone()), field.field_type)),
-        (None, Some(state)) => Ok((CardValue::State(state.name.clone()), state.state_type)),
-        (None, None) => Err(DefinitionError {
-            path: at.clone(),
-            kind: DefinitionErrorKind::DanglingReference {
-                target: ReferenceTarget::FieldOrInstanceState,
-                id: name.to_string(),
-            },
-        }),
+            .find(|card_type| &card_type.id == id)
+            .and_then(|card_type| {
+                card_type
+                    .instance_state
+                    .iter()
+                    .find(|schema| schema.name.as_str() == state)
+            });
+        let Some(schema) = schema else {
+            return fail(
+                at,
+                DefinitionErrorKind::DanglingReference {
+                    target: ReferenceTarget::InstanceState,
+                    id: state.to_string(),
+                },
+            );
+        };
+        declared.push(schema.state_type);
     }
+    Ok(declared)
 }
 
 fn validate_turn(

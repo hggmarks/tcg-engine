@@ -112,3 +112,26 @@ pub(crate) fn strict_bool<'de, D: Deserializer<'de>>(deserializer: D) -> Result<
 
     deserializer.deserialize_any(BoolVisitor)
 }
+
+/// An `i64` written as an unquoted integer; a quoted `"1"` is a text.
+pub(crate) fn strict_i64<'de, D: Deserializer<'de>>(deserializer: D) -> Result<i64, D::Error> {
+    struct IntegerVisitor;
+
+    impl Visitor<'_> for IntegerVisitor {
+        type Value = i64;
+
+        fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.write_str("an unquoted integer")
+        }
+
+        fn visit_i64<E: de::Error>(self, value: i64) -> Result<i64, E> {
+            Ok(value)
+        }
+
+        fn visit_u64<E: de::Error>(self, value: u64) -> Result<i64, E> {
+            i64::try_from(value).map_err(|_| E::custom("the integer does not fit in 64 bits"))
+        }
+    }
+
+    deserializer.deserialize_any(IntegerVisitor)
+}
