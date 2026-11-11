@@ -298,7 +298,7 @@ The card type an expression Win Condition is about: the first name of its Refs (
 The Action Effect `add_state: { card, state, amount }`. It adds the integer literal `amount` to an int instance state with checked arithmetic: an overflow in either direction is a State Overflow Rejection, and a sum equal to the current value emits no Event.
 
 **If Effect**:
-The Action Effect `if: <expression>`, `then: [effects]` and an optional `else: [effects]`, siblings of one list element, run by the Expression at the moment the effect runs. When the condition is exactly `is_card_type: [<param>, T]` it narrows the parameter's possible card types: to T in `then`, to the others in `else`.
+The Action Effect `if: <expression>`, `then: [effects]` and an optional `else: [effects]`, siblings of one list element, run by the Expression at the moment the effect runs. When the condition is exactly `is_card_type: [<param>, T]` it narrows the parameter's possible card types: to T in `then`, to the others in `else` (unchanged if removing T would leave none).
 
 **Argument**:
 The value an Action supplies for one Action Parameter; today only a Card Instance Id.

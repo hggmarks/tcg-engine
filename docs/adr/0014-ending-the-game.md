@@ -15,3 +15,5 @@ A ruleset's `win_conditions` is a list of `{ id, when, loser }`. `when: { draw_f
 Amends ADR-0010 (a new Event, the outcome in the GameState, nothing applies after the end) and ADR-0012 (a new first rejection, `GameOver`). No conflict with an accepted decision.
 
 **Status**: accepted
+
+Amended by ADR-0016: a `when` written as an expression is supported (it is about one card type, the Subject, and holds on the GameState the transition produced), so `UnsupportedWinCondition` is gone. The evaluation order is unchanged: once per transition, Players in seat order, first condition in declaration order.

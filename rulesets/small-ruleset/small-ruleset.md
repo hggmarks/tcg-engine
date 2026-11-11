@@ -88,10 +88,10 @@ Passing the turn ends the turn: End has no steps of its own. The turn passes to 
 
 ## Combat
  
-The attacker chooses a target: a **tapped creature** of an opponent, or an **opponent's Leader**. An opponent is any player other than the attacking player (with two players, simply the other one). The attacker becomes tapped as soon as the attack is accepted, even when nothing else happens.
+The attacking player chooses a target for the attacker: a **tapped creature** of an opponent, or an **opponent's Leader**. An opponent is any player other than the attacking player (with two players, simply the other one). The attacker becomes tapped as soon as the attack is accepted, even when nothing else happens.
  
-- **Against a creature**: the attacker never dies. The target creature dies only if the attacker's `power` is greater than or equal to the target's `power`. A creature that dies goes to the top of its owner's trash.
-- **Against a Leader**: if the attacker's `power` is greater than or equal to the Leader's `power`, the Leader's owner loses 1 life. Otherwise, nothing happens, a leader can always be attacked, ``tapped`` or not, even while its owner has untapped creatures.
+- **Against a creature**: the attacker never dies. The target creature dies only if the attacker's `power` is greater than or equal to the target's `power`. A creature that dies goes to the top of its owner's trash and keeps its instance state there (it stays tapped).
+- **Against a Leader**: if the attacker's `power` is greater than or equal to the Leader's `power`, the Leader loses 1 life. Otherwise, nothing else happens (the attacker is still tapped), a leader can always be attacked, ``tapped`` or not, even while its owner has untapped creatures.
 ## Win Conditions
 - A player whose Leader has `current_life` ≤ 0 loses. The other player wins. This is checked for each Leader, so a Leader created with 0 life or below makes its owner lose at the end of game creation, and if both players have such a Leader the game is drawn.
 - A player who needs to draw from an empty deck loses. The other player wins.

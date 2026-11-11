@@ -72,11 +72,12 @@ fn loses(
                 if instance.owner() != player {
                     continue;
                 }
-                let is_subject = ruleset
-                    .catalog()
-                    .card(instance.definition())
-                    .is_some_and(|definition| definition.card_type() == subject);
-                if !is_subject {
+                let definition = ruleset.catalog().card(instance.definition()).ok_or(
+                    Rejection::CardDataMismatch {
+                        card: instance.id(),
+                    },
+                )?;
+                if definition.card_type() != subject {
                     continue;
                 }
                 let bound = BoundCards::of(name.clone(), instance.id());
