@@ -10,9 +10,9 @@ use tcg_engine::player::PlayerId;
 use tcg_engine::ruleset_definition::{
     ActionDraft, ActionId, CardTypeDraft, CardTypeId, CardValue, Cost, CostDraft, DefinitionError,
     DefinitionErrorKind, Effect, EffectDraft, FieldDraft, FieldName, FieldTypeDraft, FieldValue,
-    InitializerDraft, InstanceStateDraft, MetaDraft, ParamDraft, ParamName, ParametersDraft,
-    RefDraft, ReferenceTarget, RulesetDefinition, RulesetDraft, StateName, Visibility, ZoneDraft,
-    ZoneId,
+    InitializerDraft, InstanceStateDraft, MetaDraft, ParamAlternativeDraft, ParamCardsDraft,
+    ParamDraft, ParamName, ParamOwner, ParametersDraft, RefDraft, ReferenceTarget,
+    RulesetDefinition, RulesetDraft, StateName, Visibility, ZoneDraft, ZoneId,
 };
 
 fn bool_state(name: &str) -> InstanceStateDraft {
@@ -60,8 +60,12 @@ fn draft_with_play_creature(count: &str) -> RulesetDraft {
         id: "play_creature".to_string(),
         params: vec![ParamDraft {
             name: "card".to_string(),
-            zone: "hand".to_string(),
-            card_type: "creature".to_string(),
+            cards: ParamCardsDraft::Single(ParamAlternativeDraft {
+                zone: "hand".to_string(),
+                card_type: "creature".to_string(),
+                owner: None,
+                condition: None,
+            }),
         }],
         cost: vec![CostDraft::Tap {
             zone: "mana_zone".to_string(),
@@ -94,8 +98,13 @@ fn a_code_frontend_builds_an_action_with_params_cost_and_effects() {
         panic!("one param expected, got {:?}", play.params());
     };
     assert_eq!(param.name(), &ParamName::new("card"));
-    assert_eq!(param.zone(), &ZoneId::new("hand"));
-    assert_eq!(param.card_type(), &CardTypeId::new("creature"));
+    let [alternative] = param.alternatives() else {
+        panic!("one alternative expected, got {:?}", param.alternatives());
+    };
+    assert_eq!(alternative.zone(), &ZoneId::new("hand"));
+    assert_eq!(alternative.card_type(), &CardTypeId::new("creature"));
+    assert_eq!(alternative.owner(), ParamOwner::Actor);
+    assert_eq!(alternative.condition(), None);
 
     let [Cost::Tap { zone, count }] = play.costs() else {
         panic!("one tap cost expected, got {:?}", play.costs());

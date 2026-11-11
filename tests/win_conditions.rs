@@ -16,8 +16,9 @@ use tcg_engine::random::Seed;
 use tcg_engine::ruleset::Ruleset;
 use tcg_engine::ruleset_definition::{
     ActionDraft, ActionId, AutomaticStepDraft, DefinitionError, DefinitionErrorKind, EffectDraft,
-    Loser, PhaseDraft, PhaseId, ReferenceTarget, RulesetDefinition, RulesetDraft, SetupStepDraft,
-    TurnDraft, WinConditionDraft, WinConditionId, WinConditionWhen, WinConditionWhenDraft, ZoneId,
+    ExpressionDraft, FieldValue, Loser, PhaseDraft, PhaseId, RefDraft, ReferenceTarget,
+    RulesetDefinition, RulesetDraft, SetupStepDraft, TurnDraft, WinConditionDraft, WinConditionId,
+    WinConditionWhen, WinConditionWhenDraft, ZoneId,
 };
 
 // ---- builders
@@ -298,17 +299,24 @@ fn a_win_condition_is_checked_by_id_then_when_then_loser() {
             .key("draw_from_empty")
     );
 
-    // An expression is unsupported before its `loser` is looked at.
-    broken.when = WinConditionWhenDraft::Expression {
-        operator: "lte".to_string(),
-    };
+    // An expression is checked before its `loser` is looked at.
+    broken.when = WinConditionWhenDraft::Expression(ExpressionDraft::Lte(
+        Box::new(ExpressionDraft::Ref(RefDraft("nobody.life".to_string()))),
+        Box::new(ExpressionDraft::Literal(FieldValue::Int(0))),
+    ));
     let error = definition_error(draft_with(5, vec![], vec![broken]));
     assert_eq!(
         error,
         DefinitionError {
-            path: path().key("win_conditions").id("broken").key("when"),
-            kind: DefinitionErrorKind::UnsupportedWinCondition {
-                operator: "lte".to_string()
+            path: path()
+                .key("win_conditions")
+                .id("broken")
+                .key("when")
+                .key("lte")
+                .index(0),
+            kind: DefinitionErrorKind::DanglingReference {
+                target: ReferenceTarget::CardType,
+                id: "nobody".to_string()
             },
         }
     );
