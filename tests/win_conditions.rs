@@ -82,6 +82,7 @@ fn action(player: u32, id: &str) -> Action {
     Action {
         player: p(player),
         action: ActionId::new(id),
+        arguments: vec![],
     }
 }
 
@@ -130,6 +131,8 @@ fn draft_with(
     ];
     draft.actions = vec![ActionDraft {
         id: "pass_turn".to_string(),
+        params: vec![],
+        cost: vec![],
         effects: vec![EffectDraft::EndTurn],
     }];
     draft.turn = Some(TurnDraft {

@@ -102,15 +102,44 @@ pub enum SetupStepDraft {
     },
 }
 
+/// An unvalidated action, in the order validation checks it: params, then cost, then effects.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActionDraft {
     pub id: String,
+    pub params: Vec<ParamDraft>,
+    pub cost: Vec<CostDraft>,
     pub effects: Vec<EffectDraft>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// An unvalidated param: its name, and the zone and card type of the card it takes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParamDraft {
+    pub name: String,
+    pub zone: String,
+    pub card_type: String,
+}
+
+/// The text of a ref, such as `card` or `card.cost`; the engine parses it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RefDraft(pub String);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CostDraft {
+    Tap { zone: String, count: RefDraft },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EffectDraft {
     EndTurn,
+    Move {
+        card: RefDraft,
+        to: String,
+    },
+    SetState {
+        card: RefDraft,
+        state: String,
+        value: FieldValue,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

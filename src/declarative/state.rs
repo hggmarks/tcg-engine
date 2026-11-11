@@ -303,6 +303,16 @@ impl GameState {
             .map(|held| held.cards.as_slice())
     }
 
+    /// The zone of its owner that holds `card`; `None` for a card that does not exist. It is
+    /// derived from the zones: a card instance does not store its location.
+    pub fn zone_of(&self, card: CardInstanceId) -> Option<&ZoneId> {
+        let owner = self.card(card)?.owner;
+        self.zones(owner)?
+            .iter()
+            .find(|held| held.cards.contains(&card))
+            .map(|held| &held.zone)
+    }
+
     /// Every card instance, in id order.
     pub fn cards(&self) -> &[CardInstance] {
         &self.cards

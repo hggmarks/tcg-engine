@@ -4,7 +4,7 @@ The formats of the ruleset, card catalog and deck list files. All three are YAML
 
 ## Identifiers
 
-Every declared id and name matches `[a-z][a-z0-9_]*` and is not `true`, `false` or `null`. This holds whether the YAML scalar is quoted or not, so `3`, `"3"`, `Deck`, `a]b` and the empty id are all rejected. A reference that breaks the grammar fails as a reference to something that does not exist.
+Every declared id and name matches `[a-z][a-z0-9_]*` and is not `true`, `false` or `null`. This holds whether the YAML scalar is quoted or not, so `3`, `"3"`, `Deck`, `a]b` and the empty id are all rejected. A reference that breaks the grammar fails as a reference to something that does not exist, except the text of a `ref`, which fails as an invalid reference (ADR-0015).
 
 ## Ruleset structure
 
@@ -57,7 +57,7 @@ actions:
 ```
 
 - `turn` is optional; absent means the Game has no Turns (creation stops after setup and no Action is legal). `actions` is optional; absent means none.
-- `turn.phases` is a list of phases, each `{ id, automatic }` or `{ id, actions }`: exactly one of the two keys. `automatic` is a list of steps run in order when the phase begins; `actions` is a list of declared action ids the Active Player may take there. A turn has exactly one phase with `actions`: the Game waits in it, and `end_turn` is the only way out. Validation does not yet check that the action phase can be left (it may list no action, or none with `end_turn`, and the Game then waits there forever), nor that an action ends at most one Turn (`[end_turn, end_turn]` ends two); an action no phase lists loads and is always rejected. These are to be decided when effects are extended (ADR-0012). When the Game is created the first Turn begins and runs to that phase.
+- `turn.phases` is a list of phases, each `{ id, automatic }` or `{ id, actions }`: exactly one of the two keys. `automatic` is a list of steps run in order when the phase begins; `actions` is a list of declared action ids the Active Player may take there. A turn has exactly one phase with `actions`: the Game waits in it, and `end_turn` is the only way out. Validation does not yet check that the action phase can be left (it may list no action, or none with `end_turn`, and the Game then waits there forever), nor that an action ends at most one Turn (`[end_turn, end_turn]` ends two); an action no phase lists loads and is always rejected. These, and effects listed after an `end_turn` (which load and run in the next Player's Turn), are an open gap recorded in ADR-0015. When the Game is created the first Turn begins and runs to that phase.
 - A step is a single-key map naming a primitive, or the `if` form. `player` is `each` or `active` (the Active Player). Steps run for the selected Players in seat order, the zones in the listed order and the cards bottom first.
   - `untap: { player, zones }` sets `tapped` to false on the cards of the listed zones.
   - `set_state: { player, zone, state, value }` sets the instance state `state` to `value` (a scalar of the state's type) on the cards of `zone`.
@@ -66,7 +66,12 @@ actions:
   - `move: { player, from, to, count, position }` is the same without the fact: it moves the cards there are. `position` is `top` (the top of `from`).
   - `if: <condition>`, `then: [steps]` and an optional `else: [steps]` are sibling keys of one list element. The only condition is `first_turn: {}`, true on the Game's first Turn (Turn Number 1).
   - `from` of a `draw` and of a `move` must be an ordered zone (ADR-0013); `count` is an unquoted integer of at least 1.
-- Each action is `{ id, effects }`; the only effect is `end_turn: {}`: the phases after the current one run, then the next Player's Turn begins, in the same transition. Parameters, costs and the other effects are not readable yet: an action with `params` or `cost` is rejected by the loader as an unknown key.
+- Each action is `{ id, params?, cost?, effects }`; `params` and `cost` are optional lists (absent means none).
+  - A param is `{ name, zone, card_type }`: a card instance of that type in that zone of the acting Player, who must own it. Names are identifiers, unique within the action. An Action supplies one argument per param, in param order. `where`, `owner` and `one_of` are not readable yet: they are rejected by the loader as unknown keys (ticket [11]).
+  - A ref is `{ ref: <param> }` (the card) or `{ ref: <param>.<name> }` (a value of the card: a field of its card type, or an instance state; a name that is both is an error). Refs are checked when the ruleset loads: the param and the name must exist, and the value must have the type of its slot.
+  - `cost` is a list of single-key maps. `tap: { zone, count }` taps `count` untapped cards of the acting Player's `zone`: the first ones in list order, bottom first, among the cards whose card type declares `tapped` and whose value is false. `count` is a ref to an int value (a literal is not accepted yet); 0 taps nothing, a negative value refuses the Action, and too few untapped cards refuses it too. Some card type must declare `tapped` as a bool, and no card type may declare it as another type (a mismatch is rejected when the ruleset loads).
+  - `effects` is a list of single-key maps: `end_turn: {}` (the phases after the current one run, then the next Player's Turn begins, in the same transition), `move: { card: <ref>, to }` (the card goes from the zone it is in onto the top of `to`, a zone of its owner) and `set_state: { card: <ref>, state, value }` (the state must be one of the param's card type, with a value of its type; `value` is a literal scalar, not a ref; nothing happens if the value is already that). A `move` keeps the instance state of the card (a played creature stays `recently_played` if it is moved again).
+  - The decisions are in ADR-0015.
 - Turn validation follows `actions`: phases are addressed by id in errors (`turn.phases[main].actions[0]`) and steps by position, with `then` and `else` as keys (`turn.phases[start].automatic[2].else[0].draw.from`). The decisions are in ADR-0012.
 
 ## Win conditions

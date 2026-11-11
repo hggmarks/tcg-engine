@@ -16,6 +16,8 @@ The instance-state name `tapped` is reserved: the `untap` primitive (and #24's `
 
 Amends ADR-0010: the Opening Position now includes the start of the first Turn when the ruleset has a turn, and `Action` and `Rejection` are no longer empty enums. Amends ADR-0011: the `active` selector now exists.
 
+Amended by ADR-0015: an Action also carries one Argument per Action Parameter, the rejections gain an argument count check and the card checks after the action is found to be listed in the current phase, and `actions` gains `params`, `cost` and the `move` and `set_state` effects. The known gap above is still open.
+
 **Status**: accepted
 
 Amended by ADR-0014: `Rejection::GameOver` is a new first check, before unknown Player, and win conditions are evaluated at the end of every transition, including these automatic steps. The `DrawFromEmptyZone` fact is what they read.

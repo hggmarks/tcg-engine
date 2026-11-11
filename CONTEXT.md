@@ -118,7 +118,7 @@ The component that turns file text into a Ruleset Draft and checks syntax only; 
 The location of an element in a Ruleset Definition, Card Catalog or Deck List, such as `card_types[creature].fields[cost]` or `inputs[1].cards[3]`; semantic errors address declarations by id and references (deck list elements) by position, syntax errors by position.
 
 **Zone**:
-A named place where cards are held, with a Visibility and an ordered flag. A shuffle, a draw and a move take cards only from an ordered zone, which validation enforces (ADR-0013); a destination may be unordered.
+A named place where cards are held, with a Visibility and an ordered flag. A shuffle, a draw and a move step that take cards from the Top take them only from an ordered zone, which validation enforces (ADR-0013); a destination may be unordered. A `move` effect of an action takes a named card from any zone.
 
 **Visibility**:
 Who may see a Zone's cards: hidden, owner or public.
@@ -153,7 +153,7 @@ The number of Players in a Game, as the ruleset's `parameters.players`; at least
 ## Card Catalogs and Deck Lists
 
 **Identifier**:
-A declared name (ruleset id, zone, card type, field name, instance-state name, Deck Input, card) matching `[a-z][a-z0-9_]*` and not `true`, `false` or `null`, whether or not the YAML scalar is quoted. The engine checks it; a reference that breaks it fails as a dangling reference.
+A declared name (ruleset id, zone, card type, field name, instance-state name, Deck Input, card) matching `[a-z][a-z0-9_]*` and not `true`, `false` or `null`, whether or not the YAML scalar is quoted. The engine checks it; a reference that breaks it fails as a dangling reference, except the text of a Ref, which fails as `InvalidReference` (ADR-0015).
 
 **Card Catalog**:
 The validated, typed set of Card Definitions of one ruleset id and version, in file order. It is built only by `CardCatalog::validate` against an already loaded Ruleset Definition (stage 2 of loading).
@@ -176,10 +176,16 @@ A Deck Input's optional `max_copies`: the most copies of one Card Definition an 
 ## Declarative Games
 
 **Declarative Ruleset**:
-The Ruleset that interprets a RulesetDefinition and a Card Catalog. Its GameState changes only by Event Application. Its Action is a Player and an Action Definition id, and its Rejection is one of Game Over, Unknown Player, Not Active Player, Unknown Action, Action Not In Current Phase, Turn Number Overflow or EventRejected, checked in that order (ADR-0012, ADR-0014).
+The Ruleset that interprets a RulesetDefinition and a Card Catalog. Its GameState changes only by Event Application. Its Action is a Player, an Action Definition id and one Argument per Action Parameter, and its Rejection is one of Game Over (checked before every other), Unknown Player, Not Active Player, Unknown Action, Action Not In Current Phase, Argument Count Mismatch, Unknown Card, Not Card Owner, Card Not In Zone, Wrong Card Type, Negative Count, Not Enough Untapped Cards, Turn Number Overflow, EventRejected, CardDataMismatch or UnboundParam (ADR-0012, ADR-0014, ADR-0015).
 
 **EventRejected**:
 A declarative Rejection for an internal inconsistency: an Event the Ruleset generated was rejected because the GameState does not fit this Ruleset. It is never expected.
+
+**CardDataMismatch**:
+A declarative Rejection for an internal inconsistency: a card's definition is missing from the catalog, or a Ref reads a value the card does not have or of another type. It is never expected, and it is only for card data.
+
+**UnboundParam**:
+A declarative Rejection for an internal inconsistency: a Ref names a parameter that no Argument was bound to. Validation guarantees every Ref names a parameter of its action, so it is never expected.
 
 **Seat**:
 A Player's 0-based position in the Player Order. `PlayerId(n)` sits at seat `n`, and Deck List `n` belongs to seat `n`.
@@ -212,7 +218,7 @@ The identity of a Card Instance, dense from 0 in creation order: seat 0 first, t
 The Event that a Card Instance came into being on the Top of its owner's zone.
 
 **CardMoved**:
-The Event that a card left `from`, wherever it was in that list, and went onto the Top of `to`; both zones belong to the same Player.
+The Event that a card left `from`, wherever it was in that list, and went onto the Top of `to`; both zones belong to the same Player. An action's `move` takes `from` from the GameState (`GameState::zone_of`), the zone that holds the card.
 
 **ZoneShuffled**:
 The Event that a zone was reordered. It carries the complete resulting order and the Random State after the shuffle, so replay is exact. Observations must never expose its Random State, nor the order of a hidden zone (ADR-0010).
@@ -265,13 +271,34 @@ The Condition that holds when the Turn Number is 1, the Game's first Turn; the S
 An Automatic Step `if: <condition>` with a `then` list and an optional `else` list of Automatic Steps, run according to the Condition at the moment the step runs.
 
 **Action Definition**:
-A declared action of the ruleset: an id and a list of effects. The only effect is End Turn; parameters and costs arrive with [10].
+A declared action of the ruleset: an id, a list of Action Parameters, a list of Costs and a list of Action Effects. An action without parameters or costs (`pass_turn`) is valid.
+
+**Action Parameter**:
+A card an Action supplies: a name unique within its action, a zone and a card type. The card must be an instance of that card type in that zone of the acting Player, who is also its owner (an `owner` key arrives with [11]). Arguments bind to parameters by position.
+
+**Argument**:
+The value an Action supplies for one Action Parameter; today only a Card Instance Id.
+
+**Ref**:
+A reference inside an Action Definition to a parameter: `<param>` is a Card Ref (the card) and `<param>.<name>` is a Value Ref (a field of the card's definition or one of its instance states). The name is resolved at load against the parameter's card type to a field or a state, and a name that is both is an `AmbiguousReference`. A Ref is also type-checked at load against the slot that holds it.
+
+**Cost**:
+What an action pays before its effects run. The only Cost is Tap. Paying is atomic: the whole transition runs on a clone of the GameState (ADR-0002).
+
+**Tap**:
+The Cost `tap: { zone, count }`. It needs `count` (a Value Ref to an int, so `tap.count` takes a Ref and no literal yet) untapped cards in that zone of the acting Player and taps the first `count` of them in zone list order, bottom first, even in an unordered zone. An untapped card is one whose card type declares `tapped` and whose value is false. A count of 0 taps nothing.
+
+**Action Effect**:
+What an action does once its costs are paid, built from engine primitives: End Turn, `move: { card, to }` (the card goes from the zone it is in onto the Top of `to`, a zone of its owner) and `set_state: { card, state, value }` (an Event only if the value changes). Distinct from a **Card Effect**: an ability written on a card (`effects` on a card type or card), which is out of scope until a later ticket.
+
+**Card Effect**:
+An ability carried by a card definition. It is not an Action Effect and no primitive for it exists yet.
 
 **End Turn**:
 The effect `end_turn: {}`. It runs every phase after the current one, then the next Player in seat order begins Turn n+1 and their phases run until the Action Phase, all in the same transition.
 
 **Action** (declarative):
-A Player and the id of an Action Definition they take. It is distinct from the Action Definition it names.
+A Player, the id of an Action Definition they take and one Argument per Action Parameter, in parameter order. It is distinct from the Action Definition it names.
 
 **TurnBegan**:
 The Event that a Turn began for a Player with a Turn Number: it sets the Active Player and the Turn Number and clears the phase. Applying it does not check the sequence of Turn Numbers.
@@ -290,6 +317,27 @@ A Rejection: the Action names an action the ruleset does not declare.
 
 **Action Not In Current Phase**:
 A Rejection: the action is declared but the current phase does not list it, because there is no current phase, the phase is not an Action Phase, or it does not list the action.
+
+**Argument Count Mismatch**:
+A Rejection: the Action has a different number of Arguments than the action has Action Parameters.
+
+**Unknown Card**:
+A Rejection: an Argument names a Card Instance Id that does not exist.
+
+**Not Card Owner**:
+A Rejection: the card of an Argument belongs to another Player than the acting one.
+
+**Card Not In Zone**:
+A Rejection: the card of an Argument is not in the parameter's zone of the acting Player.
+
+**Wrong Card Type**:
+A Rejection: the card of an Argument is not of the parameter's card type.
+
+**Negative Count**:
+A Rejection: a Cost's count resolved to a negative value.
+
+**Not Enough Untapped Cards**:
+A Rejection: a Tap Cost needs more untapped cards in the zone than the acting Player has.
 
 ## Ending the Game
 

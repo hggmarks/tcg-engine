@@ -109,6 +109,7 @@ fn action(player: u32, id: &str) -> Action {
     Action {
         player: p(player),
         action: ActionId::new(id),
+        arguments: vec![],
     }
 }
 

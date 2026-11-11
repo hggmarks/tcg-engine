@@ -10,10 +10,10 @@ use crate::scalar::{self, ScalarDto};
 use serde::de::{self, Deserializer, IgnoredAny, MapAccess, Visitor};
 use serde::Deserialize;
 use tcg_engine::ruleset_definition::{
-    ActionDraft, AutomaticStepDraft, CardTypeDraft, ConditionDraft, DeckInputDraft, EffectDraft,
-    FieldDraft, FieldTypeDraft, FieldValue, InitializerDraft, InstanceStateDraft, MetaDraft,
-    ParametersDraft, PhaseDraft, RulesetDraft, SetupStepDraft, TurnDraft, Visibility,
-    WinConditionDraft, WinConditionWhenDraft, ZoneDraft,
+    ActionDraft, AutomaticStepDraft, CardTypeDraft, ConditionDraft, CostDraft, DeckInputDraft,
+    EffectDraft, FieldDraft, FieldTypeDraft, FieldValue, InitializerDraft, InstanceStateDraft,
+    MetaDraft, ParamDraft, ParametersDraft, PhaseDraft, RefDraft, RulesetDraft, SetupStepDraft,
+    TurnDraft, Visibility, WinConditionDraft, WinConditionWhenDraft, ZoneDraft,
 };
 
 #[derive(Deserialize)]
@@ -101,7 +101,43 @@ struct EmptyDto {}
 #[serde(deny_unknown_fields)]
 struct ActionDto {
     id: String,
+    #[serde(default)]
+    params: Vec<ParamDto>,
+    #[serde(default)]
+    cost: Vec<CostDto>,
     effects: Vec<EffectDto>,
+}
+
+/// A param: `{ name, zone, card_type }`. `where`, `owner` and `one_of` are unknown keys until
+/// ticket [11].
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ParamDto {
+    name: String,
+    zone: String,
+    card_type: String,
+}
+
+/// `{ ref: <param> }` or `{ ref: <param>.<name> }`. The text is kept as is: the engine parses it.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RefDto {
+    #[serde(rename = "ref")]
+    reference: String,
+}
+
+/// One cost of an action: a single-key map `{ <primitive>: { ... } }`.
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum CostDto {
+    Tap(TapDto),
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TapDto {
+    zone: String,
+    count: RefDto,
 }
 
 /// One effect of an action: a single-key map `{ <primitive>: { ... } }`.
@@ -109,6 +145,23 @@ struct ActionDto {
 #[serde(rename_all = "snake_case")]
 enum EffectDto {
     EndTurn(EmptyDto),
+    Move(MoveEffectDto),
+    SetState(SetStateEffectDto),
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MoveEffectDto {
+    card: RefDto,
+    to: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SetStateEffectDto {
+    card: RefDto,
+    state: String,
+    value: ScalarDto,
 }
 
 #[derive(Deserialize)]
@@ -462,11 +515,39 @@ impl ActionDto {
     fn into_draft(self) -> ActionDraft {
         ActionDraft {
             id: self.id,
+            params: self
+                .params
+                .into_iter()
+                .map(|param| ParamDraft {
+                    name: param.name,
+                    zone: param.zone,
+                    card_type: param.card_type,
+                })
+                .collect(),
+            cost: self
+                .cost
+                .into_iter()
+                .map(|cost| match cost {
+                    CostDto::Tap(tap) => CostDraft::Tap {
+                        zone: tap.zone,
+                        count: RefDraft(tap.count.reference),
+                    },
+                })
+                .collect(),
             effects: self
                 .effects
                 .into_iter()
                 .map(|effect| match effect {
                     EffectDto::EndTurn(_) => EffectDraft::EndTurn,
+                    EffectDto::Move(step) => EffectDraft::Move {
+                        card: RefDraft(step.card.reference),
+                        to: step.to,
+                    },
+                    EffectDto::SetState(step) => EffectDraft::SetState {
+                        card: RefDraft(step.card.reference),
+                        state: step.state,
+                        value: step.value.0,
+                    },
                 })
                 .collect(),
         }

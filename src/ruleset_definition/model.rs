@@ -40,6 +40,10 @@ id_type!(
     PhaseId
 );
 id_type!(
+    /// The name of an action parameter, unique within its action.
+    ParamName
+);
+id_type!(
     /// The identity of a win condition, unique among the win conditions. It is the reason a Player
     /// lost.
     WinConditionId
@@ -378,11 +382,14 @@ pub enum SetupStep {
     },
 }
 
-/// A declared action: the effects that run when a Player takes it. Its id is unique among the
-/// actions. Parameters, costs and the other effects arrive with tickets [10] and [11].
+/// A declared action: the cards it takes as parameters, the costs paid and the effects that run
+/// when a Player takes it. Its id is unique among the actions. Every ref in it names one of its
+/// params and a field or instance state of that param's card type, of the type its slot needs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActionDefinition {
     pub(super) id: ActionId,
+    pub(super) params: Vec<Param>,
+    pub(super) costs: Vec<Cost>,
     pub(super) effects: Vec<Effect>,
 }
 
@@ -391,17 +398,103 @@ impl ActionDefinition {
         &self.id
     }
 
+    /// The params in declared order; an Action supplies one argument for each, in this order.
+    pub fn params(&self) -> &[Param] {
+        &self.params
+    }
+
+    /// The costs, in the order they are paid.
+    pub fn costs(&self) -> &[Cost] {
+        &self.costs
+    }
+
     /// The effects, in the order they run.
     pub fn effects(&self) -> &[Effect] {
         &self.effects
     }
 }
 
+/// A card the Action supplies: a card instance of `card_type` in the acting Player's `zone`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Param {
+    pub(super) name: ParamName,
+    pub(super) zone: ZoneId,
+    pub(super) card_type: CardTypeId,
+}
+
+impl Param {
+    pub fn name(&self) -> &ParamName {
+        &self.name
+    }
+
+    pub fn zone(&self) -> &ZoneId {
+        &self.zone
+    }
+
+    pub fn card_type(&self) -> &CardTypeId {
+        &self.card_type
+    }
+}
+
+/// `{ ref: <param> }`: the card a param is bound to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CardRef {
+    pub(super) param: ParamName,
+}
+
+impl CardRef {
+    pub fn param(&self) -> &ParamName {
+        &self.param
+    }
+}
+
+/// `{ ref: <param>.<name> }`: a value of the card a param is bound to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValueRef {
+    pub(super) param: ParamName,
+    pub(super) value: CardValue,
+}
+
+impl ValueRef {
+    pub fn param(&self) -> &ParamName {
+        &self.param
+    }
+
+    pub fn value(&self) -> &CardValue {
+        &self.value
+    }
+}
+
+/// Which value of a card a [`ValueRef`] reads, decided when the definition is validated.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CardValue {
+    /// A field of the card's definition.
+    Field(FieldName),
+    /// An instance state of the card.
+    State(StateName),
+}
+
+/// A cost of an action, paid before its effects run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Cost {
+    /// Taps the first `count` untapped cards (a card whose card type declares `tapped` and whose
+    /// value is false), in list order, of the acting Player's `zone`.
+    Tap { zone: ZoneId, count: ValueRef },
+}
+
 /// An effect of an action.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Effect {
     /// Ends the Turn: the phases after the current one run, then the next Player's Turn begins.
     EndTurn,
+    /// Moves `card` from the zone it is in onto the Top of `to`, a zone of its owner.
+    Move { card: CardRef, to: ZoneId },
+    /// Sets the instance state `state` of `card` to `value`, if it changes.
+    SetState {
+        card: CardRef,
+        state: StateName,
+        value: FieldValue,
+    },
 }
 
 /// The phases of every Turn, in order. Exactly one has actions: the Game waits there for the
