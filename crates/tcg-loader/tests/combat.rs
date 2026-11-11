@@ -606,7 +606,13 @@ fn attacking_a_tapped_creature_of_equal_or_lower_power_kills_it() {
     // Seat 1's creature attacks seat 0's, which is tapped because it attacked on Turn 3: with equal
     // power (moss against moss) and with higher power (otter against moss).
     for (attacker, target) in [(MOSS_1, MOSS_0), (OTTER_1, MOSS_0)] {
-        let turn_4 = at_turn_4(&ruleset, target, attacker);
+        let mut turn_4 = at_turn_4(&ruleset, target, attacker);
+        // The trash of the target's owner already holds a card (from its deck, for the scenario),
+        // so that the Top can be told from the bottom.
+        let below = *cards_in(&turn_4, 0, "deck")
+            .last()
+            .expect("seat 0 has cards in its deck");
+        apply_all(&mut turn_4, &[moved(below, 0, "deck", "trash")]);
         let attacker_power = int_field(&ruleset, &turn_4, attacker, "power");
         let target_power = int_field(&ruleset, &turn_4, target, "power");
         assert!(attacker_power >= target_power);
@@ -623,8 +629,9 @@ fn attacking_a_tapped_creature_of_equal_or_lower_power_kills_it() {
             [tapped(attacker), moved(target, 0, "field", "trash")]
         );
         let next = &transition.state;
-        // The target is the Top of its owner's trash and no longer on the field.
-        assert_eq!(cards_in(next, 0, "trash").last(), Some(&target));
+        // The target is the Top of its owner's trash, above the card that was there, and no longer
+        // on the field.
+        assert_eq!(cards_in(next, 0, "trash"), [below, target]);
         assert!(cards_in(next, 0, "field").is_empty());
         // The attacker never dies: it is still on its owner's field, tapped.
         assert_eq!(cards_in(next, 1, "field"), [attacker]);
@@ -831,11 +838,26 @@ fn an_own_card_cannot_be_targeted() {
     );
 }
 
+#[test]
+fn a_tapped_leader_can_be_targeted() {
+    // A Leader can always be targeted, tapped or not.
+    let ruleset = small();
+    let mut turn_3 = at_turn_3(&ruleset, MOSS_0, MOSS_1);
+    let leader = leader_of(&turn_3, 1);
+    apply_all(&mut turn_3, &[tapped(leader)]);
+    assert_eq!(
+        state_value(&turn_3, leader, "tapped"),
+        Some(FieldValue::Bool(true))
+    );
+    let transition = accepted(&ruleset, &turn_3, &attack(0, MOSS_0, leader));
+    assert_eq!(transition.trace.events(), [tapped(MOSS_0), life(leader, 5)]);
+}
+
 // ---- the Rejections of a param with one alternative, and Opponents
 
 /// The real file with one more action in Main: `strike` takes one tapped creature of the opponent,
-/// a param of a single alternative.
-fn with_strike() -> String {
+/// a param of a single alternative, written as `param` (the simple form or a `one_of` of one).
+fn with_strike(param: &str) -> String {
     let main = edit(
         SMALL_RULESET,
         "actions: [play_creature, attack, pass_turn]",
@@ -844,20 +866,35 @@ fn with_strike() -> String {
     edit(
         &main,
         "\nwin_conditions:",
-        r"
+        &format!(
+            r"
   - id: strike
     params:
-      - { name: victim, zone: field, card_type: creature, owner: opponent, where: { eq: [{ ref: victim.tapped }, true] } }
+      - {param}
     effects:
-      - set_state: { card: { ref: victim }, state: tapped, value: false }
+      - set_state: {{ card: {{ ref: victim }}, state: tapped, value: false }}
 
-win_conditions:",
+win_conditions:"
+        ),
     )
 }
 
+const STRIKE_SIMPLE: &str = "{ name: victim, zone: field, card_type: creature, owner: opponent, where: { eq: [{ ref: victim.tapped }, true] } }";
+const STRIKE_ONE_OF: &str = "{ name: victim, one_of: [ { zone: field, card_type: creature, owner: opponent, where: { eq: [{ ref: victim.tapped }, true] } } ] }";
+
 #[test]
 fn a_single_alternative_reports_its_first_failing_check() {
-    let ruleset = ruleset_from(&with_strike(), SMALL_CATALOG);
+    reports_the_first_failing_check(STRIKE_SIMPLE);
+}
+
+#[test]
+fn a_one_of_with_one_alternative_reports_its_first_failing_check() {
+    // The same Rejections, not `NoAlternativeMatched`: one alternative, whichever way it is written.
+    reports_the_first_failing_check(STRIKE_ONE_OF);
+}
+
+fn reports_the_first_failing_check(param: &str) {
+    let ruleset = ruleset_from(&with_strike(param), SMALL_CATALOG);
     let turn_3 = at_turn_3(&ruleset, MOSS_0, MOSS_1);
     let victim = ParamName::new("victim");
     let strike = |card| action(0, "strike", &[card]);
@@ -1071,6 +1108,40 @@ fn a_leader_kill_ends_the_game() {
     for rejected in [pass(1), pass(0), attack(0, MOSS_0, leader)] {
         assert_rejected(&ruleset, ended, &rejected, Rejection::GameOver);
     }
+}
+
+#[test]
+fn leader_dead_is_the_reason_when_deck_out_also_holds() {
+    // Seat 1 has a Leader at 0 life and an empty deck. Seat 0 passes, so Turn 2 begins for seat 1,
+    // whose draw finds the deck empty: both conditions hold for seat 1 in the one transition, and
+    // `leader_dead` is declared first.
+    let ruleset = small();
+    let mut state = opening(&ruleset);
+    let leader = leader_of(&state, 1);
+    let deck = cards_in(&state, 1, "deck");
+    let mut scenario: Vec<Event> = deck
+        .into_iter()
+        .map(|card| moved(card, 1, "deck", "trash"))
+        .collect();
+    scenario.push(life(leader, 0));
+    apply_all(&mut state, &scenario);
+    assert_eq!(state.outcome(), None, "the Game goes on until a transition");
+
+    let transition = accepted(&ruleset, &state, &pass(0));
+    let events = transition.trace.events();
+    assert!(events.contains(&Event::DrawFromEmptyZone {
+        player: p(1),
+        zone: zone("deck"),
+    }));
+    assert_eq!(
+        events.last(),
+        Some(&Event::GameEnded {
+            losses: vec![leader_dead(1)]
+        })
+    );
+    let outcome = transition.state.outcome().expect("the Game ended");
+    assert_eq!(outcome.losses(), [leader_dead(1)]);
+    assert_eq!(outcome.winners(), [p(0)]);
 }
 
 #[test]
