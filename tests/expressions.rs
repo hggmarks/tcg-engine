@@ -9,11 +9,11 @@
 use tcg_engine::declarative::{CardInstanceId, GameCreationError, Rejection};
 use tcg_engine::definition_path::DefinitionPath;
 use tcg_engine::ruleset_definition::{
-    ActionDraft, CardTypeDraft, CardTypeId, DefinitionError, DefinitionErrorKind, Effect,
-    EffectDraft, Expression, ExpressionDraft, FieldDraft, FieldType, FieldTypeDraft, FieldValue,
-    InitializerDraft, InstanceStateDraft, MetaDraft, ParamAlternativeDraft, ParamCardsDraft,
-    ParamDraft, ParamName, ParametersDraft, RefDraft, RefType, ReferenceTarget, RulesetDefinition,
-    RulesetDraft, StateName, Visibility, WinConditionDraft, WinConditionWhen,
+    ActionDraft, CardTypeDraft, CardTypeId, CardValue, DefinitionError, DefinitionErrorKind,
+    Effect, EffectDraft, Expression, ExpressionDraft, FieldDraft, FieldType, FieldTypeDraft,
+    FieldValue, InitializerDraft, InstanceStateDraft, MetaDraft, ParamAlternativeDraft,
+    ParamCardsDraft, ParamDraft, ParamName, ParametersDraft, RefDraft, RefType, ReferenceTarget,
+    RulesetDefinition, RulesetDraft, StateName, Visibility, WinConditionDraft, WinConditionWhen,
     WinConditionWhenDraft, ZoneDraft,
 };
 
@@ -1096,16 +1096,23 @@ fn an_expression_win_condition_reads_exactly_one_card_type() {
     let [condition] = definition.win_conditions() else {
         panic!("one win condition expected");
     };
-    assert!(
-        matches!(
-            condition.when(),
-            WinConditionWhen::Expression { subject, condition }
-                if subject == &CardTypeId::new("leader")
-                    && matches!(condition, Expression::Lte(..))
-        ),
-        "an expression about leaders, got {:?}",
-        condition.when()
+    let WinConditionWhen::Expression { subject, condition } = condition.when() else {
+        panic!("an expression expected, got {:?}", condition.when());
+    };
+    assert_eq!(subject, &CardTypeId::new("leader"));
+    // `lte: [{ ref: leader.current_life }, 0]`: the state read, against the literal 0.
+    let Expression::Lte(left, right) = condition else {
+        panic!("lte expected, got {condition:?}");
+    };
+    let Expression::Value(value_read) = left.as_ref() else {
+        panic!("a value is expected, got {left:?}");
+    };
+    assert_eq!(value_read.param(), &ParamName::new("leader"));
+    assert_eq!(
+        value_read.value(),
+        &CardValue::State(StateName::new("current_life"))
     );
+    assert_eq!(right.as_ref(), &Expression::Literal(FieldValue::Int(0)));
     // A card ref counts too, and the same card type twice is one Subject.
     loaded(expression_when(ExpressionDraft::And(vec![
         is_card_type("leader", "leader"),

@@ -260,6 +260,29 @@ fn yaml_error(yaml: &str) -> YamlError {
 
 // ---- loading the real file
 
+/// Asserts that `expression` is `<operator>(Value(<param>.<state>, read as an instance state),
+/// Literal(<literal>))`, with `operator` `eq` or `lte`.
+fn assert_state_against(
+    expression: &Expression,
+    operator: &str,
+    param: &str,
+    state: &str,
+    literal: FieldValue,
+) {
+    let (left, right) = match (operator, expression) {
+        ("eq", Expression::Eq(left, right)) | ("lte", Expression::Lte(left, right)) => {
+            (left, right)
+        }
+        _ => panic!("expected `{operator}`, got {expression:?}"),
+    };
+    let Expression::Value(read) = left.as_ref() else {
+        panic!("a value is expected, got {left:?}");
+    };
+    assert_eq!(read.param(), &ParamName::new(param));
+    assert_eq!(read.value(), &CardValue::State(StateName::new(state)));
+    assert_eq!(right.as_ref(), &Expression::Literal(literal));
+}
+
 #[test]
 fn the_real_small_ruleset_loads_with_attack_and_leader_dead() {
     let definition = load_ruleset_definition(SMALL_RULESET).expect("the real file loads");
@@ -314,7 +337,17 @@ fn the_real_small_ruleset_loads_with_attack_and_leader_dead() {
     assert_eq!(creature.zone(), &zone("field"));
     assert_eq!(creature.card_type(), &CardTypeId::new("creature"));
     assert_eq!(creature.owner(), ParamOwner::Opponent);
-    assert!(creature.condition().is_some(), "a tapped creature");
+    // `where: { eq: [{ ref: target.tapped }, true] }`
+    let Some(tapped_only) = creature.condition() else {
+        panic!("the creature alternative has a condition");
+    };
+    assert_state_against(
+        tapped_only,
+        "eq",
+        "target",
+        "tapped",
+        FieldValue::Bool(true),
+    );
     assert_eq!(leader.zone(), &zone("leader_zone"));
     assert_eq!(leader.card_type(), &CardTypeId::new("leader"));
     assert_eq!(leader.owner(), ParamOwner::Opponent);
@@ -323,13 +356,20 @@ fn the_real_small_ruleset_loads_with_attack_and_leader_dead() {
     let conditions = definition.win_conditions();
     assert_eq!(conditions.len(), 2);
     assert_eq!(conditions[0].id(), &WinConditionId::new("leader_dead"));
-    assert!(
-        matches!(
-            conditions[0].when(),
-            WinConditionWhen::Expression { subject, .. } if subject == &CardTypeId::new("leader")
-        ),
-        "leader_dead is an expression about leaders, got {:?}",
-        conditions[0].when()
+    // `when: { lte: [{ ref: leader.current_life }, 0] }`, about the card type `leader`.
+    let WinConditionWhen::Expression { subject, condition } = conditions[0].when() else {
+        panic!(
+            "leader_dead is an expression, got {:?}",
+            conditions[0].when()
+        );
+    };
+    assert_eq!(subject, &CardTypeId::new("leader"));
+    assert_state_against(
+        condition,
+        "lte",
+        "leader",
+        "current_life",
+        FieldValue::Int(0),
     );
     assert_eq!(conditions[1].id(), &WinConditionId::new("deck_out"));
 }
@@ -902,10 +942,16 @@ fn an_empty_and_holds() {
     // The creature is recently played and attacks at once.
     let played = accept_all(&ruleset, &opening(&ruleset), &[play(0, MOSS_0)]);
     let leader = leader_of(&played, 1);
+    // The Leader of seat 1 has 6 life and power 1, the attacker power 2.
+    assert_eq!(
+        state_value(&played, leader, "current_life"),
+        Some(FieldValue::Int(6))
+    );
     let attacked = accepted(&ruleset, &played, &attack(0, MOSS_0, leader));
-    assert_eq!(attacked.trace.events()[0], tapped(MOSS_0));
-    // And again, though it is now tapped.
-    accepted(&ruleset, &attacked.state, &attack(0, MOSS_0, leader));
+    assert_eq!(attacked.trace.events(), [tapped(MOSS_0), life(leader, 5)]);
+    // And again, though it is now tapped: it is not tapped again, and the Leader loses another life.
+    let again = accepted(&ruleset, &attacked.state, &attack(0, MOSS_0, leader));
+    assert_eq!(again.trace.events(), [life(leader, 4)]);
 }
 
 #[test]
@@ -934,26 +980,41 @@ fn opponent_is_any_player_other_than_the_actor() {
     // Both enemy Leaders can be attacked, each from the same state.
     for seat in [1, 2] {
         let leader = leader_of(&turn_4, seat);
-        let transition = accepted(&ruleset, &turn_4, &attack(0, creature, leader));
-        let events = transition.trace.events();
-        assert_eq!(events[0], tapped(creature));
+        let Some(FieldValue::Int(before)) = state_value(&turn_4, leader, "current_life") else {
+            panic!("the Leader of seat {seat} has an int life");
+        };
         assert!(
-            matches!(events.get(1), Some(Event::CardStateChanged { card, .. }) if *card == leader),
-            "the Leader of seat {seat} lost a life: {events:?}"
+            int_field(&ruleset, &turn_4, creature, "power")
+                >= int_field(&ruleset, &turn_4, leader, "power")
+        );
+        let transition = accepted(&ruleset, &turn_4, &attack(0, creature, leader));
+        assert_eq!(
+            transition.trace.events(),
+            [tapped(creature), life(leader, before - 1)],
+            "the Leader of seat {seat} loses a life"
         );
     }
 
     // A tapped creature of seat 2 can be attacked too.
+    // It has no more power than the attacker, so it dies.
     let enemy = *cards_in(&turn_4, 2, "hand")
-        .first()
-        .expect("seat 2 has cards in hand");
+        .iter()
+        .find(|&&card| int_field(&ruleset, &turn_4, card, "power") <= 2)
+        .expect("seat 2 holds a creature of power 2 or less");
     let mut with_enemy = turn_4.clone();
     apply_all(
         &mut with_enemy,
         &[moved(enemy, 2, "hand", "field"), tapped(enemy)],
     );
     let transition = accepted(&ruleset, &with_enemy, &attack(0, creature, enemy));
-    assert_eq!(transition.trace.events()[0], tapped(creature));
+    assert!(
+        int_field(&ruleset, &with_enemy, creature, "power")
+            >= int_field(&ruleset, &with_enemy, enemy, "power")
+    );
+    assert_eq!(
+        transition.trace.events(),
+        [tapped(creature), moved(enemy, 2, "field", "trash")]
+    );
     // The actor's own Leader is nobody's opponent.
     let own_leader = leader_of(&turn_4, 0);
     assert_rejected(
