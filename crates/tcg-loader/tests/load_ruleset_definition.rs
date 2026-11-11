@@ -149,6 +149,7 @@ fn small_ruleset_draft() -> RulesetDraft {
         setup: vec![],
         actions: vec![],
         turn: None,
+        win_conditions: vec![],
     }
 }
 
@@ -470,29 +471,9 @@ fn forbidden_yaml_features_are_rejected() {
 }
 
 #[test]
-fn win_conditions_are_still_unsupported() {
-    // `setup` (ticket #21), `turn` and `actions` (ticket #22) are loaded; `win_conditions` is only
-    // noticed, until ticket [09].
-    let error = yaml_error(&format!("{FIXTURE}win_conditions: []\n"));
-    assert_eq!(
-        error.kind,
-        YamlErrorKind::UnsupportedSection {
-            section: "win_conditions".to_string()
-        }
-    );
-    assert_eq!(error.path, path().key("win_conditions"));
-
-    // A section with an empty value is still present.
-    let error = yaml_error(&format!("{FIXTURE}win_conditions:\n"));
-    assert_eq!(
-        error.kind,
-        YamlErrorKind::UnsupportedSection {
-            section: "win_conditions".to_string()
-        }
-    );
-
-    // The turn and the actions are not unsupported any more: an empty turn is read, and the engine
-    // is the one to reject it.
+fn an_empty_turn_is_read_and_the_engine_rejects_it() {
+    // `setup` (ticket #21), `turn` and `actions` (ticket #22) and `win_conditions` (ticket #23)
+    // are all loaded: an empty turn is read, and the engine is the one to reject it.
     let error = definition_error(&format!("{FIXTURE}turn:\n  phases: []\n"));
     assert_eq!(
         error.kind,

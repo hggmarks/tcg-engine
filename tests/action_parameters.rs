@@ -54,6 +54,7 @@ fn draft_with_play_creature(count: &str) -> RulesetDraft {
         setup: vec![],
         actions: vec![],
         turn: None,
+        win_conditions: vec![],
     };
     draft.actions.push(ActionDraft {
         id: "play_creature".to_string(),

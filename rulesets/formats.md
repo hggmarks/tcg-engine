@@ -8,7 +8,7 @@ Every declared id and name matches `[a-z][a-z0-9_]*` and is not `true`, `false` 
 
 ## Ruleset structure
 
-See `small-ruleset/small-ruleset.yaml`. The structural sections are `meta`, `parameters`, `zones`, `card_types` and `inputs`. `setup`, `turn` and `actions` are loaded (see below); the other behavior section, `win_conditions`, is not loaded yet, and a file that has it is rejected.
+See `small-ruleset/small-ruleset.yaml`. The structural sections are `meta`, `parameters`, `zones`, `card_types` and `inputs`. `setup`, `turn`, `actions` and `win_conditions` are loaded (see below).
 
 Each entry of `inputs` is `{ id, card_types, size, max_copies?, zone }`, with these constraints:
 
@@ -73,6 +73,20 @@ actions:
   - `effects` is a list of single-key maps: `end_turn: {}` (the phases after the current one run, then the next Player's Turn begins, in the same transition), `move: { card: <ref>, to }` (the card goes from the zone it is in onto the top of `to`, a zone of its owner) and `set_state: { card: <ref>, state, value }` (the state must be one of the param's card type, with a value of its type; `value` is a literal scalar, not a ref; nothing happens if the value is already that). A `move` keeps the instance state of the card (a played creature stays `recently_played` if it is moved again).
   - The decisions are in ADR-0015.
 - Turn validation follows `actions`: phases are addressed by id in errors (`turn.phases[main].actions[0]`) and steps by position, with `then` and `else` as keys (`turn.phases[start].automatic[2].else[0].draw.from`). The decisions are in ADR-0012.
+
+## Win conditions
+
+```yaml
+win_conditions:
+  - id: deck_out
+    when: { draw_from_empty: deck }
+    loser: owner
+```
+
+- `win_conditions` is an optional list; absent means the Game never ends. Each entry is `{ id, when, loser }`, with `id` an identifier unique among the win conditions.
+- `when` is a single-key map. `draw_from_empty: <zone>` holds for a Player when a draw of that Player in the transition found the zone empty; the zone must be declared. An expression (`lte`, `gte`, `eq`, `and`, `is_card_type`, as `leader_dead` of the Small Ruleset is written) is read, but validation rejects it as unsupported, naming its operator, until [11]. Any other key is an unknown key.
+- `loser` is `owner`: the Player the condition holds for. No other value exists.
+- Win conditions are evaluated once after every accepted action and at the end of Game creation, after everything the transition ran: `draw_from_empty` holds by the Events of that transition, and later conditions may read the resulting state. For each Player in seat order the reason is the first condition, in declaration order, that holds for them; every Player who has one loses, the others win, and if all lose the Game is drawn. The Game then ends: no Action is accepted. Errors are addressed by id: `win_conditions[deck_out].when`, `win_conditions[deck_out].when.draw_from_empty`, `win_conditions[deck_out].loser`. Win conditions are validated last, after `turn`. The decisions are in ADR-0014.
 
 ## Card catalog
 

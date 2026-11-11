@@ -12,10 +12,13 @@ mod arguments;
 mod creation;
 mod event;
 mod execution;
+mod game_end;
 mod state;
 mod turn_cycle;
 
 pub use action::{Action, Argument, Rejection};
 pub use creation::{DeclarativeRuleset, GameCreation, GameCreationError};
 pub use event::Event;
-pub use state::{ApplyError, CardInstance, CardInstanceId, GameState, ZoneCards};
+pub use state::{
+    ApplyError, CardInstance, CardInstanceId, GameState, Loss, TerminalOutcome, ZoneCards,
+};

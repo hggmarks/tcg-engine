@@ -1,9 +1,9 @@
 //! Actions of the declarative Ruleset and how it runs them.
 //!
 //! An Action names the Player who takes it, an action the ruleset declares and one argument for
-//! each of its params. The Ruleset checks it in a fixed order (see [`Rejection`]), then pays the
-//! action's costs and runs its effects against a clone of the GameState, so a rejected Action
-//! changes nothing (ADR-0002).
+//! each of its params. The Ruleset checks it in a fixed order that starts with whether the Game is
+//! over (see [`Rejection`]), then pays the action's costs and runs its effects against a clone of
+//! the GameState, so a rejected Action changes nothing (ADR-0002).
 
 use std::fmt;
 
@@ -12,6 +12,7 @@ use super::arguments;
 use super::creation::DeclarativeRuleset;
 use super::event::Event;
 use super::execution::Execution;
+use super::game_end;
 use super::state::{ApplyError, CardInstanceId, GameState};
 use super::turn_cycle;
 use crate::player::PlayerId;
@@ -38,6 +39,8 @@ pub enum Argument {
 /// The reason the declarative Ruleset refuses an Action, in the order the checks run.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Rejection {
+    /// The Game has ended: every Action is rejected, whoever takes it and whatever it is.
+    GameOver,
     /// The Player is not in the Game.
     UnknownPlayer { player: PlayerId },
     /// The Player is in the Game but it is not their Turn.
@@ -99,6 +102,7 @@ pub enum Rejection {
 impl fmt::Display for Rejection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::GameOver => write!(f, "the Game is over"),
             Self::UnknownPlayer { player } => write!(f, "Player {} is not in the Game", player.0),
             Self::NotActivePlayer { player, active } => write!(
                 f,
@@ -188,6 +192,9 @@ impl Ruleset for DeclarativeRuleset {
         state: &GameState,
         action: &Action,
     ) -> Result<Transition<GameState, Event>, Rejection> {
+        if state.outcome().is_some() {
+            return Err(Rejection::GameOver);
+        }
         if !state.player_order().contains(action.player) {
             return Err(Rejection::UnknownPlayer {
                 player: action.player,
@@ -236,6 +243,7 @@ impl Ruleset for DeclarativeRuleset {
                 other => action_effects::run(&mut execution, &bound, other)?,
             }
         }
+        game_end::end_game_if_lost(definition, &mut execution).map_err(Rejection::EventRejected)?;
         Ok(Transition {
             state: execution.state,
             trace: EventTrace::new(execution.events),

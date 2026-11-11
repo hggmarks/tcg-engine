@@ -1,7 +1,7 @@
 //! The Events of the declarative Ruleset. They are generic: they name cards, Players and zones, and
 //! know nothing about any particular game (ADR-0010).
 
-use super::state::CardInstanceId;
+use super::state::{CardInstanceId, Loss};
 use crate::card_catalog::CardId;
 use crate::player::PlayerId;
 use crate::random::RandomState;
@@ -54,6 +54,10 @@ pub enum Event {
         state: StateName,
         value: FieldValue,
     },
-    /// A draw found the zone empty. It changes nothing; win conditions read it ([09]).
+    /// A draw found the zone empty. It changes nothing; win conditions read it (ADR-0014).
     DrawFromEmptyZone { player: PlayerId, zone: ZoneId },
+    /// The Game ended: these Players lost, in seat order, each for one win condition. Applying it
+    /// sets the Terminal Outcome (the winners are the other Players), and no Event applies after
+    /// it. It is the last Event of the trace that emits it (ADR-0014).
+    GameEnded { losses: Vec<Loss> },
 }

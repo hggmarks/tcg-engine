@@ -10,8 +10,7 @@
 //! 1. an event pass that rejects anchors, aliases and every tag, and tracks the path;
 //! 2. `serde-saphyr`, with strict options, into private data-transfer types that reject unknown
 //!    keys;
-//! 3. a check that no unsupported behavior section (`win_conditions`) is present;
-//! 4. conversion into the draft.
+//! 3. conversion into the draft.
 //!
 //! The three file kinds share steps 1 and 2; each has its own data-transfer types. The first error
 //! wins. See ADR-0008 and ADR-0009.
@@ -46,17 +45,7 @@ pub fn load_ruleset_definition(yaml: &str) -> Result<RulesetDefinition, LoadErro
 
 /// Parses YAML text into a draft without checking its meaning: syntax only.
 pub fn parse_ruleset_draft(yaml: &str) -> Result<RulesetDraft, YamlError> {
-    let dto: RulesetDto = parse(yaml)?;
-    if let Some(section) = dto.unsupported_section() {
-        return Err(YamlError {
-            path: DefinitionPath::root().key(section),
-            location: None,
-            kind: YamlErrorKind::UnsupportedSection {
-                section: section.to_string(),
-            },
-        });
-    }
-    Ok(dto.into_draft())
+    Ok(parse::<RulesetDto>(yaml)?.into_draft())
 }
 
 /// Loads a card catalog and validates it against the ruleset it targets: stage 2 of ADR-0004's
@@ -186,8 +175,9 @@ fn classify(error: SaphyrError, path: DefinitionPath) -> YamlError {
 /// Whether `path` is a single-key map `{ <primitive>: ... }` whose primitive is chosen by name: an
 /// element of `setup` (`setup[1]`), of an automatic phase or an `if` step
 /// (`turn.phases[0].automatic[2]`, `turn.phases[0].automatic[2].else[0]`) or of an action's
-/// `effects` or `cost` (`actions[0].effects[0]`, `actions[0].cost[0]`), or the condition of an `if` step
-/// (`turn.phases[0].automatic[2].if`).
+/// `effects` or `cost` (`actions[0].effects[0]`, `actions[0].cost[0]`), the condition of an `if`
+/// step (`turn.phases[0].automatic[2].if`), or the `when` of a win condition
+/// (`win_conditions[0].when`).
 fn names_a_primitive(path: &DefinitionPath) -> bool {
     match path.segments() {
         [PathSegment::Key(key), PathSegment::Index(_)] if key == "setup" => true,
@@ -197,7 +187,7 @@ fn names_a_primitive(path: &DefinitionPath) -> bool {
                 "automatic" | "then" | "else" | "effects" | "cost"
             )
         }
-        [.., PathSegment::Key(key)] => key == "if",
+        [.., PathSegment::Key(key)] => matches!(key.as_str(), "if" | "when"),
         _ => false,
     }
 }
