@@ -1,6 +1,6 @@
 //! The game-agnostic execution boundary.
 
-use crate::ruleset::{Ruleset, Transition};
+use crate::ruleset::{LegalActions, Ruleset, Transition};
 
 /// Applies Actions through the one [`Ruleset`] it owns.
 ///
@@ -33,5 +33,12 @@ impl<R: Ruleset> Runtime<R> {
         action: &R::Action,
     ) -> Result<Transition<R::State, R::Event>, R::Rejection> {
         self.ruleset.transition(state, action)
+    }
+}
+
+impl<R: LegalActions> Runtime<R> {
+    /// Lists the legal Actions of `state` through the Ruleset's optional capability.
+    pub fn legal_actions(&self, state: &R::State) -> Vec<R::Action> {
+        self.ruleset.legal_actions(state)
     }
 }

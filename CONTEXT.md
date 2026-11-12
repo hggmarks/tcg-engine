@@ -176,7 +176,7 @@ A Deck Input's optional `max_copies`: the most copies of one Card Definition an 
 ## Declarative Games
 
 **Declarative Ruleset**:
-The Ruleset that interprets a RulesetDefinition and a Card Catalog. Its GameState changes only by Event Application. Its Action is a Player, an Action Definition id and one Argument per Action Parameter, and its Rejection is one of Game Over (checked before every other), Unknown Player, Not Active Player, Unknown Action, Action Not In Current Phase, Argument Count Mismatch, Unknown Card, Not Card Owner, Not Opponent Card, Card Not In Zone, Wrong Card Type, Where Condition Not Met, No Alternative Matched, Negative Count, Not Enough Untapped Cards, State Overflow, Turn Number Overflow, EventRejected, CardDataMismatch, ExpressionTypeMismatch or UnboundParam (ADR-0012, ADR-0014, ADR-0015, ADR-0016).
+The Ruleset that interprets a RulesetDefinition and a Card Catalog. Its GameState changes only by Event Application. Its Action is a Player, an Action Definition id and one Argument per Action Parameter, and its Rejection is one of Game Over (checked before every other), Unknown Player, Not Active Player, Unknown Action, Action Not In Current Phase, Argument Count Mismatch, Unknown Card, Not Card Owner, Not Opponent Card, Card Not In Zone, Wrong Card Type, Where Condition Not Met, No Alternative Matched, Negative Count, Not Enough Untapped Cards, State Overflow, Turn Number Overflow, EventRejected, CardDataMismatch, ExpressionTypeMismatch or UnboundParam (ADR-0012, ADR-0014, ADR-0015, ADR-0016). It lists its Legal Actions, filtered through its own `transition` (ADR-0018).
 
 **EventRejected**:
 A declarative Rejection for an internal inconsistency: an Event the Ruleset generated was rejected because the GameState does not fit this Ruleset. It is never expected.
@@ -374,6 +374,17 @@ A Rejection: a Cost's count resolved to a negative value.
 
 **Not Enough Untapped Cards**:
 A Rejection: a Tap Cost needs more untapped cards in the zone than the acting Player has.
+
+## Legal Actions
+
+**Legal Action**:
+An Action the Ruleset's `transition` accepts in a GameState, nothing more and nothing less: an Action that fails for any reason, an internal inconsistency included, is not legal. After the Game has ended no Action is legal (ADR-0018).
+
+**Legal Action Listing**:
+The optional `LegalActions` capability of a Ruleset: `legal_actions(state)` returns every Legal Action of the GameState exactly once, as a `Vec` with no error type and no Player parameter, each Action carrying its Player. It is separate from `Ruleset` so a Ruleset with an unbounded set of Actions, like the Toy Ruleset, need not implement it. `Runtime::legal_actions` forwards to it (ADR-0018).
+
+**Listing Order**:
+The order of a Legal Action Listing in the Declarative Ruleset: the actions in the order the current Action Phase lists them; for one action the argument lists in lexicographic order, param by param, each by ascending Card Instance Id whatever the zone. A card that fits several alternatives of a param is one candidate (ADR-0018).
 
 ## Ending the Game
 

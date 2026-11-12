@@ -169,3 +169,29 @@ fn check_alternative(
     }
     Ok(None)
 }
+
+/// Every argument list that binds the params of `declared` for `actor`, in Listing Order.
+pub(super) fn fillings(
+    ruleset: &DeclarativeRuleset,
+    state: &GameState,
+    actor: PlayerId,
+    declared: &ActionDefinition,
+) -> Vec<Vec<CardInstanceId>> {
+    let mut partial: Vec<(BoundCards, Vec<CardInstanceId>)> =
+        vec![(BoundCards { cards: Vec::new() }, Vec::new())];
+    for param in declared.params() {
+        let mut next = Vec::new();
+        for (bound, cards) in &partial {
+            for instance in state.cards() {
+                let mut candidate = bound.clone();
+                if bind_param(ruleset, state, actor, &mut candidate, param, instance.id()).is_ok() {
+                    let mut list = cards.clone();
+                    list.push(instance.id());
+                    next.push((candidate, list));
+                }
+            }
+        }
+        partial = next;
+    }
+    partial.into_iter().map(|(_, cards)| cards).collect()
+}

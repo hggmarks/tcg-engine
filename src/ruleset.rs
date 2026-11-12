@@ -28,6 +28,36 @@ pub trait Ruleset {
     ) -> Result<Transition<Self::State, Self::Event>, Self::Rejection>;
 }
 
+/// The optional capability of a Ruleset whose legal Actions are finite in every GameState (ADR-0018).
+///
+/// It is separate from [`Ruleset`], so a Ruleset with an unbounded set of possible Actions need
+/// not implement it. The Toy Ruleset is one: the amount of its DealDamage has no upper limit.
+///
+/// The Declarative Ruleset has the capability:
+///
+/// ```
+/// use tcg_engine::declarative::DeclarativeRuleset;
+/// use tcg_engine::ruleset::LegalActions;
+///
+/// fn needs<R: LegalActions>() {}
+/// needs::<DeclarativeRuleset>();
+/// ```
+///
+/// The Toy Ruleset does not. This is the same code with only the type changed:
+///
+/// ```compile_fail
+/// use tcg_engine::ruleset::LegalActions;
+/// use tcg_engine::toy::ToyRuleset;
+///
+/// fn needs<R: LegalActions>() {}
+/// needs::<ToyRuleset>();
+/// ```
+pub trait LegalActions: Ruleset {
+    /// Every Action `transition` accepts in `state`, each exactly once, in the Ruleset's
+    /// documented order. Empty once the Game has ended. `state` is never changed.
+    fn legal_actions(&self, state: &Self::State) -> Vec<Self::Action>;
+}
+
 /// The outcome of an accepted State Transition.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Transition<S, E> {
