@@ -227,7 +227,9 @@ fn check_transition_returns_every_violation_in_ticket_order() {
 
     // Backwards: from the GameState after a pass to the one before it, with no Event. The decks
     // and the mana decks are not what the trace gives (3), applying the trace does not give the
-    // next GameState (5) and the Turn Number goes down (7). Nothing else is wrong.
+    // next GameState (5) and the Turn Number goes down (7). Nothing else is wrong. Two ordered
+    // zones differ here, yet the result has one entry for Invariant 3: a check reports at most
+    // one violation per Invariant, in ticket order, and its `detail` names the first offender.
     let violations = check_transition(&ruleset, &step.next, &empty_trace(), &step.prior);
     assert_eq!(
         invariants(&violations),
