@@ -56,7 +56,7 @@ actions:
     effects: [ { end_turn: {} } ]
 ```
 
-- `turn` is optional; absent means the Game has no Turns (creation stops after setup and no Action is legal). `actions` is optional; absent means none.
+- `turn` is optional; absent means the Game has no Turns (creation stops after setup and no Action is legal). `actions` is optional; absent means none. The order of a phase's `actions` list is the order its Legal Actions are listed in (ADR-0018).
 - `turn.phases` is a list of phases, each `{ id, automatic }` or `{ id, actions }`: exactly one of the two keys. `automatic` is a list of steps run in order when the phase begins; `actions` is a list of declared action ids the Active Player may take there. A turn has exactly one phase with `actions`: the Game waits in it, and `end_turn` is the only way out. Validation does not yet check that the action phase can be left (it may list no action, or none with `end_turn`, and the Game then waits there forever), nor that an action ends at most one Turn (`[end_turn, end_turn]` ends two); an action no phase lists loads and is always rejected. These, and effects listed after an `end_turn` (which load and run in the next Player's Turn), are an open gap recorded in ADR-0015 and ADR-0016. When the Game is created the first Turn begins and runs to that phase.
 - A step is a single-key map naming a primitive, or the `if` form. `player` is `each` or `active` (the Active Player). Steps run for the selected Players in seat order, the zones in the listed order and the cards bottom first.
   - `untap: { player, zones }` sets `tapped` to false on the cards of the listed zones.

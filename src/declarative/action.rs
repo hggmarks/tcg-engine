@@ -235,6 +235,25 @@ impl fmt::Display for Rejection {
 
 impl std::error::Error for Rejection {}
 
+/// The actions the current phase lists, or `None` when the Game has no `turn`, no current phase,
+/// a phase the definition does not know or one that is automatic.
+pub(super) fn current_action_phase<'a>(
+    ruleset: &'a DeclarativeRuleset,
+    state: &GameState,
+) -> Option<&'a [ActionId]> {
+    let current = state.phase()?;
+    let phase = ruleset
+        .definition()
+        .turn()?
+        .phases()
+        .iter()
+        .find(|phase| phase.id() == current)?;
+    match phase.kind() {
+        PhaseKind::Actions(actions) => Some(actions),
+        PhaseKind::Automatic(_) => None,
+    }
+}
+
 impl Ruleset for DeclarativeRuleset {
     type State = GameState;
     type Action = Action;
@@ -266,19 +285,8 @@ impl Ruleset for DeclarativeRuleset {
                 action: action.action.clone(),
             });
         };
-        let listed_in_current_phase = state
-            .phase()
-            .and_then(|current| {
-                definition
-                    .turn()?
-                    .phases()
-                    .iter()
-                    .find(|phase| phase.id() == current)
-            })
-            .is_some_and(|phase| match phase.kind() {
-                PhaseKind::Actions(actions) => actions.contains(&action.action),
-                PhaseKind::Automatic(_) => false,
-            });
+        let listed_in_current_phase = current_action_phase(self, state)
+            .is_some_and(|actions| actions.contains(&action.action));
         if !listed_in_current_phase {
             return Err(Rejection::ActionNotInCurrentPhase {
                 action: action.action.clone(),
