@@ -64,18 +64,12 @@ pub(super) fn validate(
         cards.push(validate_card(ruleset, card)?);
     }
 
-    let index = cards
-        .iter()
-        .enumerate()
-        .map(|(position, card)| (card.id().clone(), position))
-        .collect();
     Ok(CardCatalog {
         meta: CatalogMeta {
             ruleset: ruleset.meta().id().clone(),
             ruleset_version: ruleset.meta().version(),
         },
         cards,
-        index,
     })
 }
 

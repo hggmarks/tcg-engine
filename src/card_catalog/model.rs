@@ -1,8 +1,6 @@
 //! The validated, typed Card Catalog. Values of these types are built only by
 //! [`CardCatalog::validate`], so their invariants hold.
 
-use std::collections::BTreeMap;
-
 use super::draft::CardCatalogDraft;
 use super::error::CatalogError;
 use crate::id::id_type;
@@ -20,9 +18,6 @@ id_type!(
 pub struct CardCatalog {
     pub(super) meta: CatalogMeta,
     pub(super) cards: Vec<CardDefinition>,
-    /// The position in `cards` of each Card Id, built with the catalog (ADR-0021). Ids are unique,
-    /// so it is a function of `cards`; a `BTreeMap`, never a `HashMap`, for determinism.
-    pub(super) index: BTreeMap<CardId, usize>,
 }
 
 impl CardCatalog {
@@ -44,9 +39,7 @@ impl CardCatalog {
     }
 
     pub fn card(&self, id: &CardId) -> Option<&CardDefinition> {
-        self.index
-            .get(id)
-            .and_then(|&position| self.cards.get(position))
+        self.cards.iter().find(|card| card.id() == id)
     }
 }
 

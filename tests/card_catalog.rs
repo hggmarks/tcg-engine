@@ -86,9 +86,9 @@ fn card_catalog_accepts_the_small_catalog() {
 }
 
 #[test]
-fn the_card_catalog_index_gives_the_card_definition_of_every_id_and_nothing_for_an_unknown_one() {
-    // The lookup by Card Id (ADR-0021) is the one a scan of the Card Definitions in file order
-    // gives, for every Card Id of the catalog.
+fn the_card_catalog_finds_the_card_definition_of_every_id_and_nothing_for_an_unknown_one() {
+    // The lookup by Card Id gives the Card Definition at the id's own position, for every Card Id
+    // of the catalog (a lookup by BTreeMap index was tried and removed, ADR-0021).
     let catalog = small_catalog();
     for definition in catalog.cards() {
         assert!(
@@ -105,7 +105,7 @@ fn the_card_catalog_index_gives_the_card_definition_of_every_id_and_nothing_for_
             "`{unknown}` is not a Card Id of the catalog"
         );
     }
-    // A clone, and a catalog built twice from the same draft, look the same ids up the same way.
+    // A clone, and a catalog built twice from the same draft, are equal.
     assert_eq!(catalog.clone(), catalog);
     assert_eq!(small_catalog(), catalog);
 }
