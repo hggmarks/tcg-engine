@@ -423,8 +423,15 @@ fn turn_inconsistent(ruleset: &DeclarativeRuleset, state: &GameState) -> Option<
     let advanced = state
         .turn_number()
         .map_or(0, |turn| u64::from(turn.get().saturating_sub(1)));
-    let count = u64::try_from(players.len()).ok()?;
-    let position = start.saturating_add(advanced).checked_rem(count)?;
+    // An empty Player Order has no Active Player to expect: that is a violation, not a pass.
+    let Some(position) = u64::try_from(players.len())
+        .ok()
+        .and_then(|count| start.saturating_add(advanced).checked_rem(count))
+    else {
+        return Some(
+            "the Player Order is empty, so no Player can be the Active Player".to_string(),
+        );
+    };
     let expected = usize::try_from(position)
         .ok()
         .and_then(|position| players.get(position))

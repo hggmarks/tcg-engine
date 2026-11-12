@@ -207,7 +207,8 @@ fn play(
 
 /// Replays `record` and checks every invariant at the Opening Position and after each Action.
 ///
-/// It first replays exactly (see `DeclarativeRuleset::replay`), so an identity mismatch or a
+/// It walks the record once, as `DeclarativeRuleset::replay` does, running each Action a single
+/// time, and the first failing step is the failure. An identity mismatch, a failed creation or a
 /// rejected Action is a [`FailureKind::Replay`], with the whole record. An invariant violation
 /// comes with the record cut after the Action that caused it, so verifying that record fails
 /// the same way. Other kinds of failure are reproduced as described on
@@ -225,48 +226,45 @@ fn verify(
     record: &GameRecord,
     checker: &Checker<'_>,
 ) -> Result<Replay, Box<SelfPlayFailure>> {
-    let replay = match ruleset.replay(record) {
-        Ok(replay) => replay,
-        Err(error) => {
-            let accepted = match &error {
-                ReplayError::ActionRejected { index, .. } => *index,
-                _ => 0,
-            };
-            return Err(Box::new(SelfPlayFailure {
-                seed: record.seed(),
-                action_index: accepted.checked_sub(1),
-                record: record.clone(),
-                kind: FailureKind::Replay(error),
-            }));
-        }
+    // One walk: each Action runs once, and its transition is both checked and kept.
+    let replay_failure = |accepted: usize, error: ReplayError| {
+        Box::new(SelfPlayFailure {
+            seed: record.seed(),
+            action_index: accepted.checked_sub(1),
+            record: record.clone(),
+            kind: FailureKind::Replay(error),
+        })
     };
+    ruleset
+        .check_record_identities(record)
+        .map_err(|error| replay_failure(0, error))?;
+    let creation = ruleset
+        .create_game(record.decks(), record.seed())
+        .map_err(|error| replay_failure(0, ReplayError::Creation(error)))?;
 
-    let violations = (checker.opening)(ruleset, record.decks(), &replay.creation);
+    let violations = (checker.opening)(ruleset, record.decks(), &creation);
     if !violations.is_empty() {
         return Err(cut(ruleset, record, 0, violations));
     }
-    let mut state = replay.creation.opening.state.clone();
-    for (index, (action, trace)) in record.actions().iter().zip(&replay.traces).enumerate() {
-        // The replay accepted this Action, so the transition is accepted again; a rejection here
-        // would end the walk without a verdict, so it is reported as the replay's error.
-        let next = match ruleset.transition(&state, action) {
-            Ok(transition) => transition.state,
-            Err(rejection) => {
-                return Err(Box::new(SelfPlayFailure {
-                    seed: record.seed(),
-                    action_index: index.checked_sub(1),
-                    record: record.clone(),
-                    kind: FailureKind::Replay(ReplayError::ActionRejected { index, rejection }),
-                }));
-            }
-        };
-        let violations = (checker.transition)(ruleset, &state, trace, &next);
+    let mut state = creation.opening.state.clone();
+    let mut traces = Vec::with_capacity(record.actions().len());
+    for (index, action) in record.actions().iter().enumerate() {
+        let transition = ruleset.transition(&state, action).map_err(|rejection| {
+            replay_failure(index, ReplayError::ActionRejected { index, rejection })
+        })?;
+        let violations =
+            (checker.transition)(ruleset, &state, &transition.trace, &transition.state);
         if !violations.is_empty() {
             return Err(cut(ruleset, record, index.saturating_add(1), violations));
         }
-        state = next;
+        state = transition.state;
+        traces.push(transition.trace);
     }
-    Ok(replay)
+    Ok(Replay {
+        creation,
+        traces,
+        state,
+    })
 }
 
 /// The failure of an invariant violation after the first `actions` Actions of `record`.
