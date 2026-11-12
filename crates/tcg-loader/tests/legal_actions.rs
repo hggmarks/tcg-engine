@@ -16,7 +16,8 @@ use tcg_engine::declarative::{
 use tcg_engine::player::PlayerId;
 use tcg_engine::random::Seed;
 use tcg_engine::ruleset::{LegalActions, Ruleset};
-use tcg_engine::ruleset_definition::{ActionId, FieldName, FieldValue, StateName, ZoneId};
+use tcg_engine::ruleset_definition::{ActionId, FieldName, FieldValue, PhaseId, StateName, ZoneId};
+use tcg_engine::runtime::Runtime;
 use tcg_loader::{load_card_catalog, load_deck_list, load_ruleset_definition};
 
 const SMALL_RULESET: &str = include_str!("../../../rulesets/small-ruleset/small-ruleset.yaml");
@@ -676,6 +677,12 @@ fn legal_actions_are_listed_in_phase_order_then_by_card_instance_id() {
     let second = ruleset.legal_actions(&mid);
     assert_eq!(first, second);
     assert_eq!(mid, before, "listing does not change the GameState");
+
+    // The order is the ruleset's, not an accident of one instance: a second ruleset, loaded on
+    // its own, lists the same Vec, and so does the Runtime around a ruleset.
+    let reloaded = small();
+    assert_eq!(reloaded.legal_actions(&mid), first);
+    assert_eq!(Runtime::new(small()).legal_actions(&mid), first);
 }
 
 // ---- the phase's list
@@ -740,6 +747,7 @@ fn nothing_is_listed_after_the_game_has_ended() {
     let ended = accept_all(&ruleset, &state, &[pass(0)]);
     assert!(ended.outcome().is_some(), "the Game has ended");
     assert_eq!(ruleset.legal_actions(&ended), Vec::<Action>::new());
+    assert_eq!(brute_force(&ruleset, &ended), Vec::<Action>::new());
     assert_eq!(
         ruleset.transition(&ended, &pass(ended.active_player().0)),
         Err(Rejection::GameOver)
@@ -751,4 +759,30 @@ fn nothing_is_listed_after_the_game_has_ended() {
     assert_eq!(created.phase(), None);
     assert!(created.outcome().is_none());
     assert_eq!(timeless.legal_actions(&created), Vec::<Action>::new());
+    assert_eq!(brute_force(&timeless, &created), Vec::<Action>::new());
+}
+
+#[test]
+fn nothing_is_listed_outside_an_action_phase() {
+    let ruleset = small();
+    // The Game is back in the Automatic Phase `start` of the Turn in progress.
+    let mut state = mid_game(&ruleset);
+    assert!(!ruleset.legal_actions(&state).is_empty());
+    apply_all(
+        &mut state,
+        &[Event::PhaseBegan {
+            phase: PhaseId::new("start"),
+        }],
+    );
+    assert_eq!(state.phase(), Some(&PhaseId::new("start")));
+    assert!(state.outcome().is_none());
+
+    assert_eq!(ruleset.legal_actions(&state), Vec::<Action>::new());
+    assert_eq!(brute_force(&ruleset, &state), Vec::<Action>::new());
+    assert_eq!(
+        ruleset.transition(&state, &pass(0)),
+        Err(Rejection::ActionNotInCurrentPhase {
+            action: ActionId::new("pass_turn")
+        })
+    );
 }
