@@ -14,7 +14,7 @@ use tcg_engine::player::PlayerId;
 use tcg_engine::random::Seed;
 use tcg_engine::ruleset::Ruleset;
 use tcg_engine::ruleset_definition::{
-    ActionId, PhaseId, PhaseKind, StateName, WinConditionId, ZoneId,
+    ActionId, FieldValue, PhaseId, PhaseKind, StateName, WinConditionId, ZoneId,
 };
 use tcg_engine::turn::TurnNumber;
 use tcg_loader::{load_card_catalog, load_deck_list, load_ruleset_definition};
@@ -397,7 +397,18 @@ fn the_canonical_small_ruleset_catalog_and_sample_decks_load() {
         .collect();
     assert_eq!(win_conditions, ["leader_dead", "deck_out"]);
 
-    assert!(ruleset.create_game(&decks, Seed(1)).is_ok());
+    // The Opening Position: Turn 1 of seat 0 waits in Main, and the Game is on. Each seat has 1
+    // Leader, 50 creatures and 10 mana cards.
+    let state = ruleset
+        .create_game(&decks, Seed(1))
+        .expect("the sample decks create a game")
+        .opening
+        .state;
+    assert_eq!(state.turn_number(), Some(TurnNumber::FIRST));
+    assert_eq!(state.phase(), Some(&PhaseId::new("main")));
+    assert_eq!(state.active_player(), p(0));
+    assert_eq!(state.outcome(), None);
+    assert_eq!(state.cards().len(), 122);
 }
 
 // ---- roadmap decisions that the existing tests state only in passing
@@ -501,7 +512,7 @@ fn the_leader_kill_golden_game_matches_its_snapshot() {
                 .final_state
                 .card(dead)
                 .and_then(|card| card.state_value(&StateName::new("tapped"))),
-            Some(&tcg_engine::ruleset_definition::FieldValue::Bool(true))
+            Some(&FieldValue::Bool(true))
         );
     }
 }

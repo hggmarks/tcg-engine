@@ -5,7 +5,8 @@ use tcg_engine::declarative::{Action, DeclarativeRuleset};
 use tcg_engine::player::PlayerId;
 use tcg_engine::random::Seed;
 use tcg_engine::ruleset::Ruleset;
-use tcg_engine::ruleset_definition::ActionId;
+use tcg_engine::ruleset_definition::{ActionId, PhaseId};
+use tcg_engine::turn::TurnNumber;
 use tcg_loader::{load_card_catalog, load_deck_list, load_ruleset_definition};
 
 const GUIDE: &str = include_str!("../../../rulesets/authoring-guide.md");
@@ -60,13 +61,21 @@ fn the_authoring_guide_examples_load_and_create_a_game() {
         .create_game(&decks, Seed(1))
         .expect("the examples create a game");
 
-    // The Active Player passes the turn in Main.
+    // The Active Player of the first Turn passes it in the Action Phase, and the next Player's
+    // Turn begins in the same phase.
     let state = creation.opening.state;
+    assert_eq!(state.active_player(), PlayerId(0));
+    assert_eq!(state.phase(), Some(&PhaseId::new("main")));
     let pass = Action {
-        player: state.active_player(),
+        player: PlayerId(0),
         action: ActionId::new("pass_turn"),
         arguments: Vec::new(),
     };
-    assert_eq!(state.active_player(), PlayerId(0));
-    assert!(ruleset.transition(&state, &pass).is_ok());
+    let next = ruleset
+        .transition(&state, &pass)
+        .expect("the Active Player passes the turn")
+        .state;
+    assert_eq!(next.turn_number(), TurnNumber::new(2));
+    assert_eq!(next.active_player(), PlayerId(1));
+    assert_eq!(next.phase(), Some(&PhaseId::new("main")));
 }
