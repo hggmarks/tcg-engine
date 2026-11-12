@@ -1,0 +1,9 @@
+# Game Records and exact Replay
+
+**The record.** A `GameRecord` holds what is needed to play a Game again: the ruleset id and version (the definition's `Meta`), the catalog identity (its `CatalogMeta`), the Deck Lists, the Seed and the accepted Actions, in order. A Deck List has no id and the deck format does not get one, so a deck's identity is the validated `DeckList` value itself, one per Seat. The record is a plain in-memory value (`Debug, Clone, PartialEq, Eq`) with private fields and accessors; it is built from a `&DeclarativeRuleset` and grows only by `push_accepted`, whose caller appends Actions the Ruleset accepted. It has no serialization and no content hash: file formats are not specified yet (roadmap, "Not yet specified"). It lives in the engine, in the declarative module, because it is pure, deterministic and wasm-safe, and ADR-0006 already expects Game records.
+
+**Replay.** `DeclarativeRuleset::replay(&record)` returns a `Replay` (the `GameCreation`, one Event Trace per Action, and the final GameState) or a `ReplayError`. It checks, in this order, the ruleset identity, the catalog identity, then re-runs Game creation and each Action through `transition`; the first failure wins and an Action that is rejected is reported with its index. Because creation and every transition are deterministic (Deterministic Execution), a record of an accepted Game reproduces identical Event Traces and an identical final GameState, which the tests compare with `==`. The catalog identity is only a `CatalogMeta` (ruleset id and version), so a catalog that differs while carrying the same meta is not detected; a content hash would, and is left to the ticket that specifies serialization.
+
+No older ADR conflicts: ADR-0006's remark that Game records depend on the Random State's output is what this makes concrete, and ADR-0010 (Events are the only way a GameState changes) is why the traces are a complete account of the Game.
+
+**Status**: accepted

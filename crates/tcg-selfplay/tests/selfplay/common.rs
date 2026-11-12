@@ -17,7 +17,7 @@ pub const DECK_B: &str = include_str!("../../../../rulesets/small-ruleset/decks/
 
 /// The Step Cap of the full Games of these tests. It is far above the longest Game of seeds
 /// 0..1000 (see the test `self_play_ends_every_game_over_1000_seeds_with_every_invariant_holding`).
-pub const MAX_STEPS: usize = 5_000;
+pub const MAX_STEPS: usize = 1_000;
 
 /// `text` with the one occurrence of `from` replaced by `to`.
 pub fn edit(text: &str, from: &str, to: &str) -> String {

@@ -410,3 +410,29 @@ A Game played from a Seed, the two sample decks (deck A at seat 0, deck B at sea
 
 **Golden Snapshot**:
 The committed text file (`crates/tcg-loader/tests/golden/*.trace`) holding the Event Trace of a Golden Game: a header line (name, Seed and decks), the creation trace, the trace of each Action under a line naming it, and an `== outcome` line with the Terminal Outcome, with one `Debug` line per Event. A test compares it byte for byte with the trace the Game produces now. It changes only by a deliberate update, the ignored test `regenerate_golden_snapshots`, and it is not a serialization format.
+
+## Self-Play and Replay
+
+**Game Record**:
+What is needed to play a Game again: the ruleset id and version, the catalog identity (`CatalogMeta`), the Deck Lists (a Deck List has no id, so its identity is its value, one per Seat), the Seed and the accepted Actions in order. It is an in-memory value with no serialization and no content hash (ADR-0019).
+
+**Replay**:
+`DeclarativeRuleset::replay(&record)`: it checks the ruleset identity, then the catalog identity, then re-runs Game creation and each Action. It returns the creation, one Event Trace per Action and the final GameState, which equal those of the original Game, or a `ReplayError` (identity mismatch, creation error, or the index of a rejected Action) (ADR-0019).
+
+**Self-Play**:
+Playing a whole Game with a policy that picks every Action, from one Seed, until the Game has a Terminal Outcome. It lives in the crate `tcg-selfplay` and not in the engine (ADR-0020).
+
+**Uniform Random Policy**:
+The self-play policy that picks one of the Legal Actions, in Listing Order, uniformly. It draws from its own Random State, derived from the Seed with a fixed constant, and never from the GameState's (ADR-0020).
+
+**Invariant**:
+A property that holds in every GameState and across every transition: no card gained or lost, each instance in exactly one zone, ordered zones keep their order rules, instances carry only the states their type declares, event-sourced consistency, an ended Game has no Legal Actions, and the Turn and Active Player are consistent (ADR-0020).
+
+**Invariant Violation**:
+One violated Invariant with a detail naming the first offender. A check returns at most one per Invariant, in the order above.
+
+**Step Cap**:
+The most Actions a self-played Game may accept. A Game that has not ended after that many is a Self-Play Failure; one that ends on its last allowed Action is not.
+
+**Self-Play Failure**:
+What self-play or the verification of a record reports instead of a Game: the Seed, the index of the last accepted Action (absent at the Opening Position), a Game Record that reproduces it and its kind (an Invariant Violation, the Step Cap, no Legal Action, a Legal Action that was rejected, a creation error, or a replay error).

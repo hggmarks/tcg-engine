@@ -85,11 +85,10 @@ fn self_play_with_the_same_seed_is_deterministic() {
 }
 
 /// A Game of seed 4 stopped by a Step Cap of 5.
-fn capped() -> SelfPlayFailure {
+fn capped() -> Box<SelfPlayFailure> {
     let ruleset = small();
     self_play(&ruleset, &decks(&ruleset), Seed(4), 5, Checks::On)
-        .err()
-        .expect("5 Actions do not end a Game")
+        .expect_err("5 Actions do not end a Game")
 }
 
 #[test]
@@ -114,16 +113,13 @@ fn a_game_that_ends_on_its_last_allowed_step_is_not_a_failure() {
     let exact = self_play(&ruleset, &decks, Seed(4), n, Checks::On).expect("ends on the last step");
     assert!(exact == full, "a cap of n gives the full Game");
 
-    let short = self_play(&ruleset, &decks, Seed(4), n - 1, Checks::On)
-        .err()
-        .expect("one step short");
+    let short =
+        self_play(&ruleset, &decks, Seed(4), n - 1, Checks::On).expect_err("one step short");
     assert_eq!(short.kind, FailureKind::StepCapReached { max_steps: n - 1 });
     assert_eq!(short.action_index, Some(n - 2));
     assert_eq!(short.record.actions().len(), n - 1);
 
-    let none = self_play(&ruleset, &decks, Seed(4), 0, Checks::On)
-        .err()
-        .expect("no step is allowed");
+    let none = self_play(&ruleset, &decks, Seed(4), 0, Checks::On).expect_err("no step is allowed");
     assert_eq!(none.kind, FailureKind::StepCapReached { max_steps: 0 });
     assert_eq!(none.action_index, None);
     assert!(none.record.actions().is_empty());
@@ -135,8 +131,7 @@ fn a_game_without_a_legal_action_is_a_failure() {
     let ruleset = small_with_ruleset("actions: [play_creature, attack, pass_turn]", "actions: []");
     let decks = decks(&ruleset);
     let failure = self_play(&ruleset, &decks, Seed(5), MAX_STEPS, Checks::On)
-        .err()
-        .expect("there is no Legal Action");
+        .expect_err("there is no Legal Action");
     assert_eq!(failure.kind, FailureKind::NoLegalAction);
     assert_eq!(failure.seed, Seed(5));
     assert_eq!(failure.action_index, None);
@@ -179,8 +174,7 @@ fn a_failure_record_reproduces_the_failure() {
 #[test]
 fn verify_record_reports_a_record_of_another_ruleset() {
     let failure = verify_record(&small_version_2(), &capped().record)
-        .err()
-        .expect("the record is of version 1");
+        .expect_err("the record is of version 1");
     assert_eq!(failure.seed, Seed(4));
     assert_eq!(failure.action_index, None);
     match failure.kind {
@@ -207,9 +201,7 @@ fn verify_record_reports_the_last_accepted_action_of_a_rejected_record() {
     let n = full.record.actions().len();
     let mut longer = full.record.clone();
     longer.push_accepted(pass(0));
-    let failure = verify_record(&ruleset, &longer)
-        .err()
-        .expect("the extra Action is rejected");
+    let failure = verify_record(&ruleset, &longer).expect_err("the extra Action is rejected");
     assert_eq!(
         failure.kind,
         FailureKind::Replay(ReplayError::ActionRejected {
@@ -223,9 +215,7 @@ fn verify_record_reports_the_last_accepted_action_of_a_rejected_record() {
     // A record whose first Action is rejected has no accepted Action.
     let mut first = GameRecord::new(&ruleset, &decks, Seed(2));
     first.push_accepted(pass(1));
-    let failure = verify_record(&ruleset, &first)
-        .err()
-        .expect("the first Action is rejected");
+    let failure = verify_record(&ruleset, &first).expect_err("the first Action is rejected");
     assert_eq!(
         failure.kind,
         FailureKind::Replay(ReplayError::ActionRejected {

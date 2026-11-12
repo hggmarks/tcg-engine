@@ -51,8 +51,7 @@ fn replay_reproduces_the_event_traces_and_the_final_game_state() {
 fn replay_rejects_a_record_of_another_ruleset() {
     let ruleset = small();
     let record = self_play(&ruleset, &decks(&ruleset), Seed(1), 10, Checks::On)
-        .err()
-        .expect("a cap of 10 stops the Game")
+        .expect_err("a cap of 10 stops the Game")
         .record;
 
     // Version 2 of the ruleset, with a catalog of version 2: both identities differ, and the
@@ -77,8 +76,7 @@ fn replay_rejects_a_record_of_another_ruleset() {
 fn replay_rejects_a_record_of_another_catalog() {
     let ruleset = small();
     let record = self_play(&ruleset, &decks(&ruleset), Seed(1), 10, Checks::On)
-        .err()
-        .expect("a cap of 10 stops the Game")
+        .expect_err("a cap of 10 stops the Game")
         .record;
 
     // The definition of version 1 with the catalog of version 2: `DeclarativeRuleset::new` accepts
