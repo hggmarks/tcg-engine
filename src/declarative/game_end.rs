@@ -12,6 +12,7 @@ use super::event::Event;
 use super::execution::Execution;
 use super::expression;
 use super::state::Loss;
+use crate::card_catalog::CardId;
 use crate::player::PlayerId;
 use crate::ruleset_definition::{Loser, ParamName, WinCondition, WinConditionWhen};
 
@@ -68,16 +69,31 @@ fn loses(
         // that makes it true.
         (WinConditionWhen::Expression { subject, condition }, Loser::Owner) => {
             let name = ParamName::new(subject.as_str());
+            // Whether a card is of the Subject depends on its Card Definition alone, and the
+            // copies of a card are numbered one after the other, so the answer for the previous
+            // card is the answer for the next one while the definition is equal (ADR-0021). A
+            // definition the catalog does not list is still an error at the first card that has it.
+            let mut previous: Option<(&CardId, bool)> = None;
             for instance in execution.state.cards() {
                 if instance.owner() != player {
                     continue;
                 }
-                let definition = ruleset.catalog().card(instance.definition()).ok_or(
-                    Rejection::CardDataMismatch {
-                        card: instance.id(),
-                    },
-                )?;
-                if definition.card_type() != subject {
+                let is_subject = match previous {
+                    Some((definition, is_subject)) if definition == instance.definition() => {
+                        is_subject
+                    }
+                    _ => {
+                        let definition = ruleset.catalog().card(instance.definition()).ok_or(
+                            Rejection::CardDataMismatch {
+                                card: instance.id(),
+                            },
+                        )?;
+                        let is_subject = definition.card_type() == subject;
+                        previous = Some((instance.definition(), is_subject));
+                        is_subject
+                    }
+                };
+                if !is_subject {
                     continue;
                 }
                 let bound = BoundCards::of(name.clone(), instance.id());

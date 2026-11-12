@@ -1145,6 +1145,63 @@ fn leader_dead_is_the_reason_when_deck_out_also_holds() {
 }
 
 #[test]
+fn a_leader_that_already_meets_the_condition_loses_at_the_next_action_though_no_event_touches_it() {
+    // A hand-built GameState: the Leader of seat 1 is at 0 life and the Game has not ended. The
+    // Win Conditions are evaluated on every card at the end of every accepted transition, not
+    // only on the cards its Events touch (ADR-0014, ADR-0021), so the next Action ends the Game
+    // although it has nothing to do with that Leader.
+    let ruleset = small();
+    let mut state = opening(&ruleset);
+    let leader = leader_of(&state, 1);
+    apply_all(&mut state, &[life(leader, 0)]);
+    assert_eq!(state.outcome(), None, "the Game goes on until a transition");
+
+    let transition = accepted(&ruleset, &state, &pass(0));
+    let events = transition.trace.events();
+    assert!(
+        events.iter().all(|event| !matches!(
+            event,
+            Event::CardStateChanged { card, .. } if *card == leader
+        )),
+        "no Event of the transition touches the Leader"
+    );
+    assert_eq!(
+        events.last(),
+        Some(&Event::GameEnded {
+            losses: vec![leader_dead(1)]
+        })
+    );
+    let outcome = transition.state.outcome().expect("the Game ended");
+    assert_eq!(outcome.losses(), [leader_dead(1)]);
+    assert_eq!(outcome.winners(), [p(0)]);
+}
+
+#[test]
+fn a_card_of_a_definition_missing_from_the_catalog_rejects_the_action_that_ends_it() {
+    // A hand-built GameState holds a card whose Card Definition the catalog does not list: the
+    // Win Conditions cannot read it, which is an internal inconsistency and rejects the Action
+    // (as it did before ADR-0021 stopped looking every card up one by one).
+    let ruleset = small();
+    let mut state = opening(&ruleset);
+    let ghost = CardInstanceId(u32::try_from(state.cards().len()).expect("a small Game"));
+    state
+        .apply(&Event::CardCreated {
+            card: ghost,
+            owner: p(0),
+            definition: tcg_engine::card_catalog::CardId::new("ghost"),
+            zone: zone("hand"),
+            state: Vec::new(),
+        })
+        .expect("the Event is accepted");
+    assert_rejected(
+        &ruleset,
+        &state,
+        &pass(0),
+        Rejection::CardDataMismatch { card: ghost },
+    );
+}
+
+#[test]
 fn a_leader_at_zero_or_negative_life_loses_at_game_creation() {
     let created = |ruleset: &DeclarativeRuleset| {
         ruleset
