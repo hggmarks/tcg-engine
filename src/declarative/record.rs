@@ -153,12 +153,10 @@ impl fmt::Display for ReplayError {
 impl std::error::Error for ReplayError {}
 
 impl DeclarativeRuleset {
-    /// Plays `record` again: checks the identities, creates the Game from the record's Deck Lists
-    /// and Seed, and runs each Action in order on the GameState the previous one made.
-    ///
-    /// The Event Traces and the final GameState are exactly those of the original Game
-    /// (Deterministic Execution). The first failing step is the error.
-    pub fn replay(&self, record: &GameRecord) -> Result<Replay, ReplayError> {
+    /// Checks that `record` was made with this Ruleset: first the ruleset identity, then the
+    /// catalog identity. It is the first step of [`replay`](Self::replay), offered on its own so
+    /// that a caller walking the record itself rejects a foreign record the same way.
+    pub fn check_record_identities(&self, record: &GameRecord) -> Result<(), ReplayError> {
         let meta = self.definition().meta();
         if record.ruleset_id() != meta.id() || record.ruleset_version() != meta.version() {
             return Err(ReplayError::RulesetMismatch {
@@ -174,6 +172,16 @@ impl DeclarativeRuleset {
                 ruleset: self.catalog().meta().clone(),
             });
         }
+        Ok(())
+    }
+
+    /// Plays `record` again: checks the identities, creates the Game from the record's Deck Lists
+    /// and Seed, and runs each Action in order on the GameState the previous one made.
+    ///
+    /// The Event Traces and the final GameState are exactly those of the original Game
+    /// (Deterministic Execution). The first failing step is the error.
+    pub fn replay(&self, record: &GameRecord) -> Result<Replay, ReplayError> {
+        self.check_record_identities(record)?;
         let creation = self
             .create_game(record.decks(), record.seed())
             .map_err(ReplayError::Creation)?;
