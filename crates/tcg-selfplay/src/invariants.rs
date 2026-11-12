@@ -219,30 +219,39 @@ fn opening_cards_differ(decks: &[DeckList], state: &GameState) -> Option<String>
 
 // ---- 2. each instance in exactly one zone
 
+/// One pass over the zones and one over the cards, no map: the cards are counted in a list indexed
+/// by Card Instance Id, which the engine makes dense from 0 in creation order (`GameState::apply`
+/// refuses an id out of sequence). The first offender is the lowest id, as before.
 fn not_in_one_zone(state: &GameState) -> Option<String> {
-    let mut appearances: BTreeMap<CardInstanceId, usize> = BTreeMap::new();
+    let cards = state.cards();
+    let mut appearances = vec![0_usize; cards.len()];
+    let mut unknown: Option<CardInstanceId> = None;
     for &player in state.player_order().players() {
         for held in state.zones(player).unwrap_or_default() {
             for &card in held.cards() {
-                let count = appearances.entry(card).or_insert(0);
-                *count = count.saturating_add(1);
+                match usize::try_from(card.0)
+                    .ok()
+                    .and_then(|position| appearances.get_mut(position))
+                {
+                    Some(count) => *count = count.saturating_add(1),
+                    None => unknown = Some(unknown.map_or(card, |first| first.min(card))),
+                }
             }
         }
     }
-    let known: BTreeSet<CardInstanceId> = state.cards().iter().map(|card| card.id()).collect();
-    for card in &known {
-        let count = appearances.get(card).copied().unwrap_or(0);
-        if count != 1 {
+    for (position, (instance, &count)) in cards.iter().zip(&appearances).enumerate() {
+        let id = instance.id();
+        if usize::try_from(id.0).ok() != Some(position) {
             return Some(format!(
-                "card instance {} is in {count} zones, not 1",
-                card.0
+                "card instance {} is at position {position}: ids are not dense from 0 in creation order",
+                id.0
             ));
         }
+        if count != 1 {
+            return Some(format!("card instance {} is in {count} zones, not 1", id.0));
+        }
     }
-    appearances
-        .keys()
-        .find(|card| !known.contains(card))
-        .map(|card| format!("a zone holds the unknown card instance {}", card.0))
+    unknown.map(|card| format!("a zone holds the unknown card instance {}", card.0))
 }
 
 // ---- 3. ordered zones keep their order rules
