@@ -1,14 +1,17 @@
 //! The identifier grammar shared by rulesets, card catalogs and deck lists.
 
+// An id is shared text (ADR-0021): cloning it, and so cloning a GameState that holds thousands of
+// them, bumps a reference count instead of allocating. Equality, ordering and the derived `Debug`
+// output are those of the text.
 macro_rules! id_type {
     ($(#[$doc:meta])* $name:ident) => {
         $(#[$doc])*
         #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-        pub struct $name(String);
+        pub struct $name(std::sync::Arc<str>);
 
         impl $name {
             pub fn new(id: impl Into<String>) -> Self {
-                Self(id.into())
+                Self(std::sync::Arc::from(id.into()))
             }
 
             pub fn as_str(&self) -> &str {
