@@ -1,1 +1,2 @@
 crates/tcg-loader/tests/golden/*.trace text eol=lf
+crates/tcg-selfplay/tests/selfplay/golden/*.digest text eol=lf
