@@ -37,11 +37,13 @@ Per player:
  
 - **Main deck**: 50 cards, creatures only, max 4 copies of each.
 - **Mana deck**: 10 cards, mana only.
+
 ## Card Instance State (mutable)
  
 - **Leader**: `current_life` (int), initialized from the Leader's `life`, `tapped` (bool).
 - **Creature on field**: `tapped` (bool), `recently_played` (bool).
 - **Card in Mana Zone**: `tapped` (bool).
+
 ## Game Inputs
  
 Each player provides:
@@ -51,6 +53,7 @@ Each player provides:
 - **Mana deck**: 10 cards, mana only.
 
 The starter cards are in `small-catalog.yaml` (3 Leaders, 16 creatures, the mana card) and two legal sample decks are in `decks/deck-a.yaml` and `decks/deck-b.yaml`. The file formats are in `../formats.md`.
+
 ## Setup
 
 Before the first turn, in this order:
@@ -92,14 +95,17 @@ The attacking player chooses a target for the attacker: a **tapped creature** of
  
 - **Against a creature**: the attacker never dies. The target creature dies only if the attacker's `power` is greater than or equal to the target's `power`. A creature that dies goes to the top of its owner's trash and keeps its instance state there (it stays tapped).
 - **Against a Leader**: if the attacker's `power` is greater than or equal to the Leader's `power`, the Leader loses 1 life. Otherwise, nothing else happens (the attacker is still tapped), a leader can always be attacked, ``tapped`` or not, even while its owner has untapped creatures.
+
 ## Win Conditions
 - A player whose Leader has `current_life` ≤ 0 loses. The other player wins. This is checked for each Leader, so a Leader created with 0 life or below makes its owner lose at the end of game creation, and if both players have such a Leader the game is drawn.
 - A player who needs to draw from an empty deck loses. The other player wins.
 - The win conditions are checked after every action and at the end of game creation (setup and the automatic phases of the first turn), once per transition and after everything the transition runs, including the automatic phases it triggers. For example, if passing the turn begins a turn whose Start phase finds the deck empty, that turn's phases still begin, and then the game ends.
 - The game ends at once: no action is accepted afterwards.
 - If both players lose at the same time, the game is drawn (no winner). Deck-out alone cannot make both players lose at once, because only the active player draws, once per turn.
-# Glossary: Small Ruleset 
-## Game Structure
+
+## Glossary: Small Ruleset
+
+### Game Structure
  
 | Term | Definition |
 |---|---|
@@ -112,7 +118,7 @@ The attacking player chooses a target for the attacker: a **tapped creature** of
 | **Game inputs** | What each player provides to start a game: one Leader, a main deck, and a mana deck. |
 | **Win condition** | A situation that makes a player lose; the game then ends and the other player wins. |
  
-## Zones
+### Zones
  
 | Term | Definition |
 |---|---|
@@ -130,7 +136,7 @@ The attacking player chooses a target for the attacker: a **tapped creature** of
 | **Order matters** | The position of each card in the zone is part of the game state. |
 | **Top card** | The card at the end of an ordered zone that is accessed first. |
  
-## Cards
+### Cards
  
 | Term | Definition |
 |---|---|
@@ -145,7 +151,7 @@ The attacking player chooses a target for the attacker: a **tapped creature** of
 | **Current life** | Mutable Leader instance state, initialized from `life` and reduced by combat damage. At 0 or below, the player loses. |
 | **Effect** | Special card behavior. This ruleset has none. |
  
-## States
+### States
  
 | Term | Definition |
 |---|---|
@@ -153,7 +159,7 @@ The attacking player chooses a target for the attacker: a **tapped creature** of
 | **Untapped** | The opposite of tapped: the card is available for use. |
 | **Recently played** | A state of a creature that entered the field this turn. It cannot attack. |
  
-## Actions
+### Actions
  
 | Term | Definition |
 |---|---|
@@ -166,7 +172,7 @@ The attacking player chooses a target for the attacker: a **tapped creature** of
 | **Attack** | Declare a creature as an attacker against a target, tapping it. |
 | **Pass the turn** | End the current player's turn and give the turn to the opponent. |
  
-## Combat
+### Combat
  
 | Term | Definition |
 |---|---|
@@ -177,7 +183,7 @@ The attacking player chooses a target for the attacker: a **tapped creature** of
 | **Dies** | A creature leaves the field and goes to the top of its owner's trash. |
 | **Leader damage** | When the attacker's `power` is ≥ the Leader's `power`, the Leader's `current_life` is reduced by 1. |
  
-## Decks
+### Decks
  
 | Term | Definition |
 |---|---|
