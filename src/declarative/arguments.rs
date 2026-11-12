@@ -72,29 +72,26 @@ pub(super) fn bind(
                 card,
             });
         }
-        bind_param(ruleset, state, action.player, &mut bound, param, card)?;
+        bound = bind_param(ruleset, state, action.player, &bound, param, card)?;
     }
     Ok(bound)
 }
 
-/// Binds `card` to `param`, or says why it cannot be.
+/// `bound` and `card` bound to `param`, or why it cannot be. `bound` is not copied unless the
+/// card fits an alternative or an alternative reads it in a `where`.
 fn bind_param(
     ruleset: &DeclarativeRuleset,
     state: &GameState,
     actor: PlayerId,
-    bound: &mut BoundCards,
+    bound: &BoundCards,
     param: &Param,
     card: CardInstanceId,
-) -> Result<(), Rejection> {
-    let candidate = bound.with(param.name().clone(), card);
+) -> Result<BoundCards, Rejection> {
     let alternatives = param.alternatives();
     let mut failure = None;
     for alternative in alternatives {
-        match check_alternative(ruleset, state, actor, &candidate, param, alternative, card)? {
-            None => {
-                *bound = candidate;
-                return Ok(());
-            }
+        match check_alternative(ruleset, state, actor, bound, param, alternative, card)? {
+            None => return Ok(bound.with(param.name().clone(), card)),
             Some(rejection) => {
                 failure.get_or_insert(rejection);
             }
@@ -111,13 +108,13 @@ fn bind_param(
 }
 
 /// `Ok(None)` if `card` fits `alternative`, `Ok(Some(rejection))` with the first check it fails,
-/// and `Err` for a GameState or catalog that does not fit the ruleset. `candidate` holds the
-/// bindings made so far and `card` for `param`: what the `where` reads.
+/// and `Err` for a GameState or catalog that does not fit the ruleset. `bound` holds the bindings
+/// made before `param`; the `where` reads them and `card` for `param`.
 fn check_alternative(
     ruleset: &DeclarativeRuleset,
     state: &GameState,
     actor: PlayerId,
-    candidate: &BoundCards,
+    bound: &BoundCards,
     param: &Param,
     alternative: &ParamAlternative,
     card: CardInstanceId,
@@ -163,11 +160,36 @@ fn check_alternative(
         }));
     }
     if let Some(condition) = alternative.condition() {
-        if !expression::holds(ruleset, state, candidate, condition)? {
+        let candidate = bound.with(name.clone(), card);
+        if !expression::holds(ruleset, state, &candidate, condition)? {
             return Ok(Some(Rejection::WhereConditionNotMet { param: name, card }));
         }
     }
     Ok(None)
+}
+
+/// The cards that can fit `param` for `actor`: those in the zone one of its alternatives names, of
+/// the Players that alternative takes cards from, in ascending Card Instance Id, each once. Every
+/// other card fails the owner or the zone check of every alternative, so visiting only these
+/// finds what visiting every card finds, in the same order (ADR-0021).
+fn candidate_cards(state: &GameState, actor: PlayerId, param: &Param) -> Vec<CardInstanceId> {
+    let mut candidates = Vec::new();
+    for alternative in param.alternatives() {
+        for &player in state.player_order().players() {
+            let takes = match alternative.owner() {
+                ParamOwner::Actor => player == actor,
+                ParamOwner::Opponent => player != actor,
+            };
+            if takes {
+                if let Some(held) = state.zone(player, alternative.zone()) {
+                    candidates.extend_from_slice(held);
+                }
+            }
+        }
+    }
+    candidates.sort();
+    candidates.dedup();
+    candidates
 }
 
 /// Every argument list that binds the params of `declared` for `actor`, in Listing Order.
@@ -180,13 +202,13 @@ pub(super) fn fillings(
     let mut partial: Vec<(BoundCards, Vec<CardInstanceId>)> =
         vec![(BoundCards { cards: Vec::new() }, Vec::new())];
     for param in declared.params() {
+        let candidates = candidate_cards(state, actor, param);
         let mut next = Vec::new();
         for (bound, cards) in &partial {
-            for instance in state.cards() {
-                let mut candidate = bound.clone();
-                if bind_param(ruleset, state, actor, &mut candidate, param, instance.id()).is_ok() {
+            for &id in &candidates {
+                if let Ok(candidate) = bind_param(ruleset, state, actor, bound, param, id) {
                     let mut list = cards.clone();
-                    list.push(instance.id());
+                    list.push(id);
                     next.push((candidate, list));
                 }
             }
