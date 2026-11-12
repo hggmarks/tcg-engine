@@ -17,6 +17,6 @@
 
 Invariants 2 and 6 cannot be violated through the public API (the GameState's fields are private and `apply` keeps zones consistent; an ended GameState lists no Action by construction), so they have no "detects a violation" test; the other five do, each through the public API.
 
-**Throughput.** The measured Games per second are in the PR that introduced this crate and from the example `self_play`; most of the time is the Legal Action listing, which runs one State Transition per candidate (ADR-0018), and the invariant checks add a fraction of it. No older ADR conflicts.
+**Throughput.** The measured Games per second are in the PR that introduced this crate and from the example `self_play`; most of the time was the Legal Action listing, which runs one State Transition per candidate (ADR-0018), and the invariant checks added a fraction of it. ADR-0021 measured that cost and cut it: the figures in the PR that introduced this crate are the ones before it, and the example `listing_cost` reports the current ones (Games and Actions per second, and where the time goes). No older ADR conflicts.
 
 **Status**: accepted

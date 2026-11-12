@@ -55,5 +55,10 @@ Options: a new engine primitive or an extension mechanism in code/script.
 ## Recorded open items
 
 - Validate item 6 with a second ruleset that has a different number of players.
-- Effect resolution model, hidden information and state size (performance)
-  are not yet decided.
+- Effect resolution model and hidden information are not yet decided.
+- State size (performance): ADR-0021 decided that the GameState shares what a
+  transition does not change (ids and Card Instance state are `Arc`s, copied on
+  write) and measured the cost of Legal Action listing. Still open: a smaller
+  GameState than one list of Card Instances per Game, a listing without one
+  transition per candidate, and the per-transition end-of-Game scan, which still
+  visits every card.
