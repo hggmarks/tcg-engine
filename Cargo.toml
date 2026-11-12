@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/tcg-loader"]
+members = ["crates/tcg-loader", "crates/tcg-selfplay"]
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
