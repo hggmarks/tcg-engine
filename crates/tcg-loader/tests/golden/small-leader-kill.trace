@@ -1,0 +1,303 @@
+# small-leader-kill | seed 9 | seat 0 deck-a, seat 1 deck-b
+== creation
+CardCreated { card: CardInstanceId(0), owner: PlayerId(0), definition: CardId("captain_ardel"), zone: ZoneId("leader_zone"), state: [(StateName("current_life"), Int(5)), (StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(1), owner: PlayerId(0), definition: CardId("goblin_scout"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(2), owner: PlayerId(0), definition: CardId("goblin_scout"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(3), owner: PlayerId(0), definition: CardId("goblin_scout"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(4), owner: PlayerId(0), definition: CardId("goblin_scout"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(5), owner: PlayerId(0), definition: CardId("moss_sprite"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(6), owner: PlayerId(0), definition: CardId("moss_sprite"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(7), owner: PlayerId(0), definition: CardId("moss_sprite"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(8), owner: PlayerId(0), definition: CardId("moss_sprite"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(9), owner: PlayerId(0), definition: CardId("ember_hound"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(10), owner: PlayerId(0), definition: CardId("ember_hound"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(11), owner: PlayerId(0), definition: CardId("ember_hound"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(12), owner: PlayerId(0), definition: CardId("ember_hound"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(13), owner: PlayerId(0), definition: CardId("river_otter"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(14), owner: PlayerId(0), definition: CardId("river_otter"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(15), owner: PlayerId(0), definition: CardId("river_otter"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(16), owner: PlayerId(0), definition: CardId("river_otter"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(17), owner: PlayerId(0), definition: CardId("stone_golem"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(18), owner: PlayerId(0), definition: CardId("stone_golem"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(19), owner: PlayerId(0), definition: CardId("stone_golem"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(20), owner: PlayerId(0), definition: CardId("stone_golem"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(21), owner: PlayerId(0), definition: CardId("shadow_cat"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(22), owner: PlayerId(0), definition: CardId("shadow_cat"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(23), owner: PlayerId(0), definition: CardId("shadow_cat"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(24), owner: PlayerId(0), definition: CardId("shadow_cat"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(25), owner: PlayerId(0), definition: CardId("iron_guard"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(26), owner: PlayerId(0), definition: CardId("iron_guard"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(27), owner: PlayerId(0), definition: CardId("iron_guard"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(28), owner: PlayerId(0), definition: CardId("iron_guard"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(29), owner: PlayerId(0), definition: CardId("wind_hawk"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(30), owner: PlayerId(0), definition: CardId("wind_hawk"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(31), owner: PlayerId(0), definition: CardId("wind_hawk"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(32), owner: PlayerId(0), definition: CardId("wind_hawk"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(33), owner: PlayerId(0), definition: CardId("thorn_boar"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(34), owner: PlayerId(0), definition: CardId("thorn_boar"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(35), owner: PlayerId(0), definition: CardId("thorn_boar"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(36), owner: PlayerId(0), definition: CardId("thorn_boar"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(37), owner: PlayerId(0), definition: CardId("frost_wolf"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(38), owner: PlayerId(0), definition: CardId("frost_wolf"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(39), owner: PlayerId(0), definition: CardId("frost_wolf"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(40), owner: PlayerId(0), definition: CardId("frost_wolf"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(41), owner: PlayerId(0), definition: CardId("ash_drake"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(42), owner: PlayerId(0), definition: CardId("ash_drake"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(43), owner: PlayerId(0), definition: CardId("ash_drake"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(44), owner: PlayerId(0), definition: CardId("ash_drake"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(45), owner: PlayerId(0), definition: CardId("tide_serpent"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(46), owner: PlayerId(0), definition: CardId("tide_serpent"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(47), owner: PlayerId(0), definition: CardId("tide_serpent"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(48), owner: PlayerId(0), definition: CardId("tide_serpent"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(49), owner: PlayerId(0), definition: CardId("sun_knight"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(50), owner: PlayerId(0), definition: CardId("sun_knight"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(51), owner: PlayerId(0), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(52), owner: PlayerId(0), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(53), owner: PlayerId(0), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(54), owner: PlayerId(0), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(55), owner: PlayerId(0), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(56), owner: PlayerId(0), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(57), owner: PlayerId(0), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(58), owner: PlayerId(0), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(59), owner: PlayerId(0), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(60), owner: PlayerId(0), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(61), owner: PlayerId(1), definition: CardId("warden_ilse"), zone: ZoneId("leader_zone"), state: [(StateName("current_life"), Int(6)), (StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(62), owner: PlayerId(1), definition: CardId("moss_sprite"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(63), owner: PlayerId(1), definition: CardId("moss_sprite"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(64), owner: PlayerId(1), definition: CardId("moss_sprite"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(65), owner: PlayerId(1), definition: CardId("moss_sprite"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(66), owner: PlayerId(1), definition: CardId("ember_hound"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(67), owner: PlayerId(1), definition: CardId("ember_hound"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(68), owner: PlayerId(1), definition: CardId("ember_hound"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(69), owner: PlayerId(1), definition: CardId("ember_hound"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(70), owner: PlayerId(1), definition: CardId("river_otter"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(71), owner: PlayerId(1), definition: CardId("river_otter"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(72), owner: PlayerId(1), definition: CardId("river_otter"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(73), owner: PlayerId(1), definition: CardId("river_otter"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(74), owner: PlayerId(1), definition: CardId("stone_golem"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(75), owner: PlayerId(1), definition: CardId("stone_golem"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(76), owner: PlayerId(1), definition: CardId("stone_golem"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(77), owner: PlayerId(1), definition: CardId("stone_golem"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(78), owner: PlayerId(1), definition: CardId("shadow_cat"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(79), owner: PlayerId(1), definition: CardId("shadow_cat"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(80), owner: PlayerId(1), definition: CardId("shadow_cat"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(81), owner: PlayerId(1), definition: CardId("shadow_cat"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(82), owner: PlayerId(1), definition: CardId("iron_guard"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(83), owner: PlayerId(1), definition: CardId("iron_guard"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(84), owner: PlayerId(1), definition: CardId("iron_guard"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(85), owner: PlayerId(1), definition: CardId("iron_guard"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(86), owner: PlayerId(1), definition: CardId("wind_hawk"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(87), owner: PlayerId(1), definition: CardId("wind_hawk"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(88), owner: PlayerId(1), definition: CardId("wind_hawk"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(89), owner: PlayerId(1), definition: CardId("wind_hawk"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(90), owner: PlayerId(1), definition: CardId("thorn_boar"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(91), owner: PlayerId(1), definition: CardId("thorn_boar"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(92), owner: PlayerId(1), definition: CardId("thorn_boar"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(93), owner: PlayerId(1), definition: CardId("thorn_boar"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(94), owner: PlayerId(1), definition: CardId("frost_wolf"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(95), owner: PlayerId(1), definition: CardId("frost_wolf"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(96), owner: PlayerId(1), definition: CardId("frost_wolf"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(97), owner: PlayerId(1), definition: CardId("frost_wolf"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(98), owner: PlayerId(1), definition: CardId("ash_drake"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(99), owner: PlayerId(1), definition: CardId("ash_drake"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(100), owner: PlayerId(1), definition: CardId("ash_drake"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(101), owner: PlayerId(1), definition: CardId("ash_drake"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(102), owner: PlayerId(1), definition: CardId("tide_serpent"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(103), owner: PlayerId(1), definition: CardId("tide_serpent"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(104), owner: PlayerId(1), definition: CardId("sun_knight"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(105), owner: PlayerId(1), definition: CardId("sun_knight"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(106), owner: PlayerId(1), definition: CardId("moon_witch"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(107), owner: PlayerId(1), definition: CardId("moon_witch"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(108), owner: PlayerId(1), definition: CardId("bone_giant"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(109), owner: PlayerId(1), definition: CardId("bone_giant"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(110), owner: PlayerId(1), definition: CardId("storm_roc"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(111), owner: PlayerId(1), definition: CardId("storm_roc"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(112), owner: PlayerId(1), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(113), owner: PlayerId(1), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(114), owner: PlayerId(1), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(115), owner: PlayerId(1), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(116), owner: PlayerId(1), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(117), owner: PlayerId(1), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(118), owner: PlayerId(1), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(119), owner: PlayerId(1), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(120), owner: PlayerId(1), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(121), owner: PlayerId(1), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+ZoneShuffled { player: PlayerId(0), zone: ZoneId("deck"), order: [CardInstanceId(5), CardInstanceId(37), CardInstanceId(20), CardInstanceId(49), CardInstanceId(21), CardInstanceId(14), CardInstanceId(10), CardInstanceId(18), CardInstanceId(47), CardInstanceId(12), CardInstanceId(23), CardInstanceId(24), CardInstanceId(17), CardInstanceId(40), CardInstanceId(4), CardInstanceId(8), CardInstanceId(33), CardInstanceId(25), CardInstanceId(50), CardInstanceId(11), CardInstanceId(26), CardInstanceId(41), CardInstanceId(3), CardInstanceId(28), CardInstanceId(32), CardInstanceId(38), CardInstanceId(9), CardInstanceId(6), CardInstanceId(16), CardInstanceId(46), CardInstanceId(27), CardInstanceId(30), CardInstanceId(15), CardInstanceId(2), CardInstanceId(36), CardInstanceId(45), CardInstanceId(29), CardInstanceId(42), CardInstanceId(39), CardInstanceId(44), CardInstanceId(19), CardInstanceId(48), CardInstanceId(22), CardInstanceId(31), CardInstanceId(34), CardInstanceId(43), CardInstanceId(35), CardInstanceId(7), CardInstanceId(13), CardInstanceId(1)], random_state: RandomState { state: [8905238559735174769, 11132212369889030477, 14052644704129645550, 16940331596411240741] } }
+ZoneShuffled { player: PlayerId(1), zone: ZoneId("deck"), order: [CardInstanceId(71), CardInstanceId(73), CardInstanceId(110), CardInstanceId(97), CardInstanceId(102), CardInstanceId(84), CardInstanceId(81), CardInstanceId(69), CardInstanceId(108), CardInstanceId(96), CardInstanceId(76), CardInstanceId(91), CardInstanceId(93), CardInstanceId(107), CardInstanceId(111), CardInstanceId(82), CardInstanceId(86), CardInstanceId(90), CardInstanceId(79), CardInstanceId(64), CardInstanceId(77), CardInstanceId(62), CardInstanceId(68), CardInstanceId(83), CardInstanceId(87), CardInstanceId(100), CardInstanceId(92), CardInstanceId(106), CardInstanceId(67), CardInstanceId(65), CardInstanceId(99), CardInstanceId(78), CardInstanceId(70), CardInstanceId(105), CardInstanceId(89), CardInstanceId(95), CardInstanceId(98), CardInstanceId(94), CardInstanceId(74), CardInstanceId(109), CardInstanceId(66), CardInstanceId(103), CardInstanceId(80), CardInstanceId(88), CardInstanceId(85), CardInstanceId(101), CardInstanceId(72), CardInstanceId(75), CardInstanceId(104), CardInstanceId(63)], random_state: RandomState { state: [17173299573518941698, 13587202040326004034, 1843657184688641735, 2882797533964786013] } }
+CardMoved { card: CardInstanceId(1), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(13), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(7), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(35), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(43), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(63), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(104), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(75), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(72), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(101), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(1) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(60), player: PlayerId(0), from: ZoneId("mana_deck"), to: ZoneId("mana_zone") }
+CardMoved { card: CardInstanceId(59), player: PlayerId(0), from: ZoneId("mana_deck"), to: ZoneId("mana_zone") }
+PhaseBegan { phase: PhaseId("main") }
+== action 1: player 0 play_creature [7]
+CardStateChanged { card: CardInstanceId(60), state: StateName("tapped"), value: Bool(true) }
+CardMoved { card: CardInstanceId(7), player: PlayerId(0), from: ZoneId("hand"), to: ZoneId("field") }
+CardStateChanged { card: CardInstanceId(7), state: StateName("recently_played"), value: Bool(true) }
+== action 2: player 0 play_creature [1]
+CardStateChanged { card: CardInstanceId(59), state: StateName("tapped"), value: Bool(true) }
+CardMoved { card: CardInstanceId(1), player: PlayerId(0), from: ZoneId("hand"), to: ZoneId("field") }
+CardStateChanged { card: CardInstanceId(1), state: StateName("recently_played"), value: Bool(true) }
+== action 3: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(2) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(85), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(121), player: PlayerId(1), from: ZoneId("mana_deck"), to: ZoneId("mana_zone") }
+CardMoved { card: CardInstanceId(120), player: PlayerId(1), from: ZoneId("mana_deck"), to: ZoneId("mana_zone") }
+PhaseBegan { phase: PhaseId("main") }
+== action 4: player 1 play_creature [72]
+CardStateChanged { card: CardInstanceId(121), state: StateName("tapped"), value: Bool(true) }
+CardStateChanged { card: CardInstanceId(120), state: StateName("tapped"), value: Bool(true) }
+CardMoved { card: CardInstanceId(72), player: PlayerId(1), from: ZoneId("hand"), to: ZoneId("field") }
+CardStateChanged { card: CardInstanceId(72), state: StateName("recently_played"), value: Bool(true) }
+== action 5: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(3) }
+PhaseBegan { phase: PhaseId("start") }
+CardStateChanged { card: CardInstanceId(60), state: StateName("tapped"), value: Bool(false) }
+CardStateChanged { card: CardInstanceId(59), state: StateName("tapped"), value: Bool(false) }
+CardStateChanged { card: CardInstanceId(7), state: StateName("recently_played"), value: Bool(false) }
+CardStateChanged { card: CardInstanceId(1), state: StateName("recently_played"), value: Bool(false) }
+CardMoved { card: CardInstanceId(34), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(58), player: PlayerId(0), from: ZoneId("mana_deck"), to: ZoneId("mana_zone") }
+CardMoved { card: CardInstanceId(57), player: PlayerId(0), from: ZoneId("mana_deck"), to: ZoneId("mana_zone") }
+PhaseBegan { phase: PhaseId("main") }
+== action 6: player 0 attack [7, 61]
+CardStateChanged { card: CardInstanceId(7), state: StateName("tapped"), value: Bool(true) }
+CardStateChanged { card: CardInstanceId(61), state: StateName("current_life"), value: Int(5) }
+== action 7: player 0 attack [1, 61]
+CardStateChanged { card: CardInstanceId(1), state: StateName("tapped"), value: Bool(true) }
+CardStateChanged { card: CardInstanceId(61), state: StateName("current_life"), value: Int(4) }
+== action 8: player 0 play_creature [13]
+CardStateChanged { card: CardInstanceId(60), state: StateName("tapped"), value: Bool(true) }
+CardStateChanged { card: CardInstanceId(59), state: StateName("tapped"), value: Bool(true) }
+CardMoved { card: CardInstanceId(13), player: PlayerId(0), from: ZoneId("hand"), to: ZoneId("field") }
+CardStateChanged { card: CardInstanceId(13), state: StateName("recently_played"), value: Bool(true) }
+== action 9: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(4) }
+PhaseBegan { phase: PhaseId("start") }
+CardStateChanged { card: CardInstanceId(121), state: StateName("tapped"), value: Bool(false) }
+CardStateChanged { card: CardInstanceId(120), state: StateName("tapped"), value: Bool(false) }
+CardStateChanged { card: CardInstanceId(72), state: StateName("recently_played"), value: Bool(false) }
+CardMoved { card: CardInstanceId(88), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(119), player: PlayerId(1), from: ZoneId("mana_deck"), to: ZoneId("mana_zone") }
+CardMoved { card: CardInstanceId(118), player: PlayerId(1), from: ZoneId("mana_deck"), to: ZoneId("mana_zone") }
+PhaseBegan { phase: PhaseId("main") }
+== action 10: player 1 attack [72, 7]
+CardStateChanged { card: CardInstanceId(72), state: StateName("tapped"), value: Bool(true) }
+CardMoved { card: CardInstanceId(7), player: PlayerId(0), from: ZoneId("field"), to: ZoneId("trash") }
+== action 11: player 1 play_creature [75]
+CardStateChanged { card: CardInstanceId(121), state: StateName("tapped"), value: Bool(true) }
+CardStateChanged { card: CardInstanceId(120), state: StateName("tapped"), value: Bool(true) }
+CardStateChanged { card: CardInstanceId(119), state: StateName("tapped"), value: Bool(true) }
+CardMoved { card: CardInstanceId(75), player: PlayerId(1), from: ZoneId("hand"), to: ZoneId("field") }
+CardStateChanged { card: CardInstanceId(75), state: StateName("recently_played"), value: Bool(true) }
+== action 12: player 1 play_creature [63]
+CardStateChanged { card: CardInstanceId(118), state: StateName("tapped"), value: Bool(true) }
+CardMoved { card: CardInstanceId(63), player: PlayerId(1), from: ZoneId("hand"), to: ZoneId("field") }
+CardStateChanged { card: CardInstanceId(63), state: StateName("recently_played"), value: Bool(true) }
+== action 13: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(5) }
+PhaseBegan { phase: PhaseId("start") }
+CardStateChanged { card: CardInstanceId(60), state: StateName("tapped"), value: Bool(false) }
+CardStateChanged { card: CardInstanceId(59), state: StateName("tapped"), value: Bool(false) }
+CardStateChanged { card: CardInstanceId(1), state: StateName("tapped"), value: Bool(false) }
+CardStateChanged { card: CardInstanceId(13), state: StateName("recently_played"), value: Bool(false) }
+CardMoved { card: CardInstanceId(31), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(56), player: PlayerId(0), from: ZoneId("mana_deck"), to: ZoneId("mana_zone") }
+CardMoved { card: CardInstanceId(55), player: PlayerId(0), from: ZoneId("mana_deck"), to: ZoneId("mana_zone") }
+PhaseBegan { phase: PhaseId("main") }
+== action 14: player 0 attack [1, 72]
+CardStateChanged { card: CardInstanceId(1), state: StateName("tapped"), value: Bool(true) }
+== action 15: player 0 attack [13, 61]
+CardStateChanged { card: CardInstanceId(13), state: StateName("tapped"), value: Bool(true) }
+CardStateChanged { card: CardInstanceId(61), state: StateName("current_life"), value: Int(3) }
+== action 16: player 0 play_creature [35]
+CardStateChanged { card: CardInstanceId(60), state: StateName("tapped"), value: Bool(true) }
+CardStateChanged { card: CardInstanceId(59), state: StateName("tapped"), value: Bool(true) }
+CardStateChanged { card: CardInstanceId(58), state: StateName("tapped"), value: Bool(true) }
+CardStateChanged { card: CardInstanceId(57), state: StateName("tapped"), value: Bool(true) }
+CardMoved { card: CardInstanceId(35), player: PlayerId(0), from: ZoneId("hand"), to: ZoneId("field") }
+CardStateChanged { card: CardInstanceId(35), state: StateName("recently_played"), value: Bool(true) }
+== action 17: player 0 play_creature [31]
+CardStateChanged { card: CardInstanceId(56), state: StateName("tapped"), value: Bool(true) }
+CardStateChanged { card: CardInstanceId(55), state: StateName("tapped"), value: Bool(true) }
+CardMoved { card: CardInstanceId(31), player: PlayerId(0), from: ZoneId("hand"), to: ZoneId("field") }
+CardStateChanged { card: CardInstanceId(31), state: StateName("recently_played"), value: Bool(true) }
+== action 18: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(6) }
+PhaseBegan { phase: PhaseId("start") }
+CardStateChanged { card: CardInstanceId(121), state: StateName("tapped"), value: Bool(false) }
+CardStateChanged { card: CardInstanceId(120), state: StateName("tapped"), value: Bool(false) }
+CardStateChanged { card: CardInstanceId(119), state: StateName("tapped"), value: Bool(false) }
+CardStateChanged { card: CardInstanceId(118), state: StateName("tapped"), value: Bool(false) }
+CardStateChanged { card: CardInstanceId(72), state: StateName("tapped"), value: Bool(false) }
+CardStateChanged { card: CardInstanceId(75), state: StateName("recently_played"), value: Bool(false) }
+CardStateChanged { card: CardInstanceId(63), state: StateName("recently_played"), value: Bool(false) }
+CardMoved { card: CardInstanceId(80), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(117), player: PlayerId(1), from: ZoneId("mana_deck"), to: ZoneId("mana_zone") }
+CardMoved { card: CardInstanceId(116), player: PlayerId(1), from: ZoneId("mana_deck"), to: ZoneId("mana_zone") }
+PhaseBegan { phase: PhaseId("main") }
+== action 19: player 1 attack [72, 13]
+CardStateChanged { card: CardInstanceId(72), state: StateName("tapped"), value: Bool(true) }
+CardMoved { card: CardInstanceId(13), player: PlayerId(0), from: ZoneId("field"), to: ZoneId("trash") }
+== action 20: player 1 attack [75, 0]
+CardStateChanged { card: CardInstanceId(75), state: StateName("tapped"), value: Bool(true) }
+CardStateChanged { card: CardInstanceId(0), state: StateName("current_life"), value: Int(4) }
+== action 21: player 1 attack [63, 0]
+CardStateChanged { card: CardInstanceId(63), state: StateName("tapped"), value: Bool(true) }
+CardStateChanged { card: CardInstanceId(0), state: StateName("current_life"), value: Int(3) }
+== action 22: player 1 play_creature [80]
+CardStateChanged { card: CardInstanceId(121), state: StateName("tapped"), value: Bool(true) }
+CardStateChanged { card: CardInstanceId(120), state: StateName("tapped"), value: Bool(true) }
+CardStateChanged { card: CardInstanceId(119), state: StateName("tapped"), value: Bool(true) }
+CardMoved { card: CardInstanceId(80), player: PlayerId(1), from: ZoneId("hand"), to: ZoneId("field") }
+CardStateChanged { card: CardInstanceId(80), state: StateName("recently_played"), value: Bool(true) }
+== action 23: player 1 play_creature [85]
+CardStateChanged { card: CardInstanceId(118), state: StateName("tapped"), value: Bool(true) }
+CardStateChanged { card: CardInstanceId(117), state: StateName("tapped"), value: Bool(true) }
+CardStateChanged { card: CardInstanceId(116), state: StateName("tapped"), value: Bool(true) }
+CardMoved { card: CardInstanceId(85), player: PlayerId(1), from: ZoneId("hand"), to: ZoneId("field") }
+CardStateChanged { card: CardInstanceId(85), state: StateName("recently_played"), value: Bool(true) }
+== action 24: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(7) }
+PhaseBegan { phase: PhaseId("start") }
+CardStateChanged { card: CardInstanceId(60), state: StateName("tapped"), value: Bool(false) }
+CardStateChanged { card: CardInstanceId(59), state: StateName("tapped"), value: Bool(false) }
+CardStateChanged { card: CardInstanceId(58), state: StateName("tapped"), value: Bool(false) }
+CardStateChanged { card: CardInstanceId(57), state: StateName("tapped"), value: Bool(false) }
+CardStateChanged { card: CardInstanceId(56), state: StateName("tapped"), value: Bool(false) }
+CardStateChanged { card: CardInstanceId(55), state: StateName("tapped"), value: Bool(false) }
+CardStateChanged { card: CardInstanceId(1), state: StateName("tapped"), value: Bool(false) }
+CardStateChanged { card: CardInstanceId(35), state: StateName("recently_played"), value: Bool(false) }
+CardStateChanged { card: CardInstanceId(31), state: StateName("recently_played"), value: Bool(false) }
+CardMoved { card: CardInstanceId(22), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(54), player: PlayerId(0), from: ZoneId("mana_deck"), to: ZoneId("mana_zone") }
+CardMoved { card: CardInstanceId(53), player: PlayerId(0), from: ZoneId("mana_deck"), to: ZoneId("mana_zone") }
+PhaseBegan { phase: PhaseId("main") }
+== action 25: player 0 attack [1, 61]
+CardStateChanged { card: CardInstanceId(1), state: StateName("tapped"), value: Bool(true) }
+CardStateChanged { card: CardInstanceId(61), state: StateName("current_life"), value: Int(2) }
+== action 26: player 0 attack [35, 61]
+CardStateChanged { card: CardInstanceId(35), state: StateName("tapped"), value: Bool(true) }
+CardStateChanged { card: CardInstanceId(61), state: StateName("current_life"), value: Int(1) }
+== action 27: player 0 attack [31, 61]
+CardStateChanged { card: CardInstanceId(31), state: StateName("tapped"), value: Bool(true) }
+CardStateChanged { card: CardInstanceId(61), state: StateName("current_life"), value: Int(0) }
+GameEnded { losses: [Loss { player: PlayerId(1), reason: WinConditionId("leader_dead") }] }
+== outcome
+TerminalOutcome { winners: [PlayerId(0)], losses: [Loss { player: PlayerId(1), reason: WinConditionId("leader_dead") }] }

@@ -1,0 +1,5 @@
+# Golden Games are Event Trace snapshots
+
+A Golden Game is a Seed, the two sample decks and a literal list of Actions in the test source. Its Event Trace, from Game creation to the Terminal Outcome, is compared byte for byte with a committed text snapshot of one `Debug` line per Event, so any change to a rule, to the order of Events or to an Event's shape shows up as a failing test with the first differing line. The format is test-only: it is not a serialization format and changes when an Event's shape changes. Snapshots are rewritten only by the ignored test `regenerate_golden_snapshots`, never by a normal run, so a change to a snapshot is always a deliberate, reviewed diff. The comparison does not trim or normalize, `.gitattributes` fixes the line endings, and there is no snapshot dependency, no environment switch (`std::env::var` is disallowed) and no policy that searches for accepted Actions. No older ADR conflicts: ADR-0010 makes Events the only way a GameState changes, which is what makes the trace a complete record.
+
+**Status**: accepted

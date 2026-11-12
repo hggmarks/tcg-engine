@@ -8,7 +8,7 @@ zones:
   - { id: deck,        visibility: hidden, ordered: true }
   - { id: hand,        visibility: owner,  ordered: false }
   - { id: field,       visibility: public, ordered: false }
-  - { id: trash,       visibility: public, ordered: true }   # topo = última carta
+  - { id: trash,       visibility: public, ordered: true }   # the top is the last card
   - { id: mana_deck,   visibility: hidden, ordered: true }
   - { id: mana_zone,   visibility: public, ordered: false }
   - { id: leader_zone, visibility: public, ordered: false }

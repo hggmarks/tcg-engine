@@ -2,6 +2,8 @@
 
 The formats of the ruleset, card catalog and deck list files. All three are YAML in the restricted subset of ADR-0004: no anchors, aliases, tags, merge keys, duplicate keys or multiple documents, and no implicit typing (`yes` is not a bool, `~` is not a text). Numbers and bools in the keys of the format (`version`, `players`, `size`, `max_copies`, `count`, `ordered`, `effects` and so on) must be unquoted YAML scalars: a quoted `"3"` or `"true"` is a text and is rejected, as is `yes`. Unknown keys are rejected. Anything where order matters is a list. The decisions are in ADR-0008 and ADR-0009.
 
+To write your own files step by step, see [authoring-guide.md](authoring-guide.md).
+
 ## Identifiers
 
 Every declared id and name matches `[a-z][a-z0-9_]*` and is not `true`, `false` or `null`. This holds whether the YAML scalar is quoted or not, so `3`, `"3"`, `Deck`, `a]b` and the empty id are all rejected. A reference that breaks the grammar fails as a reference to something that does not exist, except the text of a `ref`, which fails as an invalid reference (ADR-0015).

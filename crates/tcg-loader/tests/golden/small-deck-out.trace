@@ -1,0 +1,708 @@
+# small-deck-out | seed 1 | seat 0 deck-a, seat 1 deck-b
+== creation
+CardCreated { card: CardInstanceId(0), owner: PlayerId(0), definition: CardId("captain_ardel"), zone: ZoneId("leader_zone"), state: [(StateName("current_life"), Int(5)), (StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(1), owner: PlayerId(0), definition: CardId("goblin_scout"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(2), owner: PlayerId(0), definition: CardId("goblin_scout"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(3), owner: PlayerId(0), definition: CardId("goblin_scout"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(4), owner: PlayerId(0), definition: CardId("goblin_scout"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(5), owner: PlayerId(0), definition: CardId("moss_sprite"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(6), owner: PlayerId(0), definition: CardId("moss_sprite"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(7), owner: PlayerId(0), definition: CardId("moss_sprite"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(8), owner: PlayerId(0), definition: CardId("moss_sprite"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(9), owner: PlayerId(0), definition: CardId("ember_hound"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(10), owner: PlayerId(0), definition: CardId("ember_hound"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(11), owner: PlayerId(0), definition: CardId("ember_hound"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(12), owner: PlayerId(0), definition: CardId("ember_hound"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(13), owner: PlayerId(0), definition: CardId("river_otter"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(14), owner: PlayerId(0), definition: CardId("river_otter"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(15), owner: PlayerId(0), definition: CardId("river_otter"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(16), owner: PlayerId(0), definition: CardId("river_otter"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(17), owner: PlayerId(0), definition: CardId("stone_golem"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(18), owner: PlayerId(0), definition: CardId("stone_golem"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(19), owner: PlayerId(0), definition: CardId("stone_golem"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(20), owner: PlayerId(0), definition: CardId("stone_golem"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(21), owner: PlayerId(0), definition: CardId("shadow_cat"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(22), owner: PlayerId(0), definition: CardId("shadow_cat"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(23), owner: PlayerId(0), definition: CardId("shadow_cat"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(24), owner: PlayerId(0), definition: CardId("shadow_cat"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(25), owner: PlayerId(0), definition: CardId("iron_guard"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(26), owner: PlayerId(0), definition: CardId("iron_guard"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(27), owner: PlayerId(0), definition: CardId("iron_guard"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(28), owner: PlayerId(0), definition: CardId("iron_guard"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(29), owner: PlayerId(0), definition: CardId("wind_hawk"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(30), owner: PlayerId(0), definition: CardId("wind_hawk"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(31), owner: PlayerId(0), definition: CardId("wind_hawk"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(32), owner: PlayerId(0), definition: CardId("wind_hawk"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(33), owner: PlayerId(0), definition: CardId("thorn_boar"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(34), owner: PlayerId(0), definition: CardId("thorn_boar"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(35), owner: PlayerId(0), definition: CardId("thorn_boar"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(36), owner: PlayerId(0), definition: CardId("thorn_boar"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(37), owner: PlayerId(0), definition: CardId("frost_wolf"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(38), owner: PlayerId(0), definition: CardId("frost_wolf"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(39), owner: PlayerId(0), definition: CardId("frost_wolf"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(40), owner: PlayerId(0), definition: CardId("frost_wolf"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(41), owner: PlayerId(0), definition: CardId("ash_drake"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(42), owner: PlayerId(0), definition: CardId("ash_drake"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(43), owner: PlayerId(0), definition: CardId("ash_drake"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(44), owner: PlayerId(0), definition: CardId("ash_drake"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(45), owner: PlayerId(0), definition: CardId("tide_serpent"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(46), owner: PlayerId(0), definition: CardId("tide_serpent"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(47), owner: PlayerId(0), definition: CardId("tide_serpent"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(48), owner: PlayerId(0), definition: CardId("tide_serpent"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(49), owner: PlayerId(0), definition: CardId("sun_knight"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(50), owner: PlayerId(0), definition: CardId("sun_knight"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(51), owner: PlayerId(0), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(52), owner: PlayerId(0), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(53), owner: PlayerId(0), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(54), owner: PlayerId(0), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(55), owner: PlayerId(0), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(56), owner: PlayerId(0), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(57), owner: PlayerId(0), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(58), owner: PlayerId(0), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(59), owner: PlayerId(0), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(60), owner: PlayerId(0), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(61), owner: PlayerId(1), definition: CardId("warden_ilse"), zone: ZoneId("leader_zone"), state: [(StateName("current_life"), Int(6)), (StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(62), owner: PlayerId(1), definition: CardId("moss_sprite"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(63), owner: PlayerId(1), definition: CardId("moss_sprite"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(64), owner: PlayerId(1), definition: CardId("moss_sprite"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(65), owner: PlayerId(1), definition: CardId("moss_sprite"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(66), owner: PlayerId(1), definition: CardId("ember_hound"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(67), owner: PlayerId(1), definition: CardId("ember_hound"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(68), owner: PlayerId(1), definition: CardId("ember_hound"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(69), owner: PlayerId(1), definition: CardId("ember_hound"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(70), owner: PlayerId(1), definition: CardId("river_otter"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(71), owner: PlayerId(1), definition: CardId("river_otter"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(72), owner: PlayerId(1), definition: CardId("river_otter"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(73), owner: PlayerId(1), definition: CardId("river_otter"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(74), owner: PlayerId(1), definition: CardId("stone_golem"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(75), owner: PlayerId(1), definition: CardId("stone_golem"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(76), owner: PlayerId(1), definition: CardId("stone_golem"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(77), owner: PlayerId(1), definition: CardId("stone_golem"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(78), owner: PlayerId(1), definition: CardId("shadow_cat"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(79), owner: PlayerId(1), definition: CardId("shadow_cat"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(80), owner: PlayerId(1), definition: CardId("shadow_cat"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(81), owner: PlayerId(1), definition: CardId("shadow_cat"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(82), owner: PlayerId(1), definition: CardId("iron_guard"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(83), owner: PlayerId(1), definition: CardId("iron_guard"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(84), owner: PlayerId(1), definition: CardId("iron_guard"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(85), owner: PlayerId(1), definition: CardId("iron_guard"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(86), owner: PlayerId(1), definition: CardId("wind_hawk"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(87), owner: PlayerId(1), definition: CardId("wind_hawk"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(88), owner: PlayerId(1), definition: CardId("wind_hawk"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(89), owner: PlayerId(1), definition: CardId("wind_hawk"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(90), owner: PlayerId(1), definition: CardId("thorn_boar"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(91), owner: PlayerId(1), definition: CardId("thorn_boar"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(92), owner: PlayerId(1), definition: CardId("thorn_boar"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(93), owner: PlayerId(1), definition: CardId("thorn_boar"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(94), owner: PlayerId(1), definition: CardId("frost_wolf"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(95), owner: PlayerId(1), definition: CardId("frost_wolf"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(96), owner: PlayerId(1), definition: CardId("frost_wolf"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(97), owner: PlayerId(1), definition: CardId("frost_wolf"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(98), owner: PlayerId(1), definition: CardId("ash_drake"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(99), owner: PlayerId(1), definition: CardId("ash_drake"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(100), owner: PlayerId(1), definition: CardId("ash_drake"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(101), owner: PlayerId(1), definition: CardId("ash_drake"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(102), owner: PlayerId(1), definition: CardId("tide_serpent"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(103), owner: PlayerId(1), definition: CardId("tide_serpent"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(104), owner: PlayerId(1), definition: CardId("sun_knight"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(105), owner: PlayerId(1), definition: CardId("sun_knight"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(106), owner: PlayerId(1), definition: CardId("moon_witch"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(107), owner: PlayerId(1), definition: CardId("moon_witch"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(108), owner: PlayerId(1), definition: CardId("bone_giant"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(109), owner: PlayerId(1), definition: CardId("bone_giant"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(110), owner: PlayerId(1), definition: CardId("storm_roc"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(111), owner: PlayerId(1), definition: CardId("storm_roc"), zone: ZoneId("deck"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardCreated { card: CardInstanceId(112), owner: PlayerId(1), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(113), owner: PlayerId(1), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(114), owner: PlayerId(1), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(115), owner: PlayerId(1), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(116), owner: PlayerId(1), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(117), owner: PlayerId(1), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(118), owner: PlayerId(1), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(119), owner: PlayerId(1), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(120), owner: PlayerId(1), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+CardCreated { card: CardInstanceId(121), owner: PlayerId(1), definition: CardId("mana"), zone: ZoneId("mana_deck"), state: [(StateName("tapped"), Bool(false))] }
+ZoneShuffled { player: PlayerId(0), zone: ZoneId("deck"), order: [CardInstanceId(9), CardInstanceId(48), CardInstanceId(13), CardInstanceId(47), CardInstanceId(34), CardInstanceId(31), CardInstanceId(12), CardInstanceId(30), CardInstanceId(24), CardInstanceId(41), CardInstanceId(42), CardInstanceId(5), CardInstanceId(16), CardInstanceId(29), CardInstanceId(44), CardInstanceId(49), CardInstanceId(45), CardInstanceId(8), CardInstanceId(39), CardInstanceId(1), CardInstanceId(21), CardInstanceId(46), CardInstanceId(20), CardInstanceId(27), CardInstanceId(6), CardInstanceId(11), CardInstanceId(10), CardInstanceId(18), CardInstanceId(15), CardInstanceId(14), CardInstanceId(35), CardInstanceId(2), CardInstanceId(43), CardInstanceId(3), CardInstanceId(32), CardInstanceId(22), CardInstanceId(25), CardInstanceId(50), CardInstanceId(40), CardInstanceId(38), CardInstanceId(23), CardInstanceId(37), CardInstanceId(17), CardInstanceId(4), CardInstanceId(7), CardInstanceId(33), CardInstanceId(19), CardInstanceId(28), CardInstanceId(26), CardInstanceId(36)], random_state: RandomState { state: [7066698514714076197, 4433686022995518103, 400639781848970110, 14579799605185351722] } }
+ZoneShuffled { player: PlayerId(1), zone: ZoneId("deck"), order: [CardInstanceId(78), CardInstanceId(103), CardInstanceId(63), CardInstanceId(85), CardInstanceId(108), CardInstanceId(71), CardInstanceId(74), CardInstanceId(65), CardInstanceId(100), CardInstanceId(75), CardInstanceId(94), CardInstanceId(67), CardInstanceId(90), CardInstanceId(95), CardInstanceId(84), CardInstanceId(109), CardInstanceId(62), CardInstanceId(98), CardInstanceId(69), CardInstanceId(105), CardInstanceId(97), CardInstanceId(107), CardInstanceId(87), CardInstanceId(81), CardInstanceId(64), CardInstanceId(68), CardInstanceId(73), CardInstanceId(79), CardInstanceId(66), CardInstanceId(89), CardInstanceId(77), CardInstanceId(99), CardInstanceId(80), CardInstanceId(101), CardInstanceId(111), CardInstanceId(96), CardInstanceId(76), CardInstanceId(88), CardInstanceId(86), CardInstanceId(93), CardInstanceId(83), CardInstanceId(70), CardInstanceId(91), CardInstanceId(110), CardInstanceId(102), CardInstanceId(106), CardInstanceId(104), CardInstanceId(92), CardInstanceId(72), CardInstanceId(82)], random_state: RandomState { state: [12233102420704935153, 15268847855576041974, 16832111982728631127, 12250598739181206157] } }
+CardMoved { card: CardInstanceId(36), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(26), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(28), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(19), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(33), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(82), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(72), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(92), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(104), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(106), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(1) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(60), player: PlayerId(0), from: ZoneId("mana_deck"), to: ZoneId("mana_zone") }
+CardMoved { card: CardInstanceId(59), player: PlayerId(0), from: ZoneId("mana_deck"), to: ZoneId("mana_zone") }
+PhaseBegan { phase: PhaseId("main") }
+== action 1: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(2) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(102), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(121), player: PlayerId(1), from: ZoneId("mana_deck"), to: ZoneId("mana_zone") }
+CardMoved { card: CardInstanceId(120), player: PlayerId(1), from: ZoneId("mana_deck"), to: ZoneId("mana_zone") }
+PhaseBegan { phase: PhaseId("main") }
+== action 2: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(3) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(7), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(58), player: PlayerId(0), from: ZoneId("mana_deck"), to: ZoneId("mana_zone") }
+CardMoved { card: CardInstanceId(57), player: PlayerId(0), from: ZoneId("mana_deck"), to: ZoneId("mana_zone") }
+PhaseBegan { phase: PhaseId("main") }
+== action 3: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(4) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(110), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(119), player: PlayerId(1), from: ZoneId("mana_deck"), to: ZoneId("mana_zone") }
+CardMoved { card: CardInstanceId(118), player: PlayerId(1), from: ZoneId("mana_deck"), to: ZoneId("mana_zone") }
+PhaseBegan { phase: PhaseId("main") }
+== action 4: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(5) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(4), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(56), player: PlayerId(0), from: ZoneId("mana_deck"), to: ZoneId("mana_zone") }
+CardMoved { card: CardInstanceId(55), player: PlayerId(0), from: ZoneId("mana_deck"), to: ZoneId("mana_zone") }
+PhaseBegan { phase: PhaseId("main") }
+== action 5: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(6) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(91), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(117), player: PlayerId(1), from: ZoneId("mana_deck"), to: ZoneId("mana_zone") }
+CardMoved { card: CardInstanceId(116), player: PlayerId(1), from: ZoneId("mana_deck"), to: ZoneId("mana_zone") }
+PhaseBegan { phase: PhaseId("main") }
+== action 6: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(7) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(17), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(54), player: PlayerId(0), from: ZoneId("mana_deck"), to: ZoneId("mana_zone") }
+CardMoved { card: CardInstanceId(53), player: PlayerId(0), from: ZoneId("mana_deck"), to: ZoneId("mana_zone") }
+PhaseBegan { phase: PhaseId("main") }
+== action 7: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(8) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(70), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(115), player: PlayerId(1), from: ZoneId("mana_deck"), to: ZoneId("mana_zone") }
+CardMoved { card: CardInstanceId(114), player: PlayerId(1), from: ZoneId("mana_deck"), to: ZoneId("mana_zone") }
+PhaseBegan { phase: PhaseId("main") }
+== action 8: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(9) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(37), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(52), player: PlayerId(0), from: ZoneId("mana_deck"), to: ZoneId("mana_zone") }
+CardMoved { card: CardInstanceId(51), player: PlayerId(0), from: ZoneId("mana_deck"), to: ZoneId("mana_zone") }
+PhaseBegan { phase: PhaseId("main") }
+== action 9: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(10) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(83), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(113), player: PlayerId(1), from: ZoneId("mana_deck"), to: ZoneId("mana_zone") }
+CardMoved { card: CardInstanceId(112), player: PlayerId(1), from: ZoneId("mana_deck"), to: ZoneId("mana_zone") }
+PhaseBegan { phase: PhaseId("main") }
+== action 10: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(11) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(23), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 11: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(12) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(93), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 12: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(13) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(38), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 13: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(14) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(86), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 14: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(15) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(40), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 15: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(16) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(88), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 16: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(17) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(50), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 17: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(18) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(76), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 18: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(19) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(25), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 19: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(20) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(96), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 20: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(21) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(22), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 21: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(22) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(111), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 22: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(23) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(32), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 23: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(24) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(101), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 24: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(25) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(3), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 25: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(26) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(80), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 26: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(27) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(43), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 27: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(28) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(99), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 28: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(29) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(2), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 29: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(30) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(77), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 30: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(31) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(35), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 31: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(32) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(89), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 32: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(33) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(14), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 33: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(34) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(66), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 34: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(35) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(15), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 35: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(36) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(79), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 36: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(37) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(18), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 37: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(38) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(73), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 38: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(39) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(10), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 39: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(40) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(68), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 40: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(41) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(11), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 41: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(42) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(64), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 42: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(43) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(6), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 43: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(44) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(81), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 44: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(45) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(27), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 45: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(46) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(87), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 46: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(47) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(20), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 47: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(48) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(107), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 48: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(49) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(46), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 49: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(50) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(97), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 50: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(51) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(21), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 51: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(52) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(105), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 52: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(53) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(1), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 53: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(54) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(69), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 54: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(55) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(39), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 55: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(56) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(98), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 56: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(57) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(8), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 57: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(58) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(62), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 58: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(59) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(45), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 59: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(60) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(109), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 60: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(61) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(49), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 61: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(62) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(84), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 62: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(63) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(44), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 63: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(64) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(95), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 64: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(65) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(29), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 65: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(66) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(90), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 66: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(67) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(16), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 67: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(68) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(67), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 68: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(69) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(5), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 69: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(70) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(94), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 70: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(71) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(42), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 71: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(72) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(75), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 72: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(73) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(41), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 73: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(74) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(100), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 74: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(75) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(24), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 75: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(76) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(65), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 76: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(77) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(30), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 77: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(78) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(74), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 78: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(79) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(12), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 79: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(80) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(71), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 80: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(81) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(31), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 81: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(82) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(108), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 82: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(83) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(34), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 83: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(84) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(85), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 84: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(85) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(47), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 85: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(86) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(63), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 86: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(87) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(13), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 87: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(88) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(103), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 88: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(89) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(48), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 89: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(90) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(78), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 90: player 1 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(91) }
+PhaseBegan { phase: PhaseId("start") }
+CardMoved { card: CardInstanceId(9), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 91: player 0 pass_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(92) }
+PhaseBegan { phase: PhaseId("start") }
+DrawFromEmptyZone { player: PlayerId(1), zone: ZoneId("deck") }
+PhaseBegan { phase: PhaseId("main") }
+GameEnded { losses: [Loss { player: PlayerId(1), reason: WinConditionId("deck_out") }] }
+== outcome
+TerminalOutcome { winners: [PlayerId(0)], losses: [Loss { player: PlayerId(1), reason: WinConditionId("deck_out") }] }

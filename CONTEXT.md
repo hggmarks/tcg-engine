@@ -391,3 +391,11 @@ The Event that the Game ended, with its Losses in seat order. Applying it sets t
 
 **Game Over**:
 A Rejection: the Game has ended, so every Action is rejected, whoever takes it and whatever it is. It is checked before Unknown Player.
+
+## Golden Games
+
+**Golden Game**:
+A Game played from a Seed, the two sample decks (deck A at seat 0, deck B at seat 1) and a literal list of Actions written in the test source. It has no policy and tries nothing: every Action is accepted or the test fails. The Small Ruleset has two, one ending by deck-out and one by a Leader kill.
+
+**Golden Snapshot**:
+The committed text file (`crates/tcg-loader/tests/golden/*.trace`) holding the Event Trace of a Golden Game: a header line (name, Seed and decks), the creation trace, the trace of each Action under a line naming it, and an `== outcome` line with the Terminal Outcome, with one `Debug` line per Event. A test compares it byte for byte with the trace the Game produces now. It changes only by a deliberate update, the ignored test `regenerate_golden_snapshots`, and it is not a serialization format.
