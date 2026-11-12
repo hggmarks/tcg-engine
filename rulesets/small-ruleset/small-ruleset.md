@@ -40,9 +40,9 @@ Per player:
 
 ## Card Instance State (mutable)
  
-- **Leader**: `current_life` (int), initialized from the Leader's `life`, `tapped` (bool).
-- **Creature on field**: `tapped` (bool), `recently_played` (bool).
-- **Card in Mana Zone**: `tapped` (bool).
+- **Leader**: `current_life` (int), initialized from the Leader's `life`; `tapped` (bool), starts false.
+- **Creature**: `tapped` (bool) and `recently_played` (bool), both start false. The state belongs to the creature wherever it is, so it is kept in the trash.
+- **Mana card**: `tapped` (bool), starts false.
 
 ## Game Inputs
  
@@ -70,8 +70,8 @@ A turn has three phases, in order: Start, Main and End. Player 0's first turn be
 
 ### 1. Start (automatic)
 
-1. Untap the cards in the Mana Zone and on the Field (a card that has no `tapped` state is not affected).
-2. Clear `recently_played` on the cards on the Field (a card that has no `recently_played` state is not affected).
+1. Untap the active player's cards in the Mana Zone and on the Field (a card that has no `tapped` state is not affected).
+2. Clear `recently_played` on the active player's cards on the Field (a card that has no `recently_played` state is not affected).
 3. Draw 1 card from the Top of the main deck to the hand. **The starting player (Player 0) skips this draw on the first turn of the game, turn 1, and only then**: Player 1 draws on turn 2 and Player 0 draws on turn 3. If the deck is empty, nothing is drawn and the player is considered to have needed to draw from an empty deck (see Win Conditions).
 4. Move 2 cards from the Top of the mana deck to the Mana Zone, one at a time. If the mana deck has fewer than 2 cards, move the cards that are there; when it is empty, nothing moves and the Mana Zone does not grow, and an empty mana deck never makes the player lose. Each player has 10 mana cards, so the mana deck runs out after the player's fifth turn (turns 1, 3, 5, 7 and 9 for Player 0) and the Mana Zone then holds 10 cards for the rest of the game.
 
@@ -94,9 +94,10 @@ Passing the turn ends the turn: End has no steps of its own. The turn passes to 
 The attacking player chooses a target for the attacker: a **tapped creature** of an opponent, or an **opponent's Leader**. An opponent is any player other than the attacking player (with two players, simply the other one). The attacker becomes tapped as soon as the attack is accepted, even when nothing else happens.
  
 - **Against a creature**: the attacker never dies. The target creature dies only if the attacker's `power` is greater than or equal to the target's `power`. A creature that dies goes to the top of its owner's trash and keeps its instance state there (it stays tapped).
-- **Against a Leader**: if the attacker's `power` is greater than or equal to the Leader's `power`, the Leader loses 1 life. Otherwise, nothing else happens (the attacker is still tapped), a leader can always be attacked, ``tapped`` or not, even while its owner has untapped creatures.
+- **Against a Leader**: if the attacker's `power` is greater than or equal to the Leader's `power`, the Leader loses 1 life. Otherwise, nothing else happens (the attacker is still tapped). A Leader can always be attacked, `tapped` or not, even while its owner has untapped creatures.
 
 ## Win Conditions
+
 - A player whose Leader has `current_life` ≤ 0 loses. The other player wins. This is checked for each Leader, so a Leader created with 0 life or below makes its owner lose at the end of game creation, and if both players have such a Leader the game is drawn.
 - A player who needs to draw from an empty deck loses. The other player wins.
 - The win conditions are checked after every action and at the end of game creation (setup and the automatic phases of the first turn), once per transition and after everything the transition runs, including the automatic phases it triggers. For example, if passing the turn begins a turn whose Start phase finds the deck empty, that turn's phases still begin, and then the game ends.

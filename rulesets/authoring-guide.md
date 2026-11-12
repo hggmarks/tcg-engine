@@ -12,7 +12,7 @@ They load in this order, each one checked against the one before: `load_ruleset_
 
 ## 1. The ruleset
 
-Start with the structure: `meta`, `parameters`, `zones`, `card_types` and `inputs`. Then add `setup`, `actions`, `turn` and `win_conditions`. The loader checks them in that order, so an error in an early section hides later ones.
+Start with the structure: `meta`, `parameters`, `zones`, `card_types` and `inputs`. Then add `setup`, `actions`, `turn` and `win_conditions`. The loader first reads the whole file for syntax (unknown keys, forbidden YAML features, values of the wrong type). The engine then validates the meaning section by section in that order, so a semantic error in an early section hides one in a later section.
 
 <!-- guide-example: ruleset -->
 ```yaml
@@ -62,14 +62,14 @@ win_conditions:
     loser: owner
 ```
 
-- Every zone says who sees it (`hidden`, `owner` or `public`) and whether its order matters. `shuffle` and `draw` need an `ordered` zone.
+- Every zone says who sees it (`hidden`, `owner` or `public`) and whether its order matters. The zone a `shuffle` shuffles and the `from` of a `draw` must be `ordered` (ADR-0013); the `to` of a `draw` need not be.
 - `inputs` say what each Player brings. Each one fills the zone it names when the Game is created, before `setup` runs.
 - The turn has exactly one phase with `actions`: the Game waits there for the Active Player, and `end_turn` is the only way out. `pass_turn` is a plain action whose effect is `end_turn`.
-- `loser: owner` is the only value; `draw_from_empty` makes a Player lose when they draw from an empty zone.
+- `loser: owner` is the only value; `draw_from_empty` makes a Player lose when a draw of theirs during a turn found the zone empty. A `draw` in `setup` from an empty zone is not a loss: it fails Game creation (ADR-0011, ADR-0014).
 
 ## 2. The card catalog
 
-Each card gives exactly the `fields` of its card type, in any order. Its `meta` names the ruleset's `id` and `version`.
+Each card gives exactly the `fields` of its card type, in any order. The `meta` of the catalog names the `id` and `version` of the ruleset it is written for, as `ruleset` and `ruleset_version`.
 
 <!-- guide-example: catalog -->
 ```yaml
@@ -103,7 +103,7 @@ An error names the place in the file as a Definition Path, with ids in brackets 
 inputs[main_deck].zone: no zone has the id `shelf`
 ```
 
-Syntax errors carry a path and a line and column instead. Fix the first error and load again: validation stops at the first one.
+Syntax errors carry a path and, when known, a line and column instead. Loading stops at the first error: fix it and load again.
 
 ## YAML pitfalls
 
@@ -117,10 +117,11 @@ The files are a restricted subset of YAML (ADR-0004).
 
 ## Not supported yet
 
-- Card effects: a card type has `effects: false`, and a catalog entry cannot carry effects on a type that allows none; no effect primitive exists yet.
+- Card effects: `effects: true` on a card type loads, but no effect primitive exists yet, so any effect entry on a catalog card is rejected.
+- The `enum` and `enum set` field types (ADR-0004); a field is `int`, `bool` or `text`.
 - `tap` costs take a ref (`{ ref: card.cost }`), not a literal.
 - Expressions have `eq`, `gte`, `lte`, `and` and `is_card_type` only: no `not`, `or` or arithmetic.
 - `owner` takes only `opponent`; the only step condition is `first_turn`; `position` is only `top`.
-- The loader does not check that the action phase can be left, or that an action ends one turn at most (the gap recorded in ADR-0015 and ADR-0016).
+- The engine does not check that the action phase can be left, or that an action ends one turn at most (the gap first recorded in ADR-0012 and kept open by ADR-0015 and ADR-0016).
 
 See [small-ruleset/small-ruleset.yaml](small-ruleset/small-ruleset.yaml) for a complete ruleset with creatures, mana, combat and two win conditions.
