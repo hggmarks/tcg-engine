@@ -73,7 +73,17 @@ pub struct SelfPlayFailure {
     /// The index in `record.actions()` of the last accepted Action when the failure occurred;
     /// `None` when it occurred before any Action was accepted, at the Opening Position.
     pub action_index: Option<usize>,
-    /// A record that reproduces the failure: [`verify_record`] on it fails the same way.
+    /// A record that reproduces the failure. What reproduces it depends on the kind:
+    ///
+    /// - `InvariantViolated`: [`verify_record`] on it fails with the same violation at the same
+    ///   `action_index`.
+    /// - `StepCapReached` and `NoLegalAction`: it verifies as `Ok` and replays to the GameState
+    ///   the failure stopped in, which has not ended (for `NoLegalAction`, with an empty Legal
+    ///   Action listing).
+    /// - `LegalActionRejected`: it replays to the GameState in which the Action carried by the
+    ///   kind is rejected (that Action is not in the record).
+    /// - `Creation`: replaying it fails with `ReplayError::Creation`, which [`verify_record`]
+    ///   reports as `Replay(Creation)`.
     pub record: GameRecord,
     /// What went wrong.
     pub kind: FailureKind,
@@ -103,13 +113,49 @@ pub fn self_play(
     max_steps: usize,
     checks: Checks,
 ) -> Result<SelfPlayGame, Box<SelfPlayFailure>> {
+    let checker = match checks {
+        Checks::On => Some(&REAL_CHECKS),
+        Checks::Off => None,
+    };
+    play(ruleset, decks, seed, max_steps, checker)
+}
+
+/// The invariant checks that self-play and verification run. The public functions pass
+/// [`REAL_CHECKS`]; the unit tests of this module pass checks that report a violation they choose,
+/// because the engine cannot be made to violate an invariant through its public API.
+pub(crate) struct Checker<'a> {
+    pub(crate) opening: &'a OpeningCheck<'a>,
+    pub(crate) transition: &'a TransitionCheck<'a>,
+}
+
+/// The shape of [`check_opening`].
+pub(crate) type OpeningCheck<'a> =
+    dyn Fn(&DeclarativeRuleset, &[DeckList], &GameCreation) -> Vec<InvariantViolation> + 'a;
+
+/// The shape of [`check_transition`].
+pub(crate) type TransitionCheck<'a> = dyn Fn(&DeclarativeRuleset, &GameState, &EventTrace<Event>, &GameState) -> Vec<InvariantViolation>
+    + 'a;
+
+pub(crate) const REAL_CHECKS: Checker<'static> = Checker {
+    opening: &check_opening,
+    transition: &check_transition,
+};
+
+/// Self-play with `checker`, or without invariant checks for `None`.
+fn play(
+    ruleset: &DeclarativeRuleset,
+    decks: &[DeckList],
+    seed: Seed,
+    max_steps: usize,
+    checker: Option<&Checker<'_>>,
+) -> Result<SelfPlayGame, Box<SelfPlayFailure>> {
     let mut record = GameRecord::new(ruleset, decks, seed);
     let creation = match ruleset.create_game(decks, seed) {
         Ok(creation) => creation,
         Err(error) => return Err(failure(record, FailureKind::Creation(error))),
     };
-    if checks == Checks::On {
-        let violations = check_opening(ruleset, decks, &creation);
+    if let Some(checker) = checker {
+        let violations = (checker.opening)(ruleset, decks, &creation);
         if !violations.is_empty() {
             return Err(failure(record, FailureKind::InvariantViolated(violations)));
         }
@@ -141,9 +187,9 @@ pub fn self_play(
             }
         };
         record.push_accepted(action);
-        if checks == Checks::On {
+        if let Some(checker) = checker {
             let violations =
-                check_transition(ruleset, &state, &transition.trace, &transition.state);
+                (checker.transition)(ruleset, &state, &transition.trace, &transition.state);
             if !violations.is_empty() {
                 return Err(failure(record, FailureKind::InvariantViolated(violations)));
             }
@@ -163,11 +209,21 @@ pub fn self_play(
 ///
 /// It first replays exactly (see `DeclarativeRuleset::replay`), so an identity mismatch or a
 /// rejected Action is a [`FailureKind::Replay`], with the whole record. An invariant violation
-/// comes with the record cut after the Action that caused it. This is how the record of a failure
-/// reproduces it.
+/// comes with the record cut after the Action that caused it, so verifying that record fails
+/// the same way. Other kinds of failure are reproduced as described on
+/// [`SelfPlayFailure::record`].
 pub fn verify_record(
     ruleset: &DeclarativeRuleset,
     record: &GameRecord,
+) -> Result<Replay, Box<SelfPlayFailure>> {
+    verify(ruleset, record, &REAL_CHECKS)
+}
+
+/// [`verify_record`] with `checker`.
+fn verify(
+    ruleset: &DeclarativeRuleset,
+    record: &GameRecord,
+    checker: &Checker<'_>,
 ) -> Result<Replay, Box<SelfPlayFailure>> {
     let replay = match ruleset.replay(record) {
         Ok(replay) => replay,
@@ -185,7 +241,7 @@ pub fn verify_record(
         }
     };
 
-    let violations = check_opening(ruleset, record.decks(), &replay.creation);
+    let violations = (checker.opening)(ruleset, record.decks(), &replay.creation);
     if !violations.is_empty() {
         return Err(cut(ruleset, record, 0, violations));
     }
@@ -204,7 +260,7 @@ pub fn verify_record(
                 }));
             }
         };
-        let violations = check_transition(ruleset, &state, trace, &next);
+        let violations = (checker.transition)(ruleset, &state, trace, &next);
         if !violations.is_empty() {
             return Err(cut(ruleset, record, index.saturating_add(1), violations));
         }
@@ -226,3 +282,6 @@ fn cut(
     }
     failure(prefix, FailureKind::InvariantViolated(violations))
 }
+
+#[cfg(test)]
+mod tests;
