@@ -685,6 +685,63 @@ fn legal_actions_are_listed_in_phase_order_then_by_card_instance_id() {
     assert_eq!(Runtime::new(small()).legal_actions(&mid), first);
 }
 
+#[test]
+fn a_listing_whose_candidates_come_from_several_zones_is_in_listing_order_along_whole_games() {
+    // Listing visits only the cards of the zones a param names (ADR-0021). Along two whole Games
+    // the listing is, at every GameState, the brute-force oracle sorted into Listing Order: the
+    // actions in the order of the phase's list, each one's argument lists by ascending Card
+    // Instance Ids. The `attack` targets come from the field and from the leader zone, and a hand
+    // card and a field card interleave by id.
+    let ruleset = small();
+    let decks = decks(&ruleset);
+    let phase_order = ["play_creature", "attack", "pass_turn"];
+    let mut states_with_attacks = 0;
+    for seed in [3_u64, 4] {
+        let mut state = ruleset
+            .create_game(&decks, Seed(seed))
+            .expect("the sample decks create a game")
+            .opening
+            .state;
+        for step in 0..40_usize {
+            if state.outcome().is_some() {
+                break;
+            }
+            let listed = ruleset.legal_actions(&state);
+            let mut oracle = brute_force(&ruleset, &state);
+            oracle.sort_by_key(|action| {
+                let cards: Vec<CardInstanceId> = action
+                    .arguments
+                    .iter()
+                    .map(|argument| {
+                        let Argument::Card(card) = argument;
+                        *card
+                    })
+                    .collect();
+                (
+                    phase_order
+                        .iter()
+                        .position(|id| ActionId::new(*id) == action.action),
+                    cards,
+                )
+            });
+            assert_eq!(listed, oracle, "seed {seed}, step {step}");
+            if !of_action(&listed, "attack").is_empty() {
+                states_with_attacks += 1;
+            }
+            // Advance along a path that mixes the kinds of Action.
+            let pick = (step * 5 + usize::try_from(seed).expect("a small Seed")) % listed.len();
+            state = ruleset
+                .transition(&state, &listed[pick])
+                .expect("a listed Action is accepted")
+                .state;
+        }
+    }
+    assert!(
+        states_with_attacks > 0,
+        "the walk reaches states with attacks"
+    );
+}
+
 // ---- the phase's list
 
 #[test]

@@ -4,6 +4,7 @@
 //! (ADR-0010). A zone is a list; its top is the end of the list.
 
 use std::fmt;
+use std::sync::Arc;
 
 use super::event::Event;
 use crate::card_catalog::CardId;
@@ -26,7 +27,9 @@ pub struct CardInstance {
     id: CardInstanceId,
     owner: PlayerId,
     definition: CardId,
-    state: Vec<(StateName, FieldValue)>,
+    /// Shared between a GameState and its clones; an Event that changes it copies it first
+    /// (ADR-0021), so a clone never sees a change made to another GameState.
+    state: Arc<Vec<(StateName, FieldValue)>>,
 }
 
 impl CardInstance {
@@ -359,7 +362,7 @@ impl GameState {
                     id: *card,
                     owner: *owner,
                     definition: definition.clone(),
-                    state: state.clone(),
+                    state: Arc::new(state.clone()),
                 });
                 if let Some(held) = self.zone_mut(*owner, zone) {
                     held.cards.push(*card);
@@ -433,22 +436,31 @@ impl GameState {
                     .ok()
                     .and_then(|position| self.cards.get_mut(position))
                     .ok_or(ApplyError::UnknownCard { card: *card })?;
-                let Some((_, current)) = instance.state.iter_mut().find(|(name, _)| name == state)
+                // Check first, copy only when the value really changes: a rejected Event leaves the
+                // state, and the sharing, untouched.
+                let Some((position, expected)) = instance
+                    .state
+                    .iter()
+                    .enumerate()
+                    .find(|(_, (name, _))| name == state)
+                    .map(|(position, (_, current))| (position, current.field_type()))
                 else {
                     return Err(ApplyError::UnknownState {
                         card: *card,
                         state: state.clone(),
                     });
                 };
-                if current.field_type() != value.field_type() {
+                if expected != value.field_type() {
                     return Err(ApplyError::StateTypeMismatch {
                         card: *card,
                         state: state.clone(),
-                        expected: current.field_type(),
+                        expected,
                         found: value.field_type(),
                     });
                 }
-                current.clone_from(value);
+                if let Some((_, current)) = Arc::make_mut(&mut instance.state).get_mut(position) {
+                    current.clone_from(value);
+                }
                 Ok(())
             }
             Event::DrawFromEmptyZone { player, zone } => {

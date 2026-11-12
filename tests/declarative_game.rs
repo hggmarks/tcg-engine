@@ -514,6 +514,46 @@ fn apply_card_state_changed_sets_the_value_of_one_state() {
 }
 
 #[test]
+fn a_card_state_changed_in_a_clone_leaves_the_original_game_state_unchanged() {
+    // The clone shares the instance state of every card (ADR-0021), and an Event copies what it
+    // changes first: the original GameState stays equal to its copy from before the Event, and
+    // the cards that did not change are not affected either (ADR-0002).
+    let original = state_after(&[some_card(0, 0, "deck"), some_card(1, 0, "deck")]);
+    let before = original.clone();
+    let tapped = StateName::new("tapped");
+    let mut changed = original.clone();
+    changed
+        .apply(&card_state_changed(0, "tapped", FieldValue::Bool(true)))
+        .expect("the card has the state");
+    assert_eq!(original, before, "the original is unchanged");
+    assert_eq!(
+        original
+            .card(instance(0))
+            .and_then(|card| card.state_value(&tapped)),
+        Some(&FieldValue::Bool(false))
+    );
+    assert_eq!(
+        changed
+            .card(instance(0))
+            .and_then(|card| card.state_value(&tapped)),
+        Some(&FieldValue::Bool(true))
+    );
+    assert_ne!(changed, original);
+
+    // A change in the original does not reach the clone either.
+    let mut original = original;
+    original
+        .apply(&card_state_changed(1, "tapped", FieldValue::Bool(true)))
+        .expect("the card has the state");
+    assert_eq!(
+        before
+            .card(instance(1))
+            .and_then(|card| card.state_value(&tapped)),
+        Some(&FieldValue::Bool(false))
+    );
+}
+
+#[test]
 fn apply_rejects_card_state_changed_for_an_unknown_card() {
     assert_rejected_atomically(
         state_after(&[some_card(0, 0, "deck")]),

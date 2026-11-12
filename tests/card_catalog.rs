@@ -86,6 +86,31 @@ fn card_catalog_accepts_the_small_catalog() {
 }
 
 #[test]
+fn the_card_catalog_finds_the_card_definition_of_every_id_and_nothing_for_an_unknown_one() {
+    // The lookup by Card Id gives the Card Definition at the id's own position, for every Card Id
+    // of the catalog (a lookup by BTreeMap index was tried and removed, ADR-0021).
+    let catalog = small_catalog();
+    for definition in catalog.cards() {
+        assert!(
+            catalog
+                .card(definition.id())
+                .is_some_and(|found| std::ptr::eq(found, definition)),
+            "{} is found at its own position",
+            definition.id().as_str()
+        );
+    }
+    for unknown in ["ghost", "", "hero_", "her", "creature_00", "Hero"] {
+        assert!(
+            catalog.card(&CardId::new(unknown)).is_none(),
+            "`{unknown}` is not a Card Id of the catalog"
+        );
+    }
+    // A clone, and a catalog built twice from the same draft, are equal.
+    assert_eq!(catalog.clone(), catalog);
+    assert_eq!(small_catalog(), catalog);
+}
+
+#[test]
 fn card_catalog_keeps_field_values_in_schema_order() {
     // The creature schema is name, cost, power; the card gives power, name, cost.
     let draft = draft_with(vec![card(

@@ -384,7 +384,7 @@ An Action the Ruleset's `transition` accepts in a GameState, nothing more and no
 The optional `LegalActions` capability of a Ruleset: `legal_actions(state)` returns every Legal Action of the GameState exactly once, as a `Vec` with no error type and no Player parameter, each Action carrying its Player. It is separate from `Ruleset` so a Ruleset with an unbounded set of Actions, like the Toy Ruleset, need not implement it. `Runtime::legal_actions` forwards to it (ADR-0018).
 
 **Listing Order**:
-The order of a Legal Action Listing in the Declarative Ruleset: the actions in the order the current Action Phase lists them; for one action the argument lists in lexicographic order, param by param, each by ascending Card Instance Id whatever the zone. A card that fits several alternatives of a param is one candidate (ADR-0018).
+The order of a Legal Action Listing in the Declarative Ruleset: the actions in the order the current Action Phase lists them; for one action the argument lists in lexicographic order, param by param, each by ascending Card Instance Id whatever the zone. A card that fits several alternatives of a param is one candidate (ADR-0018). The listing visits only the cards of the zones a param names, which gives the same order (ADR-0021).
 
 ## Ending the Game
 
@@ -424,6 +424,9 @@ Playing a whole Game with a policy that picks every Action, from one Seed, until
 
 **Uniform Random Policy**:
 The self-play policy that picks one of the Legal Actions, in Listing Order, uniformly. It draws from its own Random State, derived from the Seed with a fixed constant, and never from the GameState's (ADR-0020).
+
+**Self-Play Pin**:
+The committed text file `crates/tcg-selfplay/tests/selfplay/golden/self-play-seeds-0-1000.digest`: one line `seed actions digest` per Seed 0..1000, where `actions` is the number of accepted Actions and `digest` is a 64-bit FNV-1a, in hex, of the `Debug` lines of the creation trace, of each accepted Action followed by the Events of its trace, and of the Terminal Outcome. The 1,000-seed self-play test compares it byte for byte in the same pass that plays the Games, and reports the first Seed that differs; only the ignored test `regenerate_self_play_digests` rewrites it, so a change to a Game Record or an Event Trace is always a deliberate, reviewed diff, like a Golden Snapshot (ADR-0017, ADR-0021).
 
 **Invariant**:
 A property that holds in every GameState and across every transition: no card gained or lost, each instance in exactly one zone, ordered zones keep their order rules, instances carry only the states their type declares, event-sourced consistency, an ended Game has no Legal Actions, and the Turn and Active Player are consistent (ADR-0020).
