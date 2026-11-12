@@ -482,26 +482,10 @@ fn an_empty_turn_is_read_and_the_engine_rejects_it() {
 }
 
 #[test]
-fn the_real_small_ruleset_still_waits_for_attack_conditions() {
-    // `play_creature` loads (ticket [10]); `attack` has `where` and `one_of`, which ticket [11]
-    // adds. The file loads up to the first of them: its `setup`, `turn` and `play_creature` are
-    // read.
-    let error = yaml_error(SMALL_RULESET);
-    assert_eq!(
-        error.kind,
-        YamlErrorKind::UnknownKey {
-            key: "where".to_string()
-        }
-    );
-    assert_eq!(
-        error.path,
-        path()
-            .key("actions")
-            .index(1)
-            .key("params")
-            .index(0)
-            .key("where")
-    );
+fn the_real_small_ruleset_loads() {
+    // Every construct of the file is read and valid, `attack` and `leader_dead` included (ticket
+    // [11]); `combat.rs` checks what they became.
+    load_ruleset_definition(SMALL_RULESET).expect("the real Small Ruleset loads");
 }
 
 // ---- the boundary between the loader and the engine

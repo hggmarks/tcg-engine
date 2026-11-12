@@ -414,12 +414,11 @@ impl ActionDefinition {
     }
 }
 
-/// A card the Action supplies: a card instance of `card_type` in the acting Player's `zone`.
+/// A card the Action supplies. It must fit one of the param's alternatives (at least one).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Param {
     pub(super) name: ParamName,
-    pub(super) zone: ZoneId,
-    pub(super) card_type: CardTypeId,
+    pub(super) alternatives: Vec<ParamAlternative>,
 }
 
 impl Param {
@@ -427,6 +426,24 @@ impl Param {
         &self.name
     }
 
+    /// The alternatives in declared order; never empty. The first one the card fits is the one that
+    /// binds.
+    pub fn alternatives(&self) -> &[ParamAlternative] {
+        &self.alternatives
+    }
+}
+
+/// One way to fill a param: a card instance of `card_type` in the `zone` of its owner, who is the
+/// acting Player or an Opponent, and that makes the Where Condition hold.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParamAlternative {
+    pub(super) zone: ZoneId,
+    pub(super) card_type: CardTypeId,
+    pub(super) owner: ParamOwner,
+    pub(super) condition: Option<Expression>,
+}
+
+impl ParamAlternative {
     pub fn zone(&self) -> &ZoneId {
         &self.zone
     }
@@ -434,6 +451,44 @@ impl Param {
     pub fn card_type(&self) -> &CardTypeId {
         &self.card_type
     }
+
+    pub fn owner(&self) -> ParamOwner {
+        self.owner
+    }
+
+    /// The `where` condition, read on the card and the params declared before it.
+    pub fn condition(&self) -> Option<&Expression> {
+        self.condition.as_ref()
+    }
+}
+
+/// Whose card a param alternative takes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParamOwner {
+    /// The acting Player (`owner` absent).
+    Actor,
+    /// Any Player other than the acting Player (`owner: opponent`).
+    Opponent,
+}
+
+/// A validated expression. Its operands have the types their operator needs: `Eq` compares two
+/// values of one type, `Gte` and `Lte` two ints, `And` any number of bools, and all of them are
+/// bool.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Expression {
+    Literal(FieldValue),
+    /// The value a [`ValueRef`] reads.
+    Value(ValueRef),
+    Eq(Box<Expression>, Box<Expression>),
+    Gte(Box<Expression>, Box<Expression>),
+    Lte(Box<Expression>, Box<Expression>),
+    /// Holds when every operand holds; with no operand it holds.
+    And(Vec<Expression>),
+    /// Holds when the card is a card instance of `card_type`.
+    IsCardType {
+        card: CardRef,
+        card_type: CardTypeId,
+    },
 }
 
 /// `{ ref: <param> }`: the card a param is bound to.
@@ -494,6 +549,18 @@ pub enum Effect {
         card: CardRef,
         state: StateName,
         value: FieldValue,
+    },
+    /// Adds `amount` to the int instance state `state` of `card`, with checked arithmetic.
+    AddState {
+        card: CardRef,
+        state: StateName,
+        amount: i64,
+    },
+    /// Runs `then` if the condition holds when the effect runs, `otherwise` if not.
+    If {
+        condition: Expression,
+        then: Vec<Effect>,
+        otherwise: Vec<Effect>,
     },
 }
 
@@ -623,11 +690,19 @@ pub enum WinConditionWhen {
     /// A draw from this zone found it empty, in the transition being evaluated. The zone exists in
     /// the Ruleset Definition it was validated with.
     DrawFromEmpty(ZoneId),
+    /// `condition` holds for a Player when some card instance of the card type `subject` owned by
+    /// that Player makes it true in the GameState the transition produced. Its refs keep the
+    /// subject's card type id as their param.
+    Expression {
+        subject: CardTypeId,
+        condition: Expression,
+    },
 }
 
 /// Which Player loses when a win condition holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Loser {
-    /// The Player the condition holds for: for `draw_from_empty`, the Player who drew.
+    /// The Player the condition holds for: for `draw_from_empty`, the Player who drew; for an
+    /// expression, the owner of the card instance that makes it true.
     Owner,
 }

@@ -90,6 +90,12 @@ actions:
       - move: { card: { ref: card }, to: field }
       - set_state: { card: { ref: card }, state: recently_played, value: true }
 
+  # The attacker is an untapped creature of the acting Player that was not played this turn. The
+  # target is a tapped creature of an opponent (any other Player) or an opponent's Leader. The
+  # attacker taps even when nothing else happens. A creature dies when the attacker's power is at
+  # least its own, and goes to the top of its owner's trash; a Leader loses 1 life likewise. In
+  # `then` the target is a creature and in `else` a Leader, which is why only there is
+  # `current_life` a state of the target.
   - id: attack
     params:
       - name: attacker
@@ -101,8 +107,8 @@ actions:
             - { eq: [{ ref: attacker.recently_played }, false] }
       - name: target
         one_of:
-          - { zone: field, owner: opponent, where: { eq: [{ ref: target.tapped }, true] } }
-          - { zone: leader_zone, owner: opponent }
+          - { zone: field, card_type: creature, owner: opponent, where: { eq: [{ ref: target.tapped }, true] } }
+          - { zone: leader_zone, card_type: leader, owner: opponent }
     effects:
       - set_state: { card: { ref: attacker }, state: tapped, value: true }
       - if:
@@ -118,9 +124,10 @@ actions:
     effects: [ { end_turn: {} } ]
 
 # Checked after every action and at the end of game creation. `draw_from_empty` is a Player's loss
-# when a draw in that transition found the zone empty. `leader_dead` is an expression: the engine
-# rejects it as unsupported until [11] adds expressions. The game ends at once when a player loses,
-# and if both players lose at the same time the game is drawn (no winner).
+# when a draw in that transition found the zone empty. `leader_dead` is an expression about the card
+# type its refs start with (here `leader`): it holds for a Player when one of their leaders makes it
+# true in the state the transition produced. The game ends at once when a player loses, and if both
+# players lose at the same time the game is drawn (no winner).
 win_conditions:
   - id: leader_dead
     when: { lte: [{ ref: leader.current_life }, 0] }

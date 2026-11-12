@@ -21,3 +21,5 @@ Amended by ADR-0015: an Action also carries one Argument per Action Parameter, t
 **Status**: accepted
 
 Amended by ADR-0014: `Rejection::GameOver` is a new first check, before unknown Player, and win conditions are evaluated at the end of every transition, including these automatic steps. The `DrawFromEmptyZone` fact is what they read.
+
+Amended by ADR-0016: the known gap is still open (no ticket yet) and now also includes an `end_turn` nested in an `if` effect, which the recursive effect runner executes like a top-level one.

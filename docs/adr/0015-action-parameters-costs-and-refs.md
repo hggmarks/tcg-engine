@@ -11,3 +11,5 @@ Validation order inside an action is its params, its cost, then its effects. A `
 The known gap of ADR-0012 is **still open**: validation does not check that the Action Phase can be left, nor that an action ends at most one Turn (`[end_turn, end_turn]`), nor that `end_turn` is the last effect: `[end_turn, move ...]` loads and the `move` runs in the next Player's Turn. Nothing here changes it. "Effect" now has two meanings, kept apart in `CONTEXT.md`: Action Effects, built from engine primitives and decided here, and Card Effects (abilities of a card), which are out of scope.
 
 **Status**: accepted
+
+Amended by ADR-0016: a param is a list of alternatives (`{ name, zone, card_type, owner?, where? }` or `{ name, one_of: [...] }`), so `where`, `one_of` and `owner` are read, and the binding Rejections gain `NotOpponentCard`, `WhereConditionNotMet` and `NoAlternativeMatched`. Refs resolve on every possible card type of a param, and the effects gain `add_state` and `if`. `tap.count` still takes only a ref, although this ADR expected literals here.

@@ -24,27 +24,38 @@
 //! existing and then for repeating. `set_state` needs a state some card type declares, with a value
 //! of the type that card type gives it; `untap` needs the same of `tapped` and a bool.
 //!
+//! A param is checked after its name: each alternative in order (the simple form is one, addressed
+//! by the param itself; `one_of[i]` addresses the others), and in each its zone, card type, owner
+//! and `where`. Refs and expressions follow ADR-0015 and ADR-0016: a ref is resolved on every
+//! possible card type of its param, an expression is checked depth-first and left to right, with
+//! the operands of an operator before its type rule, and errors name the operator key and operand
+//! position (`where.and[0].eq[1]`). An `if` effect checks its condition, then its `then` effects,
+//! then its `else` effects, each at its position (`effects[1].then[0]`).
+//!
 //! Win conditions come last, in declaration order: per condition its id (grammar, duplicate), then
-//! its `when` (an expression is unsupported; `draw_from_empty` needs a declared zone), then its
-//! `loser`. A win condition is addressed by id (`win_conditions[deck_out].when`).
+//! its `when` (`draw_from_empty` needs a declared zone; an expression is checked with the card
+//! types as the names a ref may start with, and must read exactly one), then its `loser`. A win
+//! condition is addressed by id (`win_conditions[deck_out].when`).
 
 mod draft;
 mod error;
+mod expression;
 mod model;
 mod validate;
 
 pub use draft::{
     ActionDraft, AutomaticStepDraft, CardTypeDraft, ConditionDraft, CostDraft, DeckInputDraft,
-    EffectDraft, FieldDraft, FieldTypeDraft, InitializerDraft, InstanceStateDraft, MetaDraft,
-    ParamDraft, ParametersDraft, PhaseDraft, RefDraft, RulesetDraft, SetupStepDraft, TurnDraft,
-    WinConditionDraft, WinConditionWhenDraft, ZoneDraft,
+    EffectDraft, ExpressionDraft, FieldDraft, FieldTypeDraft, InitializerDraft, InstanceStateDraft,
+    MetaDraft, ParamAlternativeDraft, ParamCardsDraft, ParamDraft, ParametersDraft, PhaseDraft,
+    RefDraft, RulesetDraft, SetupStepDraft, TurnDraft, WinConditionDraft, WinConditionWhenDraft,
+    ZoneDraft,
 };
 pub use error::{DefinitionError, DefinitionErrorKind, RefType, ReferenceTarget};
 pub use model::{
     ActionDefinition, ActionId, AutomaticStep, CardRef, CardType, CardTypeId, CardValue, Condition,
-    Cost, DeckInput, DeckInputId, Effect, FieldName, FieldSchema, FieldType, FieldValue,
-    Initializer, InstanceStateSchema, Loser, Meta, Param, ParamName, Parameters, Phase, PhaseId,
-    PhaseKind, PlayerCount, PlayerPosition, PlayerSelector, Position, RulesetDefinition, RulesetId,
-    RulesetVersion, SetupStep, StateName, TurnStructure, ValueRef, Visibility, WinCondition,
-    WinConditionId, WinConditionWhen, Zone, ZoneId,
+    Cost, DeckInput, DeckInputId, Effect, Expression, FieldName, FieldSchema, FieldType,
+    FieldValue, Initializer, InstanceStateSchema, Loser, Meta, Param, ParamAlternative, ParamName,
+    ParamOwner, Parameters, Phase, PhaseId, PhaseKind, PlayerCount, PlayerPosition, PlayerSelector,
+    Position, RulesetDefinition, RulesetId, RulesetVersion, SetupStep, StateName, TurnStructure,
+    ValueRef, Visibility, WinCondition, WinConditionId, WinConditionWhen, Zone, ZoneId,
 };

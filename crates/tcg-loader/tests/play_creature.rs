@@ -3,7 +3,7 @@
 //!
 //! The fixture is the real `small-ruleset.yaml` with `attack` cut: Main lists `play_creature` and
 //! `pass_turn`, and `actions` holds the file's own `play_creature` and `pass_turn` blocks, sliced
-//! from the file and not retyped. `attack` waits for ticket [11]. The other fixtures are text edits
+//! from the file and not retyped. `attack` is cut here: `combat.rs` plays it. The other fixtures are text edits
 //! of this one. Code-built drafts and the Display of the new Rejections are tested in the engine
 //! crate (`tests/action_parameters.rs`).
 
@@ -17,8 +17,9 @@ use tcg_engine::random::Seed;
 use tcg_engine::ruleset::{Ruleset, Transition};
 use tcg_engine::ruleset_definition::{
     ActionDraft, ActionId, CardTypeId, CardValue, Cost, CostDraft, DefinitionError,
-    DefinitionErrorKind, Effect, EffectDraft, FieldName, FieldType, FieldValue, ParamDraft,
-    ParamName, PhaseId, RefDraft, RefType, ReferenceTarget, StateName, ZoneId,
+    DefinitionErrorKind, Effect, EffectDraft, FieldName, FieldType, FieldValue,
+    ParamAlternativeDraft, ParamCardsDraft, ParamDraft, ParamName, ParamOwner, PhaseId, RefDraft,
+    RefType, ReferenceTarget, StateName, ZoneId,
 };
 use tcg_engine::turn::TurnNumber;
 use tcg_loader::{
@@ -328,8 +329,12 @@ fn play_creature_loads_with_params_cost_and_effects() {
         panic!("play_creature has one param, got {:?}", play.params());
     };
     assert_eq!(param.name(), &card_param());
-    assert_eq!(param.zone(), &zone("hand"));
-    assert_eq!(param.card_type(), &CardTypeId::new("creature"));
+    let [alternative] = param.alternatives() else {
+        panic!("one alternative expected, got {:?}", param.alternatives());
+    };
+    assert_eq!(alternative.zone(), &zone("hand"));
+    assert_eq!(alternative.card_type(), &CardTypeId::new("creature"));
+    assert_eq!(alternative.owner(), ParamOwner::Actor);
 
     let [Cost::Tap {
         zone: tapped,
@@ -377,8 +382,12 @@ fn the_loader_reads_params_cost_and_effects_as_plain_drafts() {
             id: "play_creature".to_string(),
             params: vec![ParamDraft {
                 name: "card".to_string(),
-                zone: "hand".to_string(),
-                card_type: "creature".to_string(),
+                cards: ParamCardsDraft::Single(ParamAlternativeDraft {
+                    zone: "hand".to_string(),
+                    card_type: "creature".to_string(),
+                    owner: None,
+                    condition: None,
+                }),
             }],
             cost: vec![CostDraft::Tap {
                 zone: "mana_zone".to_string(),
@@ -424,40 +433,51 @@ fn the_loader_reads_params_cost_and_effects_as_plain_drafts() {
 }
 
 #[test]
-fn owner_where_and_one_of_are_still_unknown_keys_of_a_param() {
-    // Ticket [11] adds them.
+fn owner_where_and_one_of_are_read_as_keys_of_a_param_and_other_keys_are_unknown() {
+    // Ticket [11] reads them; `combat.rs` and `expressions.rs` test what they mean.
     let with_owner = edit(
         &small_cut(),
         "{ name: card, zone: hand, card_type: creature }",
         "{ name: card, zone: hand, card_type: creature, owner: opponent }",
     );
-    let error = yaml_error(&with_owner);
+    let draft = parse_ruleset_draft(&with_owner).expect("`owner` is read");
     assert_eq!(
-        error.kind,
-        YamlErrorKind::UnknownKey {
-            key: "owner".to_string()
-        }
-    );
-    assert_eq!(
-        error.path,
-        path()
-            .key("actions")
-            .index(0)
-            .key("params")
-            .index(0)
-            .key("owner")
+        draft.actions[0].params[0].cards,
+        ParamCardsDraft::Single(ParamAlternativeDraft {
+            zone: "hand".to_string(),
+            card_type: "creature".to_string(),
+            owner: Some("opponent".to_string()),
+            condition: None,
+        })
     );
 
     let with_one_of = edit(
         &small_cut(),
         "{ name: card, zone: hand, card_type: creature }",
-        "{ name: card, one_of: [ { zone: hand } ] }",
+        "{ name: card, one_of: [ { zone: hand, card_type: creature } ] }",
     );
-    let error = yaml_error(&with_one_of);
+    let draft = parse_ruleset_draft(&with_one_of).expect("`one_of` is read");
+    assert_eq!(
+        draft.actions[0].params[0].cards,
+        ParamCardsDraft::OneOf(vec![ParamAlternativeDraft {
+            zone: "hand".to_string(),
+            card_type: "creature".to_string(),
+            owner: None,
+            condition: None,
+        }])
+    );
+
+    // A key that is not one of the param's is still an unknown key.
+    let with_color = edit(
+        &small_cut(),
+        "{ name: card, zone: hand, card_type: creature }",
+        "{ name: card, zone: hand, card_type: creature, color: red }",
+    );
+    let error = yaml_error(&with_color);
     assert_eq!(
         error.kind,
         YamlErrorKind::UnknownKey {
-            key: "one_of".to_string()
+            key: "color".to_string()
         }
     );
     assert_eq!(
@@ -467,7 +487,7 @@ fn owner_where_and_one_of_are_still_unknown_keys_of_a_param() {
             .index(0)
             .key("params")
             .index(0)
-            .key("one_of")
+            .key("color")
     );
 }
 

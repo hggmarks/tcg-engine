@@ -4,7 +4,7 @@
 //!
 //! The file is read as in `turn_cycle.rs`: up to its top-level `actions:` section with Main waiting
 //! for `pass_turn` only, then a `pass_turn` definition, then the file's own `win_conditions`
-//! section. `leader_dead` is an expression, which ticket [11] adds, so most tests cut it. Code-built
+//! section. Most tests cut `leader_dead` (ticket [11], tested in `combat.rs`). Code-built
 //! win conditions, the Terminal Outcome and `apply` are tested in the engine crate
 //! (`tests/win_conditions.rs`).
 
@@ -17,8 +17,8 @@ use tcg_engine::player::PlayerId;
 use tcg_engine::random::Seed;
 use tcg_engine::ruleset::{Ruleset, Transition};
 use tcg_engine::ruleset_definition::{
-    ActionId, DefinitionError, DefinitionErrorKind, Loser, PhaseId, RulesetDefinition,
-    WinConditionId, WinConditionWhen, ZoneId,
+    ActionId, CardTypeId, Loser, PhaseId, RulesetDefinition, WinConditionId, WinConditionWhen,
+    ZoneId,
 };
 use tcg_engine::turn::TurnNumber;
 use tcg_loader::{
@@ -137,13 +137,6 @@ fn yaml_error(yaml: &str) -> YamlError {
     }
 }
 
-fn definition_error(yaml: &str) -> DefinitionError {
-    match load_ruleset_definition(yaml) {
-        Err(LoadError::Definition(error)) => error,
-        other => panic!("expected a definition error, got {other:?}"),
-    }
-}
-
 /// Plays a Game of the Small Ruleset in which both Players only pass, up to and including the
 /// PassTurn that ends it. Returns the Game as created, then every state and Event Trace after it.
 fn play_to_the_end() -> (
@@ -183,22 +176,28 @@ fn deck_out_win_condition_loads_from_the_small_ruleset() {
 }
 
 #[test]
-fn leader_dead_win_condition_is_unsupported() {
-    // The file's own section: `leader_dead` is first, and it is an expression ([11]).
-    let error = definition_error(&format!(
+fn the_files_own_win_conditions_load_with_leader_dead_first() {
+    // The file's own section: `leader_dead` is an expression about the card type `leader`, and it
+    // is declared before `deck_out`.
+    let definition = load_ruleset_definition(&format!(
         "{}\nwin_conditions:{}",
         turn_and_actions(),
         own_win_conditions()
-    ));
-    assert_eq!(
-        error,
-        DefinitionError {
-            path: path().key("win_conditions").id("leader_dead").key("when"),
-            kind: DefinitionErrorKind::UnsupportedWinCondition {
-                operator: "lte".to_string()
-            },
-        }
+    ))
+    .expect("the file's own win_conditions load");
+    let conditions = definition.win_conditions();
+    assert_eq!(conditions.len(), 2);
+    assert_eq!(conditions[0].id(), &WinConditionId::new("leader_dead"));
+    assert!(
+        matches!(
+            conditions[0].when(),
+            WinConditionWhen::Expression { subject, .. } if subject == &CardTypeId::new("leader")
+        ),
+        "leader_dead is an expression about leaders, got {:?}",
+        conditions[0].when()
     );
+    assert_eq!(conditions[0].loser(), Loser::Owner);
+    assert_eq!(conditions[1].id(), &WinConditionId::new("deck_out"));
 }
 
 #[test]
