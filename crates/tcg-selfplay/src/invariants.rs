@@ -15,7 +15,7 @@ use tcg_engine::deck_list::DeckList;
 use tcg_engine::declarative::{CardInstanceId, DeclarativeRuleset, Event, GameCreation, GameState};
 use tcg_engine::player::PlayerId;
 use tcg_engine::ruleset::{EventTrace, LegalActions};
-use tcg_engine::ruleset_definition::ZoneId;
+use tcg_engine::ruleset_definition::{CardType, ZoneId};
 
 /// A property that holds in every GameState and across every transition of a correct engine, in
 /// the order of the ticket.
@@ -365,20 +365,32 @@ fn fold_zone(
 
 // ---- 4. instances carry only the states their type declares
 
+/// The copies of a card are numbered one after the other, so the Card Type resolved for the
+/// previous card is the one of the next while the Card Definition is equal: each definition is
+/// resolved once per run of equal definitions, not twice per card (ADR-0021). A definition that
+/// cannot be resolved is reported at the first card that has it, as before.
 fn instance_states_wrong(ruleset: &DeclarativeRuleset, state: &GameState) -> Option<String> {
+    let mut resolved: Option<(&CardId, &CardType)> = None;
     for card in state.cards() {
         let id = card.id().0;
-        let Some(definition) = ruleset.catalog().card(card.definition()) else {
-            return Some(format!(
-                "card instance {id} is of `{}`, which is not in the catalog",
-                card.definition().as_str()
-            ));
-        };
-        let Some(card_type) = ruleset.definition().card_type(definition.card_type()) else {
-            return Some(format!(
-                "card instance {id} is of the Card Type `{}`, which the ruleset does not declare",
-                definition.card_type().as_str()
-            ));
+        let card_type = match resolved {
+            Some((definition, card_type)) if definition == card.definition() => card_type,
+            _ => {
+                let Some(definition) = ruleset.catalog().card(card.definition()) else {
+                    return Some(format!(
+                        "card instance {id} is of `{}`, which is not in the catalog",
+                        card.definition().as_str()
+                    ));
+                };
+                let Some(card_type) = ruleset.definition().card_type(definition.card_type()) else {
+                    return Some(format!(
+                        "card instance {id} is of the Card Type `{}`, which the ruleset does not declare",
+                        definition.card_type().as_str()
+                    ));
+                };
+                resolved = Some((card.definition(), card_type));
+                card_type
+            }
         };
         let schema = card_type.instance_state();
         let matches = card.state().len() == schema.len()
