@@ -1,0 +1,16 @@
+[package]
+name = "tcg-selfplay"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+tcg-engine = { path = "../.." }
+
+[dev-dependencies]
+tcg-loader = { path = "../tcg-loader" }
