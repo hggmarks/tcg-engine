@@ -175,9 +175,10 @@ fn classify(error: SaphyrError, path: DefinitionPath) -> YamlError {
 /// Whether `path` is a single-key map `{ <primitive>: ... }` whose primitive is chosen by name: an
 /// element of `setup` (`setup[1]`), of an automatic phase or an `if` step
 /// (`turn.phases[0].automatic[2]`, `turn.phases[0].automatic[2].else[0]`) or of an action's
-/// `effects` or `cost` (`actions[0].effects[0]`, `actions[0].cost[0]`), the condition of an `if`
-/// step or effect (`turn.phases[0].automatic[2].if`), the `where` of a param, the `when` of a win
-/// condition (`win_conditions[0].when`), or an operand of `eq`, `gte`, `lte` or `and`
+/// `effects` or `cost` (`actions[0].effects[0]`, `actions[0].cost[0]`), the `do` of a Card Effect
+/// (`cards[0].effects[0].do[0]`), the condition of an `if` step or effect
+/// (`turn.phases[0].automatic[2].if`), the `where` of a param, the `while` of a Card Effect, the
+/// `when` of a win condition (`win_conditions[0].when`), or an operand of `eq`, `gte`, `lte` or `and`
 /// (`actions[0].params[0].where.and[1]`).
 fn names_a_primitive(path: &DefinitionPath) -> bool {
     match path.segments() {

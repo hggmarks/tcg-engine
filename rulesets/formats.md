@@ -107,7 +107,21 @@ cards:
 - `meta.ruleset` and `meta.ruleset_version` name the ruleset the catalog is written for; they must equal the loaded ruleset's `meta`.
 - Each card has `id` (unique in the catalog), `type` (a card type of the ruleset), `fields` (required, a map; `{}` for a type without fields) and optionally `effects`.
 - `fields` must give exactly the fields of the card type, each once, in any order. The loader keeps the file order; the model keeps the schema order. A field's kind comes from the scalar: `5` is an int, `"5"` is a text, `true` is a bool, so a quoted number is a type mismatch for an int field. Floating point numbers, nulls and nested values are rejected.
-- `effects` is an optional list of single-key maps, `{ <primitive>: <arguments> }`. It must be empty or absent on a card type with `effects: false`. No primitive exists yet, so any entry on a type that allows effects is unsupported.
+- `effects` is an optional list of Card Effects, the **Card Effect envelope** (ADR-0022). It must be empty or absent on a card type with `effects: false` (the Effects Ruleset sets `effects: true` on `creature`). An element has one of two shapes:
+
+  ```yaml
+  effects:
+    - on: { enter: field }     # triggered: a matcher, `enter: <zone>` or `turn_start: {}`
+      if: { ... }              # optional: a bool expression
+      do: [ <action effects> ] # at least one; `end_turn` is not allowed in it
+    - while: { ... }           # continuous: a bool expression
+      modify: { field: power, amount: 1 }   # an int field of the card's type, an unquoted integer
+  ```
+
+  - Keys of both shapes in one element are an error, and so is an element with neither `on` nor `while`. An unknown key of the envelope or of `modify` is a syntax error, and so is an `amount` that is not an unquoted integer. An unknown matcher key is not: the loader keeps it and the engine rejects it.
+  - `if`, `while` and `do` are the expressions and action effects of the ruleset format (see Turn and actions). Their refs start with `self`, the carrying card: `{ ref: self }` is the card, `{ ref: self.power }` a field or an instance state of the card's own card type. No other name is in scope.
+  - Errors are addressed like any catalog error, by card id: `cards[goblin].effects[0].do`, and for an error of an expression or an action effect at its own path under it, such as `cards[goblin].effects[0].if.and[0].eq[1]`.
+  - No Card Effect executes yet: a well-formed one is rejected, as an unsupported triggered or an unsupported continuous Card Effect at `cards[goblin].effects[0]`. The decisions are in ADR-0022.
 
 ## Deck list
 
@@ -130,3 +144,7 @@ inputs:
 
 - `small-ruleset/small-catalog.yaml`: 3 Leaders, 16 creatures and the mana card.
 - `small-ruleset/decks/deck-a.yaml` and `deck-b.yaml`: two legal decks, each with 1 Leader, 50 creatures (at most 4 copies of each) and 10 mana cards.
+
+## Starter data for the Effects Ruleset
+
+The Small Ruleset is frozen; the Effects Ruleset is derived from it (ADR-0022). `effects-ruleset/effects-ruleset.yaml`, `effects-catalog.yaml` and `decks/deck-a.yaml` and `deck-b.yaml` are the Small files with `meta` renamed and `effects: true` on `creature`. The catalog carries no Card Effect yet.

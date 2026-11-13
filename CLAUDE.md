@@ -88,7 +88,7 @@ A ticket is done when all of this holds:
 - Every acceptance criterion is covered by a test named in `CONTEXT.md` vocabulary.
 - New or changed domain terms are in `CONTEXT.md`.
 - Decisions are recorded as short ADRs in `docs/adr/`, and any conflict with an existing ADR is flagged.
-- Rule decisions are mirrored in `rulesets/small-ruleset/small-ruleset.md` and `.yaml`.
+- Rule decisions are mirrored in `rulesets/effects-ruleset/effects-ruleset.md` and `.yaml`. The Small Ruleset (`rulesets/small-ruleset/`) is frozen since Phase C: it does not change (ADR-0022).
 - Nothing under the ticket's *Out of scope* is introduced.
 
 The gate (toolchain pinned in `rust-toolchain.toml`; `--all`/`--workspace` so later members are covered):

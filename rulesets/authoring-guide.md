@@ -117,7 +117,7 @@ The files are a restricted subset of YAML (ADR-0004).
 
 ## Not supported yet
 
-- Card effects: `effects: true` on a card type loads, but no effect primitive exists yet, so any effect entry on a catalog card is rejected.
+- Card effects: `effects: true` on a card type loads and the envelope of a Card Effect is checked (`on`/`if`/`do` or `while`/`modify`, see `formats.md`), but none executes yet, so any Card Effect on a catalog card is rejected as unsupported (ADR-0022).
 - The `enum` and `enum set` field types (ADR-0004); a field is `int`, `bool` or `text`.
 - `tap` costs take a ref (`{ ref: card.cost }`), not a literal.
 - Expressions have `eq`, `gte`, `lte`, `and` and `is_card_type` only: no `not`, `or` or arithmetic.

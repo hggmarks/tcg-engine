@@ -19,3 +19,5 @@ Stage 2 of ADR-0004's loading is a `CardCatalog` validated against a `RulesetDef
 This conflicts with no earlier ADR. It refines ADR-0004's "no implicit typing" and "decks are input", and ADR-0004's "constraints" on field schemas stay open (no value constraints yet).
 
 **Status**: accepted
+
+Amended by ADR-0022: the **Effects** paragraph above no longer holds. A card's `effects` is a list of Card Effects, each a triggered (`on`, `if`, `do`) or a continuous (`while`, `modify`) element, and every well-formed one is rejected as `UnsupportedTriggeredCardEffect` or `UnsupportedContinuousCardEffect`; `UnsupportedEffect` is gone. `EffectsNotAllowed` is unchanged.

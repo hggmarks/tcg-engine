@@ -405,6 +405,40 @@ fn card_effect_unknown_envelope_key_is_a_syntax_error() {
 }
 
 #[test]
+fn unknown_primitive_or_operator_in_a_card_effect_is_an_unknown_key() {
+    // The action effects and expressions of a Card Effect are those of the ruleset file, so an
+    // unknown primitive or operator is an unknown key at the map that names it.
+    let cases = [
+        (
+            "      - { on: { enter: field }, do: [ { draw: {} } ] }\n",
+            "draw",
+            sage_syntax_path().key("do").index(0),
+        ),
+        (
+            "      - { on: { enter: field }, if: { not: [ true ] }, do: [ { end_turn: {} } ] }\n",
+            "not",
+            sage_syntax_path().key("if"),
+        ),
+        (
+            "      - { while: { or: [ true ] }, modify: { field: power, amount: 1 } }\n",
+            "or",
+            sage_syntax_path().key("while"),
+        ),
+    ];
+    for (effects, key, at) in cases {
+        let error = yaml_error(&sage_yaml(effects));
+        assert_eq!(
+            error.kind,
+            YamlErrorKind::UnknownKey {
+                key: key.to_string()
+            },
+            "{effects}"
+        );
+        assert_eq!(error.path, at, "{effects}");
+    }
+}
+
+#[test]
 fn non_integer_modify_amount_is_a_syntax_error() {
     for amount in ["\"1\"", "1.5", "true", "~"] {
         let yaml = sage_yaml(&format!(
