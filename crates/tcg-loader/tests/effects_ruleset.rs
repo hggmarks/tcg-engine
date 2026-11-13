@@ -266,8 +266,14 @@ fn catalog_error(yaml: &str) -> CatalogError {
     }
 }
 
+/// `cards[sage].effects[0]`: where the engine reports an error (declarations are addressed by id).
 fn sage_effect_path() -> DefinitionPath {
     path().key("cards").id("sage").key("effects").index(0)
+}
+
+/// `cards[0].effects[0]`: where the loader reports a syntax error (positional, ADR-0008).
+fn sage_syntax_path() -> DefinitionPath {
+    path().key("cards").index(0).key("effects").index(0)
 }
 
 // ---- the Effects Ruleset
@@ -348,6 +354,8 @@ fn effects_ruleset_golden_game_equals_small_ruleset() {
     let outcome = effects.final_state.outcome().expect("the Game ended");
     assert_eq!(Some(outcome), small.final_state.outcome());
     assert_eq!(outcome.winners(), [PlayerId(0)]);
+    // The whole final GameState is equal too: nothing in it names the ruleset.
+    assert_eq!(effects.final_state, small.final_state);
 }
 
 /// Rewrites the Golden Snapshot. Run it on purpose, and read the diff before committing it.
@@ -370,7 +378,7 @@ fn card_effect_unknown_envelope_key_is_a_syntax_error() {
             key: "bogus".to_string()
         }
     );
-    assert_eq!(error.path, sage_effect_path().key("bogus"));
+    assert_eq!(error.path, sage_syntax_path().key("bogus"));
 
     // The same for a continuous element, and the key is the one the format does not know.
     let yaml =
@@ -382,7 +390,7 @@ fn card_effect_unknown_envelope_key_is_a_syntax_error() {
             key: "until".to_string()
         }
     );
-    assert_eq!(error.path, sage_effect_path().key("until"));
+    assert_eq!(error.path, sage_syntax_path().key("until"));
 
     // An unknown key inside `modify` is unknown too.
     let yaml = sage_yaml("      - { while: true, modify: { field: power, amount: 1, by: 2 } }\n");
@@ -393,7 +401,7 @@ fn card_effect_unknown_envelope_key_is_a_syntax_error() {
             key: "by".to_string()
         }
     );
-    assert_eq!(error.path, sage_effect_path().key("modify").key("by"));
+    assert_eq!(error.path, sage_syntax_path().key("modify").key("by"));
 }
 
 #[test]
@@ -410,7 +418,7 @@ fn non_integer_modify_amount_is_a_syntax_error() {
         );
         assert_eq!(
             error.path,
-            sage_effect_path().key("modify").key("amount"),
+            sage_syntax_path().key("modify").key("amount"),
             "amount {amount}"
         );
     }

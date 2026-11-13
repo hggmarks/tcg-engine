@@ -8,7 +8,8 @@ mod common;
 
 use common::{card, catalog_meta, creature_id, path, small_catalog, small_definition, small_draft};
 use tcg_engine::card_catalog::{
-    CardCatalog, CardCatalogDraft, CardDraft, CardId, CatalogError, CatalogErrorKind, EffectDraft,
+    CardCatalog, CardCatalogDraft, CardDraft, CardEffectDraft, CardId, CatalogError,
+    CatalogErrorKind,
 };
 use tcg_engine::ruleset_definition::{
     CardTypeId, FieldName, FieldType, FieldValue, ReferenceTarget, RulesetDefinition, RulesetId,
@@ -425,9 +426,7 @@ fn card_catalog_rejects_duplicate_field() {
 #[test]
 fn card_catalog_rejects_effects_on_type_without_effects() {
     let mut card = goblin();
-    card.effects = vec![EffectDraft {
-        primitive: "draw".to_string(),
-    }];
+    card.effects = vec![CardEffectDraft::default()];
     assert_eq!(
         small_error_of(vec![card]),
         CatalogError {
@@ -443,40 +442,20 @@ fn card_catalog_rejects_effects_on_type_without_effects() {
 }
 
 #[test]
-fn card_catalog_rejects_unsupported_effect() {
-    // A ruleset whose creatures may have effects. No effect primitive exists yet, so every entry is
-    // unsupported.
+fn card_catalog_checks_the_fields_of_a_card_before_its_effects() {
+    // A ruleset whose creatures may have effects (the Card Effect envelope itself is tested in
+    // `card_effects.rs`).
     let mut ruleset = small_draft();
     ruleset.card_types[1].effects = true;
     let definition = RulesetDefinition::validate(ruleset).expect("valid ruleset");
 
-    let mut with_effects = goblin();
-    with_effects.effects = vec![
-        EffectDraft {
-            primitive: "draw".to_string(),
-        },
-        EffectDraft {
-            primitive: "damage".to_string(),
-        },
-    ];
-    assert_eq!(
-        error_of(&definition, draft_with(vec![with_effects])),
-        CatalogError {
-            path: card_path("goblin").key("effects").index(0),
-            kind: CatalogErrorKind::UnsupportedEffect {
-                primitive: "draw".to_string(),
-            },
-        }
-    );
-
-    // No effects, on a type that allows them, is valid.
-    assert!(CardCatalog::validate(&definition, draft_with(vec![goblin()])).is_ok());
+    // No effects, on a type that allows them, is valid, and the definition carries none.
+    let catalog = CardCatalog::validate(&definition, draft_with(vec![goblin()])).expect("valid");
+    assert!(catalog.cards().iter().all(|card| card.effects().is_empty()));
 
     // The fields of a card are checked before its effects.
     let mut leader = card("hero", "leader", vec![]);
-    leader.effects = vec![EffectDraft {
-        primitive: "draw".to_string(),
-    }];
+    leader.effects = vec![CardEffectDraft::default()];
     assert_eq!(
         error_of(&definition, draft_with(vec![leader])).kind,
         CatalogErrorKind::MissingField {
@@ -491,9 +470,7 @@ fn card_catalog_rejects_unsupported_effect() {
 fn card_catalog_reports_the_first_error_in_file_order() {
     let mut bad_effects = goblin();
     bad_effects.id = "later".to_string();
-    bad_effects.effects = vec![EffectDraft {
-        primitive: "draw".to_string(),
-    }];
+    bad_effects.effects = vec![CardEffectDraft::default()];
     assert_eq!(
         small_error_of(vec![
             card("first", "creature", vec![("name", text("First"))]),

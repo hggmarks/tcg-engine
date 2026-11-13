@@ -3,7 +3,7 @@
 
 use tcg_engine::card_catalog::{
     CardCatalog, CardCatalogDraft, CardDraft, CardId, CatalogError, CatalogErrorKind,
-    CatalogMetaDraft, EffectDraft,
+    CatalogMetaDraft,
 };
 use tcg_engine::definition_path::DefinitionPath;
 use tcg_engine::ruleset_definition::{
@@ -115,24 +115,27 @@ fn catalog_draft_keeps_file_order_and_scalar_kinds() {
 }
 
 #[test]
-fn catalog_draft_keeps_only_the_effect_primitive_names() {
+fn catalog_effects_are_card_effect_envelopes_not_primitives() {
+    // The envelope is tested in `effects_ruleset.rs`. An element that names an action primitive
+    // instead of an envelope key has an unknown key (ADR-0022).
     let yaml = catalog_yaml(
-        "  - id: sage\n    type: creature\n    fields: { name: Sage, cost: 1, power: 1 }\n    effects:\n      - draw: { count: 1 }\n      - damage: { amount: 2 }\n      - end_turn: {}\n",
+        "  - id: sage\n    type: creature\n    fields: { name: Sage, cost: 1, power: 1 }\n    effects:\n      - draw: { count: 1 }\n",
     );
-    let draft = parse_card_catalog_draft(&yaml).expect("parses");
+    let error = yaml_error(&yaml);
     assert_eq!(
-        draft.cards[0].effects,
-        vec![
-            EffectDraft {
-                primitive: "draw".to_string()
-            },
-            EffectDraft {
-                primitive: "damage".to_string()
-            },
-            EffectDraft {
-                primitive: "end_turn".to_string()
-            },
-        ]
+        error.kind,
+        YamlErrorKind::UnknownKey {
+            key: "draw".to_string()
+        }
+    );
+    assert_eq!(
+        error.path,
+        path()
+            .key("cards")
+            .index(0)
+            .key("effects")
+            .index(0)
+            .key("draw")
     );
 
     // An empty list and an absent key both mean no effects.
@@ -142,21 +145,6 @@ fn catalog_draft_keeps_only_the_effect_primitive_names() {
     assert_eq!(
         parse_card_catalog_draft(&yaml).expect("parses").cards[0].effects,
         vec![]
-    );
-
-    // An effect entry names exactly one primitive.
-    let yaml = catalog_yaml(
-        "  - id: sage\n    type: creature\n    fields: { name: Sage, cost: 1, power: 1 }\n    effects:\n      - { draw: {}, damage: {} }\n",
-    );
-    let error = yaml_error(&yaml);
-    assert_eq!(
-        error.path,
-        path().key("cards").index(0).key("effects").index(0)
-    );
-    assert!(
-        matches!(error.kind, YamlErrorKind::Malformed { .. }),
-        "got {:?}",
-        error.kind
     );
 }
 

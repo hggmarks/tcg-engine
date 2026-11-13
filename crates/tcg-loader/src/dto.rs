@@ -38,7 +38,7 @@ pub(crate) struct RulesetDto {
 }
 
 /// A value of a key that is present: unlike `Option`, a null is not accepted as `None`.
-fn some<'de, D: Deserializer<'de>, T: Deserialize<'de>>(
+pub(crate) fn some<'de, D: Deserializer<'de>, T: Deserialize<'de>>(
     deserializer: D,
 ) -> Result<Option<T>, D::Error> {
     T::deserialize(deserializer).map(Some)
@@ -127,7 +127,7 @@ fn only_one_key<'de, A: MapAccess<'de>>(
 /// (`eq`, `gte`, `lte` over two expressions, `and` over a list, `is_card_type` over a card ref and
 /// a card type id). The operands of `eq`, `gte`, `lte` and `is_card_type` are exactly two. An
 /// unknown operator is an unknown key of the map. No `untagged`: a visitor reads the shape.
-enum ExpressionDto {
+pub(crate) enum ExpressionDto {
     Literal(FieldValue),
     Ref(String),
     Eq(Box<ExpressionDto>, Box<ExpressionDto>),
@@ -275,7 +275,7 @@ impl<'de> Deserialize<'de> for CardTypeTest {
 }
 
 impl ExpressionDto {
-    fn into_draft(self) -> ExpressionDraft {
+    pub(crate) fn into_draft(self) -> ExpressionDraft {
         let boxed = |expression: Box<ExpressionDto>| Box::new(expression.into_draft());
         match self {
             Self::Literal(value) => ExpressionDraft::Literal(value),
@@ -440,7 +440,7 @@ struct TapDto {
 /// One effect of an action: either a single-key map `{ <primitive>: { ... } }`, or the sibling-key
 /// form `{ if: <expression>, then: [...], else: [...] }` where `then` is required and `else` is
 /// optional, like an `if` step.
-enum EffectDto {
+pub(crate) enum EffectDto {
     EndTurn,
     Move(MoveEffectDto),
     SetState(SetStateEffectDto),
@@ -454,14 +454,14 @@ enum EffectDto {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct MoveEffectDto {
+pub(crate) struct MoveEffectDto {
     card: RefDto,
     to: String,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct SetStateEffectDto {
+pub(crate) struct SetStateEffectDto {
     card: RefDto,
     state: String,
     value: ScalarDto,
@@ -469,7 +469,7 @@ struct SetStateEffectDto {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct AddStateEffectDto {
+pub(crate) struct AddStateEffectDto {
     card: RefDto,
     state: String,
     #[serde(deserialize_with = "scalar::strict_i64")]
@@ -929,7 +929,7 @@ impl ActionDto {
 }
 
 impl EffectDto {
-    fn into_drafts(effects: Vec<EffectDto>) -> Vec<EffectDraft> {
+    pub(crate) fn into_drafts(effects: Vec<EffectDto>) -> Vec<EffectDraft> {
         effects.into_iter().map(EffectDto::into_draft).collect()
     }
 

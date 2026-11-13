@@ -185,10 +185,19 @@ fn names_a_primitive(path: &DefinitionPath) -> bool {
         [.., PathSegment::Key(key), PathSegment::Index(_)] => {
             matches!(
                 key.as_str(),
-                "automatic" | "then" | "else" | "effects" | "cost" | "eq" | "gte" | "lte" | "and"
+                "automatic"
+                    | "then"
+                    | "else"
+                    | "effects"
+                    | "cost"
+                    | "do"
+                    | "eq"
+                    | "gte"
+                    | "lte"
+                    | "and"
             )
         }
-        [.., PathSegment::Key(key)] => matches!(key.as_str(), "if" | "when" | "where"),
+        [.., PathSegment::Key(key)] => matches!(key.as_str(), "if" | "when" | "where" | "while"),
         _ => false,
     }
 }

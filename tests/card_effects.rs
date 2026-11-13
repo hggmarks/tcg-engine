@@ -7,7 +7,10 @@
 
 mod common;
 
-use common::{card, catalog_meta, path, small_definition, small_draft};
+use common::{
+    card, catalog_meta, creature_id, path, small_catalog, small_catalog_draft, small_definition,
+    small_draft,
+};
 use tcg_engine::card_catalog::{
     CardCatalog, CardCatalogDraft, CardDraft, CardEffectDraft, CatalogError, CatalogErrorKind,
     ModifyDraft, TriggerMatcherDraft,
@@ -182,10 +185,14 @@ fn mixed_card_effect_shapes_are_rejected() {
 fn card_effect_without_a_shape_is_rejected() {
     // Neither `on` nor `while`: an empty element, or keys that belong to a shape that was not
     // opened.
-    let mut only_do = CardEffectDraft::default();
-    only_do.body = triggered().body;
-    let mut only_modify = CardEffectDraft::default();
-    only_modify.modify = continuous().modify;
+    let only_do = CardEffectDraft {
+        body: triggered().body,
+        ..CardEffectDraft::default()
+    };
+    let only_modify = CardEffectDraft {
+        modify: continuous().modify,
+        ..CardEffectDraft::default()
+    };
     for (name, shapeless) in [
         ("empty", CardEffectDraft::default()),
         ("do only", only_do),
@@ -579,6 +586,38 @@ fn card_effects_are_checked_in_order_and_the_first_error_wins() {
         CatalogError {
             path: effect_path(),
             kind: CatalogErrorKind::UnsupportedContinuousCardEffect,
+        }
+    );
+}
+
+// ---- in a full catalog
+
+#[test]
+fn card_effect_of_a_card_in_a_full_catalog_is_addressed_by_its_card_id() {
+    // The catalog without effects is valid against the effects ruleset too: nothing carries a Card
+    // Effect.
+    assert!(small_catalog()
+        .cards()
+        .iter()
+        .all(|definition| definition.effects().is_empty()));
+    assert!(CardCatalog::validate(&effects_definition(), small_catalog_draft()).is_ok());
+
+    // An effect on the third creature is addressed by that card's id, after the cards before it
+    // were accepted.
+    let mut draft = small_catalog_draft();
+    let id = creature_id(3);
+    let Some(third) = draft.cards.iter_mut().find(|card| card.id == id) else {
+        panic!("the catalog has {id}");
+    };
+    third.effects = vec![triggered(), continuous()];
+    let Err(error) = CardCatalog::validate(&effects_definition(), draft) else {
+        panic!("expected a validation error");
+    };
+    assert_eq!(
+        error,
+        CatalogError {
+            path: path().key("cards").id(&id).key("effects").index(0),
+            kind: CatalogErrorKind::UnsupportedTriggeredCardEffect,
         }
     );
 }

@@ -5,7 +5,8 @@ use super::draft::CardCatalogDraft;
 use super::error::CatalogError;
 use crate::id::id_type;
 use crate::ruleset_definition::{
-    CardTypeId, FieldName, FieldValue, RulesetDefinition, RulesetId, RulesetVersion,
+    CardTypeId, Effect, Expression, FieldName, FieldValue, RulesetDefinition, RulesetId,
+    RulesetVersion, ZoneId,
 };
 
 id_type!(
@@ -66,6 +67,7 @@ pub struct CardDefinition {
     pub(super) id: CardId,
     pub(super) card_type: CardTypeId,
     pub(super) fields: Vec<(FieldName, FieldValue)>,
+    pub(super) effects: Vec<CardEffect>,
 }
 
 impl CardDefinition {
@@ -87,5 +89,86 @@ impl CardDefinition {
             .iter()
             .find(|(field, _)| field == name)
             .map(|(_, value)| value)
+    }
+
+    /// The Card Effects the card carries, in file order. Every Card Effect is still rejected as
+    /// unsupported when a catalog is validated, so this is empty (ADR-0022).
+    pub fn effects(&self) -> &[CardEffect] {
+        &self.effects
+    }
+}
+
+/// An ability carried by a Card Definition, in one of two shapes (ADR-0022).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CardEffect {
+    Triggered(TriggeredCardEffect),
+    Continuous(ContinuousCardEffect),
+}
+
+/// `on`, an optional `if` and `do`: when an Event matches, and the condition holds, the effects
+/// run. The condition and the effects read the carrying card as `self`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TriggeredCardEffect {
+    pub(super) matcher: TriggerMatcher,
+    pub(super) condition: Option<Expression>,
+    pub(super) body: Vec<Effect>,
+}
+
+impl TriggeredCardEffect {
+    pub fn matcher(&self) -> &TriggerMatcher {
+        &self.matcher
+    }
+
+    pub fn condition(&self) -> Option<&Expression> {
+        self.condition.as_ref()
+    }
+
+    /// The Action Effects to run; never empty.
+    pub fn body(&self) -> &[Effect] {
+        &self.body
+    }
+}
+
+/// What a Triggered Card Effect matches among Events.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TriggerMatcher {
+    /// The card enters the zone.
+    Enter(ZoneId),
+    /// A Turn begins.
+    TurnStart,
+}
+
+/// `while` and `modify`: while the condition holds, the Field Modifier applies to the carrying
+/// card.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContinuousCardEffect {
+    pub(super) condition: Expression,
+    pub(super) modify: FieldModifier,
+}
+
+impl ContinuousCardEffect {
+    pub fn condition(&self) -> &Expression {
+        &self.condition
+    }
+
+    pub fn modify(&self) -> &FieldModifier {
+        &self.modify
+    }
+}
+
+/// An additive integer on an int field of the carrying card's Card Definition.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FieldModifier {
+    pub(super) field: FieldName,
+    pub(super) amount: i64,
+}
+
+impl FieldModifier {
+    pub fn field(&self) -> &FieldName {
+        &self.field
+    }
+
+    pub fn amount(&self) -> i64 {
+        self.amount
     }
 }

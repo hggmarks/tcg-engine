@@ -1,0 +1,140 @@
+# The Effects Ruleset (rulesets/effects-ruleset/effects-ruleset.md): the Small Ruleset, frozen, with
+# creatures allowed to carry Card Effects. Format: rulesets/formats.md.
+
+meta: { id: effects, version: 1 }
+
+parameters:
+  players: 2
+  starting_player: 0
+
+zones:
+  - { id: deck,        visibility: hidden, ordered: true }
+  - { id: hand,        visibility: owner,  ordered: false }
+  - { id: field,       visibility: public, ordered: false }
+  - { id: trash,       visibility: public, ordered: true }   # the top is the last card
+  - { id: mana_deck,   visibility: hidden, ordered: true }
+  - { id: mana_zone,   visibility: public, ordered: false }
+  - { id: leader_zone, visibility: public, ordered: false }
+
+card_types:
+  - id: leader
+    fields:
+      - { name: name,  type: text }
+      - { name: power, type: int }
+      - { name: life,  type: int }
+    instance_state:
+      - { name: current_life, type: int,  init: { from_field: life } }
+      - { name: tapped,       type: bool, init: false }
+    effects: false
+  - id: creature
+    fields:
+      - { name: name,  type: text }
+      - { name: cost,  type: int }
+      - { name: power, type: int }
+    instance_state:
+      - { name: tapped,           type: bool, init: false }
+      - { name: recently_played,  type: bool, init: false }
+    effects: true
+  - id: mana
+    fields: []
+    instance_state:
+      - { name: tapped, type: bool, init: false }
+    effects: false
+
+inputs:
+  - { id: leader,    card_types: [leader],   size: 1,  zone: leader_zone }
+  - { id: main_deck, card_types: [creature], size: 50, max_copies: 4, zone: deck }
+  - { id: mana_deck, card_types: [mana],     size: 10, zone: mana_deck }
+
+# Setup runs after each Player's cards are placed on the zone of their deck input (leader in
+# leader_zone, main deck in deck, mana deck in mana_deck). `player: each` is every Player in seat
+# order; a step runs fully for one Player before the next. The main deck is shuffled; the mana deck
+# is not. Seed-driven: the shuffles use the Game's one random stream, seat 0 first.
+setup:
+  - shuffle: { player: each, zone: deck }
+  - draw: { player: each, from: deck, to: hand, count: 5 }
+
+# A Turn runs its phases in order. An `automatic` phase runs its steps when it begins; the one phase
+# with `actions` (exactly one per turn) is where the Game waits for the Active Player. `player:
+# active` is the Player whose Turn it is. The first Turn begins as part of Game creation. Passing
+# the turn (the `end_turn` effect) runs the phases after Main, then the next Player's Turn begins at
+# once, in the same transition.
+turn:
+  phases:
+    - id: start
+      automatic:
+        # untap and set_state change only the cards whose card type declares the state.
+        - untap: { player: active, zones: [mana_zone, field] }
+        - set_state: { player: active, zone: field, state: recently_played, value: false }
+        # The starting Player does not draw on the Game's first Turn (Turn Number 1) and draws on
+        # every Turn after it.
+        - if: { first_turn: {} }
+          then: []
+          else:
+            - draw: { player: active, from: deck, to: hand, count: 1 }
+        # Moves 2 cards from the top of the mana deck, or the cards there are: once the mana deck
+        # is empty nothing moves.
+        - move: { player: active, from: mana_deck, to: mana_zone, count: 2, position: top }
+    - id: main
+      actions: [play_creature, attack, pass_turn]
+    - id: end
+      automatic: []
+
+actions:
+  - id: play_creature
+    params:
+      - { name: card, zone: hand, card_type: creature }
+    # Taps `cost` untapped cards of the acting Player's mana_zone: the first untapped ones, in the
+    # order they entered the zone. Mana cards are interchangeable, so the engine chooses. A cost of
+    # 0 taps nothing, and a play without enough untapped mana is refused.
+    cost:
+      - tap: { zone: mana_zone, count: { ref: card.cost } }
+    effects:
+      - move: { card: { ref: card }, to: field }
+      - set_state: { card: { ref: card }, state: recently_played, value: true }
+
+  # The attacker is an untapped creature of the acting Player that was not played this turn. The
+  # target is a tapped creature of an opponent (any other Player) or an opponent's Leader. The
+  # attacker taps even when nothing else happens. A creature dies when the attacker's power is at
+  # least its own, and goes to the top of its owner's trash; a Leader loses 1 life likewise. In
+  # `then` the target is a creature and in `else` a Leader, which is why only there is
+  # `current_life` a state of the target.
+  - id: attack
+    params:
+      - name: attacker
+        zone: field
+        card_type: creature
+        where:
+          and:
+            - { eq: [{ ref: attacker.tapped }, false] }
+            - { eq: [{ ref: attacker.recently_played }, false] }
+      - name: target
+        one_of:
+          - { zone: field, card_type: creature, owner: opponent, where: { eq: [{ ref: target.tapped }, true] } }
+          - { zone: leader_zone, card_type: leader, owner: opponent }
+    effects:
+      - set_state: { card: { ref: attacker }, state: tapped, value: true }
+      - if:
+          is_card_type: [{ ref: target }, creature]
+        then:
+          - if: { gte: [{ ref: attacker.power }, { ref: target.power }] }
+            then: [ { move: { card: { ref: target }, to: trash } } ]
+        else:
+          - if: { gte: [{ ref: attacker.power }, { ref: target.power }] }
+            then: [ { add_state: { card: { ref: target }, state: current_life, amount: -1 } } ]
+
+  - id: pass_turn
+    effects: [ { end_turn: {} } ]
+
+# Checked after every action and at the end of game creation. `draw_from_empty` is a Player's loss
+# when a draw in that transition found the zone empty. `leader_dead` is an expression about the card
+# type its refs start with (here `leader`): it holds for a Player when one of their leaders makes it
+# true in the state the transition produced. The game ends at once when a player loses, and if both
+# players lose at the same time the game is drawn (no winner).
+win_conditions:
+  - id: leader_dead
+    when: { lte: [{ ref: leader.current_life }, 0] }
+    loser: owner
+  - id: deck_out
+    when: { draw_from_empty: deck }
+    loser: owner

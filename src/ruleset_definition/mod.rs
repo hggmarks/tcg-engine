@@ -43,6 +43,8 @@ mod expression;
 mod model;
 mod validate;
 
+pub(crate) use validate::SelfScope;
+
 pub use draft::{
     ActionDraft, AutomaticStepDraft, CardTypeDraft, ConditionDraft, CostDraft, DeckInputDraft,
     EffectDraft, ExpressionDraft, FieldDraft, FieldTypeDraft, InitializerDraft, InstanceStateDraft,
