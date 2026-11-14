@@ -11,14 +11,17 @@ use common::{
     card, catalog_meta, creature_id, path, small_catalog, small_catalog_draft, small_definition,
     small_draft,
 };
+use std::num::NonZeroU32;
+
 use tcg_engine::card_catalog::{
-    CardCatalog, CardCatalogDraft, CardDraft, CardEffectDraft, CatalogError, CatalogErrorKind,
-    ModifyDraft, TriggerMatcherDraft,
+    CardCatalog, CardCatalogDraft, CardDraft, CardEffect, CardEffectDraft, CardId, CatalogError,
+    CatalogErrorKind, ModifyDraft, TriggerMatcherDraft,
 };
 use tcg_engine::definition_path::DefinitionPath;
 use tcg_engine::ruleset_definition::{
-    DefinitionErrorKind, EffectDraft, ExpressionDraft, FieldType, FieldValue, RefDraft,
-    ReferenceTarget, RulesetDefinition,
+    ActionDraft, DefinitionError, DefinitionErrorKind, Effect, EffectDraft, EffectPlayer,
+    EffectsDraft, ExpressionDraft, FieldType, FieldValue, RefDraft, ReferenceTarget,
+    RulesetDefinition, ZoneId,
 };
 
 fn int(value: i64) -> FieldValue {
@@ -619,5 +622,185 @@ fn card_effect_of_a_card_in_a_full_catalog_is_addressed_by_its_card_id() {
             path: path().key("cards").id(&id).key("effects").index(0),
             kind: CatalogErrorKind::UnsupportedTriggeredCardEffect,
         }
+    );
+}
+
+// ---- ticket #50: triggered Card Effects are accepted, continuous ones still reject (ADR-0023)
+
+fn draw_for_controller(count: u32) -> EffectDraft {
+    EffectDraft::Draw {
+        player: "controller".to_string(),
+        from: "deck".to_string(),
+        to: "hand".to_string(),
+        count,
+    }
+}
+
+#[test]
+fn continuous_card_effects_still_reject_as_unsupported() {
+    // A triggered Card Effect is accepted and held by its Card Definition, in file order...
+    let definition = effects_definition();
+    let catalog = CardCatalog::validate(
+        &definition,
+        catalog_of(vec![goblin_with(vec![triggered(), triggered()])]),
+    )
+    .expect("triggered Card Effects are supported");
+    let goblin = catalog
+        .card(&CardId::new("goblin"))
+        .expect("the catalog has the goblin");
+    assert_eq!(goblin.effects().len(), 2);
+    assert!(goblin
+        .effects()
+        .iter()
+        .all(|effect| matches!(effect, CardEffect::Triggered(_))));
+
+    // ...while a continuous one still stops the catalog, and does not need to be first.
+    assert_eq!(
+        error_of(&definition, vec![triggered(), continuous()]),
+        CatalogError {
+            path: path().key("cards").id("goblin").key("effects").index(1),
+            kind: CatalogErrorKind::UnsupportedContinuousCardEffect,
+        }
+    );
+    assert_eq!(
+        effects_error_of(vec![continuous()]),
+        CatalogError {
+            path: effect_path(),
+            kind: CatalogErrorKind::UnsupportedContinuousCardEffect,
+        }
+    );
+}
+
+#[test]
+fn draw_effect_for_the_controller_validates_in_a_card_effect() {
+    let mut trigger = triggered();
+    trigger.body = Some(vec![draw_for_controller(2)]);
+    let catalog = CardCatalog::validate(
+        &effects_definition(),
+        catalog_of(vec![goblin_with(vec![trigger])]),
+    )
+    .expect("a draw for the controller is a Card Effect");
+    let goblin = catalog
+        .card(&CardId::new("goblin"))
+        .expect("the catalog has the goblin");
+    let CardEffect::Triggered(effect) = &goblin.effects()[0] else {
+        panic!("expected a triggered Card Effect");
+    };
+    assert_eq!(
+        effect.body(),
+        [Effect::Draw {
+            player: EffectPlayer::Controller,
+            from: ZoneId::new("deck"),
+            to: ZoneId::new("hand"),
+            count: NonZeroU32::new(2).expect("2 is not 0"),
+        }]
+    );
+}
+
+#[test]
+fn draw_effect_in_a_card_effect_checks_its_zones_count_and_player() {
+    let draw_path = || effect_path().key("do").index(0).key("draw");
+    let with = |draw: EffectDraft| {
+        let mut trigger = triggered();
+        trigger.body = Some(vec![draw]);
+        effects_error_of(vec![trigger])
+    };
+    let draw_of = |player: &str, from: &str, count: u32| EffectDraft::Draw {
+        player: player.to_string(),
+        from: from.to_string(),
+        to: "hand".to_string(),
+        count,
+    };
+
+    assert_eq!(
+        with(draw_of("controller", "nowhere", 1)),
+        invalid_card_effect(
+            draw_path().key("from"),
+            DefinitionErrorKind::DanglingReference {
+                target: ReferenceTarget::Zone,
+                id: "nowhere".to_string(),
+            },
+        )
+    );
+    // The source of a draw is an ordered zone, like the source of a draw step.
+    assert_eq!(
+        with(draw_of("controller", "hand", 1)),
+        invalid_card_effect(
+            draw_path().key("from"),
+            DefinitionErrorKind::ZoneNotOrdered {
+                zone: "hand".to_string(),
+            },
+        )
+    );
+    assert_eq!(
+        with(draw_of("controller", "deck", 0)),
+        invalid_card_effect(draw_path().key("count"), DefinitionErrorKind::InvalidCount)
+    );
+    // `controller` is the only player an effect acts for.
+    assert_eq!(
+        with(draw_of("active", "deck", 1)),
+        invalid_card_effect(
+            draw_path().key("player"),
+            DefinitionErrorKind::UnknownEffectPlayer {
+                player: "active".to_string(),
+            },
+        )
+    );
+}
+
+#[test]
+fn controller_outside_a_card_effect_is_rejected_in_an_action() {
+    let mut draft = small_draft();
+    draft.actions.push(ActionDraft {
+        id: "study".to_string(),
+        params: vec![],
+        cost: vec![],
+        effects: vec![draw_for_controller(1)],
+    });
+    assert_eq!(
+        RulesetDefinition::validate(draft),
+        Err(DefinitionError {
+            path: path()
+                .key("actions")
+                .id("study")
+                .key("effects")
+                .index(0)
+                .key("draw")
+                .key("player"),
+            kind: DefinitionErrorKind::ControllerOutsideCardEffect,
+        })
+    );
+}
+
+#[test]
+fn the_active_zone_of_card_effects_must_be_a_declared_zone() {
+    let mut draft = small_draft();
+    assert_eq!(
+        RulesetDefinition::validate(draft.clone())
+            .expect("valid")
+            .effects_active_zone(),
+        None
+    );
+    draft.effects = Some(EffectsDraft {
+        active_zone: "field".to_string(),
+    });
+    assert_eq!(
+        RulesetDefinition::validate(draft.clone())
+            .expect("valid")
+            .effects_active_zone(),
+        Some(&ZoneId::new("field"))
+    );
+    draft.effects = Some(EffectsDraft {
+        active_zone: "battlefield".to_string(),
+    });
+    assert_eq!(
+        RulesetDefinition::validate(draft),
+        Err(DefinitionError {
+            path: path().key("effects").key("active_zone"),
+            kind: DefinitionErrorKind::DanglingReference {
+                target: ReferenceTarget::Zone,
+                id: "battlefield".to_string(),
+            },
+        })
     );
 }
