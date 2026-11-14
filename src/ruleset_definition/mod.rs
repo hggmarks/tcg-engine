@@ -36,6 +36,9 @@
 //! its `when` (`draw_from_empty` needs a declared zone; an expression is checked with the card
 //! types as the names a ref may start with, and must read exactly one), then its `loser`. A win
 //! condition is addressed by id (`win_conditions[deck_out].when`).
+//!
+//! The optional `effects` block follows them: its `active_zone` must be a declared zone
+//! (`effects.active_zone`, ADR-0024).
 
 mod draft;
 mod error;

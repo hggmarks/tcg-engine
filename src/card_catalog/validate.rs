@@ -172,8 +172,9 @@ fn validate_fields(
 }
 
 /// The Card Effects of a card (ADR-0022): the list against the card type's `effects` flag, then each
-/// element in order. Every element is checked and built; a well-formed triggered one is kept (ADR-0023)
-/// and the first continuous one is rejected as unsupported.
+/// element in order. Every element is checked, built and kept: triggered Card Effects are executed
+/// since ticket [17] (ADR-0023) and continuous ones read since ticket [18] (ADR-0024), so no
+/// well-formed element is rejected as unsupported any more.
 fn validate_effects(
     ruleset: &RulesetDefinition,
     card_type: &CardType,
@@ -191,22 +192,11 @@ fn validate_effects(
     let mut effects = Vec::with_capacity(card.effects.len());
     for (index, draft) in card.effects.iter().enumerate() {
         let at = list.clone().index(index);
-        let effect = validate_card_effect(ruleset, card_type, &scope, draft, &at)?;
-        if let Some(kind) = unsupported(&effect) {
-            return fail(at, kind);
-        }
-        effects.push(effect);
+        effects.push(validate_card_effect(
+            ruleset, card_type, &scope, draft, &at,
+        )?);
     }
     Ok(effects)
-}
-
-/// Why a well-formed Card Effect cannot be loaded yet. Ticket [18] lifts it for a continuous one by
-/// returning `None` here.
-fn unsupported(effect: &CardEffect) -> Option<CatalogErrorKind> {
-    match effect {
-        CardEffect::Triggered(_) => None,
-        CardEffect::Continuous(_) => Some(CatalogErrorKind::UnsupportedContinuousCardEffect),
-    }
 }
 
 /// A Card Effect is triggered (`on`, `if`, `do`) or continuous (`while`, `modify`). An element with

@@ -201,14 +201,16 @@ pub(super) fn validate(draft: RulesetDraft) -> Result<RulesetDefinition, Definit
         )?);
     }
 
-    let effects_active_zone = match &effects {
-        Some(effects) => Some(validate_zone_reference(
-            &effects.active_zone,
-            &valid_zones,
-            DefinitionPath::root().key("effects").key("active_zone"),
-        )?),
-        None => None,
-    };
+    let effects_active_zone = effects
+        .as_ref()
+        .map(|effects| {
+            validate_zone_reference(
+                &effects.active_zone,
+                &valid_zones,
+                DefinitionPath::root().key("effects").key("active_zone"),
+            )
+        })
+        .transpose()?;
 
     Ok(RulesetDefinition {
         meta: Meta {

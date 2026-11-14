@@ -91,8 +91,8 @@ impl CardDefinition {
             .map(|(_, value)| value)
     }
 
-    /// The Card Effects the card carries, in file order. Only triggered Card Effects are
-    /// supported; a continuous one is rejected when a catalog is validated (ADR-0022, ADR-0023).
+    /// The Card Effects the card carries, in file order: triggered ones are resolved from Events
+    /// (ADR-0023) and continuous ones read as Field Modifiers (ADR-0022, ADR-0024).
     pub fn effects(&self) -> &[CardEffect] {
         &self.effects
     }

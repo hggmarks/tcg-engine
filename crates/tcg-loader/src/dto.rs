@@ -40,6 +40,7 @@ pub(crate) struct RulesetDto {
     effects: Option<EffectsDto>,
 }
 
+/// The `effects` block: the zone where Card Effects act.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct EffectsDto {

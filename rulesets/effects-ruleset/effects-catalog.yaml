@@ -1,6 +1,6 @@
 # Starter card catalog for the Effects Ruleset (rulesets/effects-ruleset/effects-ruleset.yaml): the
 # cards of the Small Ruleset catalog, then five creatures that carry a triggered Card Effect, one for
-# each family of effects-ruleset.md (no shipped deck lists them).
+# each family of effects-ruleset.md, and two that carry a continuous one (no shipped deck lists them).
 # Format: rulesets/formats.md.
 
 meta: { ruleset: effects, ruleset_version: 1 }
@@ -71,6 +71,11 @@ cards:
         do: [ { move: { card: { ref: self }, to: trash } } ]
       - on: { enter: trash }
         do: [ { move: { card: { ref: self }, to: field } } ]
+
+  # Creatures with a continuous Card Effect (ADR-0024). A creature taps when it attacks, before the
+  # combat compares powers, so while it is tapped it fights with the modified power.
+  - { id: battle_veteran, type: creature, fields: { name: "Battle Veteran", cost: 1, power: 2 }, effects: [ { while: { eq: [ { ref: self.tapped }, true ] }, modify: { field: power, amount: 1 } } ] }
+  - { id: weary_ox,       type: creature, fields: { name: "Weary Ox",       cost: 2, power: 3 }, effects: [ { while: { eq: [ { ref: self.tapped }, true ] }, modify: { field: power, amount: -1 } } ] }
 
   # Mana: the mana card has no fields, so one definition serves the whole mana deck.
   - { id: mana, type: mana, fields: {} }

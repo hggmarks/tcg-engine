@@ -129,8 +129,10 @@ impl RulesetDefinition {
         &self.win_conditions
     }
 
-    /// The zone where Card Effects act (`effects.active_zone`); `None` when the ruleset declares
-    /// none, and no triggered Card Effect is then ever eligible, `enter` included (ADR-0023).
+    /// The Active Zone, where Card Effects act (`effects.active_zone`): a Field Modifier applies
+    /// only to a card in it (ADR-0024) and a `turn_start` trigger is eligible only there
+    /// (ADR-0023). `None` when the ruleset declares none, and no Card Effect is then ever active:
+    /// no modifier applies and no trigger is eligible, `enter` included.
     pub fn effects_active_zone(&self) -> Option<&ZoneId> {
         self.effects_active_zone.as_ref()
     }

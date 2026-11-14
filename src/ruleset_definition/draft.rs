@@ -18,11 +18,11 @@ pub struct RulesetDraft {
     pub turn: Option<TurnDraft>,
     /// The win conditions, in order. Empty means none: the Game never ends.
     pub win_conditions: Vec<WinConditionDraft>,
-    /// The `effects` block. `None` declares no active zone for Card Effects.
+    /// The `effects` block. `None` declares no Active Zone: no Card Effect is ever active.
     pub effects: Option<EffectsDraft>,
 }
 
-/// The `effects` block of the ruleset file (ADR-0023).
+/// The `effects` block of the ruleset file (ADR-0023, ADR-0024).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EffectsDraft {
     /// The zone where Card Effects act.
