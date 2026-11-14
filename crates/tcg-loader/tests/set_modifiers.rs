@@ -1435,3 +1435,40 @@ fn owner_opponent_reaches_every_player_other_than_the_carriers_owner() {
     assert_eq!(plain.events(7), [tap(moss_1), hit(leader_0, 4)]);
     assert_eq!(plain.events(9), [tap(moss_2), hit(leader_0, 3)]);
 }
+
+#[test]
+fn an_opponent_scoped_aura_with_include_self_does_not_reach_its_carrier() {
+    // `owner: opponent` with `include_self: true` is accepted and inert: the carrier is never in the
+    // opponent relation to itself. Every read is what the same scenario gives without `include_self`,
+    // the carrier's own read included.
+    let with_include_self = catalog_yaml().replace(
+        "scope: { zone: field, card_type: creature, owner: opponent }",
+        "scope: { zone: field, card_type: creature, owner: opponent, include_self: true }",
+    );
+    assert_ne!(with_include_self, catalog_yaml());
+    let ruleset = ruleset_from(&with_include_self);
+    let catalog_text_scope = ruleset
+        .catalog()
+        .cards()
+        .iter()
+        .find(|card| card.id().as_str() == "dread_herald")
+        .and_then(|card| match card.effects() {
+            [CardEffect::Continuous(effect)] => effect.scope().cloned(),
+            _ => None,
+        })
+        .expect("dread_herald has a scope");
+    assert_eq!(catalog_text_scope.owner(), ScopeOwner::Opponent);
+    assert!(catalog_text_scope.include_self());
+
+    let inert = play_dread(&ruleset);
+    let plain = play_dread(&effects());
+    // The carrier (power 2) still hits the Leader, the controller's moss sprite does, and the
+    // opponent's is still lowered: the whole Game is the same as without `include_self`.
+    assert_eq!(
+        inert.played.events(9),
+        [tap(inert.herald), hit(inert.leader_1, 3)]
+    );
+    assert_eq!(inert.played.events(7), [tap(inert.opposing_moss)]);
+    assert_eq!(inert.played.steps, plain.played.steps);
+    assert_eq!(inert.played.final_state(), plain.played.final_state());
+}
