@@ -12,7 +12,9 @@
 //! catalog text: `pit_brute` (power 4), `proud_recruit` (power 2, draws when it enters the field if
 //! its power is at least 3), `titan_aura` (an aura of `i64::MAX`), `drill_sergeant` (+1 power to the
 //! controller's other creatures while it is tapped), `tithe_collector` (-1 cost to the creatures in
-//! its controller's hand) and `frail_leader` (life 1).
+//! its controller's hand), `proud_aura` (power 2; an aura over itself and the other creatures, and a
+//! trigger that draws when it enters the field if its power is at least 3) and `frail_leader`
+//! (life 1).
 //!
 //! A combat is decided by `attacker.power >= target.power`, and a Leader has power 2 and loses 1 life
 //! when it is hit. So a `goblin_scout` (power 1) hits a Leader only with a bonus of at least 1, a
@@ -54,6 +56,7 @@ const TEST_CARDS: &str = "
   - { id: titan_aura, type: creature, fields: { name: \"Titan Aura\", cost: 1, power: 0 }, effects: [ { while: true, scope: { zone: field, card_type: creature }, modify: { field: power, amount: 9223372036854775807 } } ] }
   - { id: drill_sergeant, type: creature, fields: { name: \"Drill Sergeant\", cost: 1, power: 1 }, effects: [ { while: { eq: [ { ref: self.tapped }, true ] }, scope: { zone: field, card_type: creature }, modify: { field: power, amount: 1 } } ] }
   - { id: tithe_collector, type: creature, fields: { name: \"Tithe Collector\", cost: 1, power: 1 }, effects: [ { while: true, scope: { zone: hand, card_type: creature }, modify: { field: cost, amount: -1 } } ] }
+  - { id: proud_aura, type: creature, fields: { name: \"Proud Aura\", cost: 1, power: 2 }, effects: [ { while: true, scope: { zone: field, card_type: creature, include_self: true }, modify: { field: power, amount: 1 } }, { on: { enter: field }, if: { gte: [ { ref: self.power }, 3 ] }, do: [ { draw: { player: controller, from: deck, to: hand, count: 1 } } ] } ] }
   - { id: frail_leader, type: leader, fields: { name: \"Frail Leader\", power: 2, life: 1 } }
 ";
 
@@ -74,12 +77,13 @@ inputs:
       - {{ card: goblin_scout, count: 4 }}
       - {{ card: moss_sprite, count: 4 }}
       - {{ card: river_otter, count: 4 }}
-      - {{ card: ember_hound, count: 4 }}
+      - {{ card: ember_hound, count: 1 }}
       - {{ card: pit_brute, count: 3 }}
       - {{ card: proud_recruit, count: 4 }}
       - {{ card: titan_aura, count: 3 }}
       - {{ card: drill_sergeant, count: 4 }}
       - {{ card: tithe_collector, count: 4 }}
+      - {{ card: proud_aura, count: 3 }}
   - input: mana_deck
     cards:
       - {{ card: mana, count: 10 }}
@@ -99,19 +103,21 @@ const LEAVE_SEED: u64 = 19;
 /// Seat 0: two `banner_bearer`, `goblin_scout`. Seat 1: `river_otter`.
 const STACK_SEED: u64 = 771;
 /// Seat 0: `battle_veteran`, `banner_bearer`. Seat 1: `pit_brute`.
-const COMPOSE_SEED: u64 = 21;
+const COMPOSE_SEED: u64 = 50;
 /// Seat 0: `ember_hound`. Seat 1: `moss_sprite`, `dread_herald`.
-const LOSING_SEED: u64 = 29;
+const LOSING_SEED: u64 = 105;
 /// Seat 0: `rally_captain`. Seat 1: `river_otter`.
 const RALLY_SEED: u64 = 3;
 /// Seat 0: `banner_bearer`, `proud_recruit`.
-const TRIGGER_SEED: u64 = 16;
+const TRIGGER_SEED: u64 = 9;
 /// Seat 0: two `titan_aura`, `goblin_scout`.
-const OVERFLOW_SEED: u64 = 71;
+const OVERFLOW_SEED: u64 = 218;
 /// Seat 0: two `goblin_scout`, `drill_sergeant`.
-const CONDITION_SEED: u64 = 176;
+const CONDITION_SEED: u64 = 99;
 /// Seat 0: `tithe_collector`, `goblin_scout`.
-const DISCOUNT_SEED: u64 = 10;
+const DISCOUNT_SEED: u64 = 8;
+/// Seat 0: `proud_aura`.
+const PROUD_SEED: u64 = 2;
 
 // ---- helpers
 
@@ -150,7 +156,11 @@ fn catalog_yaml() -> String {
 }
 
 fn ruleset_from(catalog_yaml: &str) -> DeclarativeRuleset {
-    let definition = load_ruleset_definition(RULESET).expect("the ruleset loads");
+    ruleset_with(RULESET, catalog_yaml)
+}
+
+fn ruleset_with(ruleset_yaml: &str, catalog_yaml: &str) -> DeclarativeRuleset {
+    let definition = load_ruleset_definition(ruleset_yaml).expect("the ruleset loads");
     let catalog = load_card_catalog(&definition, catalog_yaml).expect("the catalog loads");
     DeclarativeRuleset::new(definition, catalog)
 }
@@ -1248,4 +1258,56 @@ fn a_scope_reaches_the_zone_it_names_and_not_only_the_active_zone() {
     assert_ne!(in_field, catalog_yaml());
     let (field_scoped, _) = play_goblin(&ruleset_from(&in_field));
     assert_eq!(mana_taps(field_scoped.events(1)), 1);
+}
+
+#[test]
+fn a_carrier_entering_the_active_zone_changes_a_read_in_the_same_transition() {
+    // `proud_aura` is power 2 and carries two Card Effects: an aura over itself and the other
+    // creatures (+1 power) and a trigger that draws when it enters the field if its power is at
+    // least 3. Playing it moves it into `field` and, in the same Transition, fires the trigger: the
+    // `if` reads 3 only because the card's own aura became active on that move.
+    let play_it = |ruleset: &DeclarativeRuleset| {
+        let creation = create(ruleset, PROUD_SEED, "captain_ardel");
+        let proud = find(&creation.opening.state, 0, "hand", "proud_aura");
+        (play_all(ruleset, creation, &[play(0, proud)]), proud)
+    };
+    let draws = |events: &[Event]| {
+        events
+            .iter()
+            .filter(|event| {
+                matches!(event, Event::CardMoved { player, from, to, .. }
+                    if *player == p(0) && *from == zone("deck") && *to == zone("hand"))
+            })
+            .count()
+    };
+
+    let (played, proud) = play_it(&effects());
+    let events = played.events(0);
+    assert!(events.contains(&moved(proud, 0, "hand", "field")));
+    assert_eq!(draws(events), 1);
+
+    // Without the continuous element the card is power 2, the condition is false, and the same play
+    // draws nothing.
+    let stripped = catalog_yaml().replace(
+        "effects: [ { while: true, scope: { zone: field, card_type: creature, include_self: true }, modify: { field: power, amount: 1 } }, { on: { enter: field }",
+        "effects: [ { on: { enter: field }",
+    );
+    assert_ne!(stripped, catalog_yaml());
+    let (plain, proud) = play_it(&ruleset_from(&stripped));
+    assert!(plain.events(0).contains(&moved(proud, 0, "hand", "field")));
+    assert_eq!(draws(plain.events(0)), 0);
+}
+
+#[test]
+fn a_set_field_modifier_is_inactive_without_an_active_zone() {
+    // A ruleset with no `effects:` block has no Active Zone, so no carrier is ever active: the reads
+    // are the base values, and the Game is the Game without the aura.
+    let no_zone = RULESET.replace("effects:\n  active_zone: field\n", "");
+    assert_ne!(no_zone, RULESET);
+    let ruleset = ruleset_with(&no_zone, &catalog_yaml());
+    let banner = play_banner(&ruleset);
+    let plain = play_banner(&effects_without("banner_bearer"));
+    assert_eq!(banner.played.events(9), [tap(banner.goblin)]);
+    assert_eq!(banner.played.steps, plain.played.steps);
+    assert_eq!(banner.played.final_state(), plain.played.final_state());
 }
