@@ -119,15 +119,7 @@ fn run_step(execution: &mut Execution, step: &AutomaticStep) -> Result<(), Apply
             count,
         } => {
             for player in execution.select(*player) {
-                for _ in 0..count.get() {
-                    if !move_top_card(execution, player, from, to)? {
-                        execution.apply(Event::DrawFromEmptyZone {
-                            player,
-                            zone: from.clone(),
-                        })?;
-                        break;
-                    }
-                }
+                draw(execution, player, from, to, count.get())?;
             }
         }
         AutomaticStep::Move {
@@ -169,6 +161,27 @@ fn holds(execution: &Execution, condition: Condition) -> bool {
     match condition {
         Condition::FirstTurn => execution.state.turn_number() == Some(TurnNumber::FIRST),
     }
+}
+
+/// Draws for `player`: moves `count` cards one at a time from the Top of `from` onto the Top of
+/// `to`. An empty `from` emits `DrawFromEmptyZone` and stops (ADR-0014).
+pub(super) fn draw(
+    execution: &mut Execution,
+    player: PlayerId,
+    from: &ZoneId,
+    to: &ZoneId,
+    count: u32,
+) -> Result<(), ApplyError> {
+    for _ in 0..count {
+        if !move_top_card(execution, player, from, to)? {
+            execution.apply(Event::DrawFromEmptyZone {
+                player,
+                zone: from.clone(),
+            })?;
+            break;
+        }
+    }
+    Ok(())
 }
 
 /// Moves the Top card of `from` onto the Top of `to`. Returns false, changing nothing, if `from`

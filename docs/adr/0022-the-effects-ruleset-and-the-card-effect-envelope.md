@@ -17,4 +17,6 @@
 
 **Amends** ADR-0009: a card's `effects` is no longer a list of single-key primitive maps whose draft keeps only the name; `EffectDraft` of the catalog and `UnsupportedEffect` are replaced by `CardEffectDraft` and the two Unsupported variants. `EffectsNotAllowed` and the rest of ADR-0009 are unchanged. The loader gains `deny_unknown_fields` on the envelope and on `modify` (an unknown key is a syntax error with a positional path, the precedent of the rest of the catalog) and shares the expression and action effect data-transfer types of the ruleset file, which become visible inside the loader crate. No conflict with another accepted decision; ADR-0004's closed list of field types and its two-stage loading are untouched.
 
+**Amended by ADR-0023:** the triggered rejection is lifted: `UnsupportedTriggeredCardEffect` is deleted (unreachable) and `CardDefinition::effects()` holds the triggered Card Effects. `UnsupportedContinuousCardEffect` stays until ticket [18]. Every other check of the envelope stands.
+
 **Status**: accepted

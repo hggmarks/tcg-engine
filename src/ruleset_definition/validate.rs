@@ -15,7 +15,7 @@ use super::expression::{
 };
 use super::model::{
     ActionDefinition, ActionId, AutomaticStep, CardType, CardTypeId, Condition, Cost, DeckInput,
-    DeckInputId, Effect, Expression, FieldName, FieldSchema, FieldType, Initializer,
+    DeckInputId, Effect, EffectPlayer, Expression, FieldName, FieldSchema, FieldType, Initializer,
     InstanceStateSchema, Loser, Meta, Param, ParamAlternative, ParamName, ParamOwner, Parameters,
     Phase, PhaseId, PhaseKind, PlayerCount, PlayerPosition, PlayerSelector, Position,
     RulesetDefinition, RulesetId, RulesetVersion, SetupStep, StateName, TurnStructure,
@@ -99,6 +99,7 @@ pub(super) fn validate(draft: RulesetDraft) -> Result<RulesetDefinition, Definit
         actions,
         turn,
         win_conditions,
+        effects,
     } = draft;
 
     if !is_valid_id(&meta.id) {
@@ -200,6 +201,15 @@ pub(super) fn validate(draft: RulesetDraft) -> Result<RulesetDefinition, Definit
         )?);
     }
 
+    let effects_active_zone = match &effects {
+        Some(effects) => Some(validate_zone_reference(
+            &effects.active_zone,
+            &valid_zones,
+            DefinitionPath::root().key("effects").key("active_zone"),
+        )?),
+        None => None,
+    };
+
     Ok(RulesetDefinition {
         meta: Meta {
             id: RulesetId::new(meta.id),
@@ -216,6 +226,7 @@ pub(super) fn validate(draft: RulesetDraft) -> Result<RulesetDefinition, Definit
         actions: valid_actions,
         turn: valid_turn,
         win_conditions: valid_win_conditions,
+        effects_active_zone,
     })
 }
 
@@ -249,6 +260,7 @@ fn validate_win_condition(
                     })
                     .collect(),
                 missing: ReferenceTarget::CardType,
+                has_self: false,
             };
             let condition = check_condition(draft, &refs, when_at.clone())?;
             let subject = match params_read(&condition).as_slice() {
@@ -319,6 +331,7 @@ fn validate_action(
         card_types,
         params: scope,
         missing: ReferenceTarget::Param,
+        has_self: false,
     };
 
     let cost_path = at.clone().key("cost");
@@ -355,6 +368,7 @@ impl<'a> SelfScope<'a> {
                     types: vec![card_type.clone()],
                 }],
                 missing: ReferenceTarget::Param,
+                has_self: true,
             },
         }
     }
@@ -472,6 +486,7 @@ fn validate_alternative(
                 card_types: scope.card_types,
                 params,
                 missing: ReferenceTarget::Param,
+                has_self: false,
             };
             Some(check_condition(draft, &refs, at.key("where"))?)
         }
@@ -568,6 +583,40 @@ fn validate_effect(
                 card,
                 state: StateName::new(state),
                 amount: *amount,
+            })
+        }
+        EffectDraft::Draw {
+            player,
+            from,
+            to,
+            count,
+        } => {
+            let at = at.key("draw");
+            let player = match player.as_str() {
+                "controller" if refs.has_self => EffectPlayer::Controller,
+                "controller" => {
+                    return fail(
+                        at.key("player"),
+                        DefinitionErrorKind::ControllerOutsideCardEffect,
+                    )
+                }
+                other => {
+                    return fail(
+                        at.key("player"),
+                        DefinitionErrorKind::UnknownEffectPlayer {
+                            player: other.to_string(),
+                        },
+                    )
+                }
+            };
+            let from = validate_ordered_zone(from, refs.zones, at.clone().key("from"))?;
+            let to = validate_zone_reference(to, refs.zones, at.clone().key("to"))?;
+            let count = validate_count(*count, at.key("count"))?;
+            Ok(Effect::Draw {
+                player,
+                from,
+                to,
+                count,
             })
         }
         EffectDraft::If {

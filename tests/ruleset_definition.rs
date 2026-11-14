@@ -142,6 +142,7 @@ fn small_ruleset_draft() -> RulesetDraft {
         actions: vec![],
         turn: None,
         win_conditions: vec![],
+        effects: None,
     }
 }
 
@@ -163,6 +164,7 @@ fn draft_with_card_types(card_types: Vec<CardTypeDraft>) -> RulesetDraft {
         actions: vec![],
         turn: None,
         win_conditions: vec![],
+        effects: None,
     }
 }
 
@@ -603,6 +605,7 @@ fn ids_may_repeat_across_lists() {
         actions: vec![],
         turn: None,
         win_conditions: vec![],
+        effects: None,
     };
     let definition = RulesetDefinition::validate(draft).expect("ids are scoped to their list");
     let zone_ids: Vec<&str> = definition.zones().iter().map(|z| z.id().as_str()).collect();

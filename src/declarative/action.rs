@@ -15,6 +15,7 @@ use super::event::Event;
 use super::execution::Execution;
 use super::game_end;
 use super::state::{ApplyError, CardInstanceId, GameState};
+use super::triggers;
 use crate::player::PlayerId;
 use crate::ruleset::{EventTrace, Ruleset, Transition};
 use crate::ruleset_definition::{ActionId, CardTypeId, ParamName, PhaseKind, StateName, ZoneId};
@@ -110,6 +111,9 @@ pub enum Rejection {
     },
     /// Ending the Turn would take the Turn Number above its maximum.
     TurnNumberOverflow,
+    /// Resolving triggered Card Effects took more than `cap` trigger resolutions in one
+    /// transition (ADR-0023): the whole transition is refused and the GameState is untouched.
+    TriggerCapExceeded { cap: u32 },
     /// An Event the Ruleset generated was rejected: the GameState does not fit this ruleset, an
     /// internal inconsistency that is never expected.
     EventRejected(ApplyError),
@@ -216,6 +220,10 @@ impl fmt::Display for Rejection {
                 card.0
             ),
             Self::TurnNumberOverflow => write!(f, "the Turn Number cannot go any higher"),
+            Self::TriggerCapExceeded { cap } => write!(
+                f,
+                "triggered Card Effects took more than {cap} resolutions in one transition"
+            ),
             Self::EventRejected(error) => write!(f, "an Event was rejected: {error}"),
             Self::CardDataMismatch { card } => write!(
                 f,
@@ -302,6 +310,7 @@ impl Ruleset for DeclarativeRuleset {
         for effect in declared.effects() {
             action_effects::run(self, &mut execution, &bound, effect)?;
         }
+        triggers::resolve(self, &mut execution)?;
         game_end::end_game_if_lost(self, &mut execution)?;
         Ok(Transition {
             state: execution.state,

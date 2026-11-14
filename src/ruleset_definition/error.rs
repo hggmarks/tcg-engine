@@ -78,6 +78,13 @@ pub enum DefinitionErrorKind {
     /// A `count` of a draw or a move (it is 0), such as `setup[1].draw.count` or
     /// `turn.phases[start].automatic[3].move.count`.
     InvalidCount,
+    /// The `player` of a `draw` effect, such as `cards[goblin].effects[0].do[0].draw.player`: only
+    /// `controller` exists.
+    UnknownEffectPlayer { player: String },
+    /// The `player` of a `draw` effect in an action, such as
+    /// `actions[study].effects[0].draw.player`: `controller` is the owner of `self`, which only a
+    /// Card Effect has.
+    ControllerOutsideCardEffect,
     /// The source of a shuffle, a draw or a move (ADR-0013): a zone with `ordered: false`, such as
     /// `setup[0].shuffle.zone` or `turn.phases[start].automatic[2].else[0].draw.from`.
     ZoneNotOrdered { zone: String },
@@ -191,6 +198,14 @@ impl fmt::Display for DefinitionErrorKind {
                 "`{selector}` is not a player selector; the selectors are `each` and `active`"
             ),
             Self::InvalidCount => write!(f, "a draw or a move must take at least 1 card"),
+            Self::UnknownEffectPlayer { player } => write!(
+                f,
+                "`{player}` is not a player of an effect; the only one is `controller`"
+            ),
+            Self::ControllerOutsideCardEffect => write!(
+                f,
+                "`controller` is the owner of `self`, which only a Card Effect has"
+            ),
             Self::ZoneNotOrdered { zone } => write!(
                 f,
                 "the zone `{zone}` is not ordered, so cards cannot be shuffled or taken from it"

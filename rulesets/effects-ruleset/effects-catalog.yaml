@@ -1,5 +1,6 @@
 # Starter card catalog for the Effects Ruleset (rulesets/effects-ruleset/effects-ruleset.yaml): the
-# cards of the Small Ruleset catalog. No card carries a Card Effect yet.
+# cards of the Small Ruleset catalog, then five creatures that carry a triggered Card Effect, one for
+# each family of effects-ruleset.md (no shipped deck lists them).
 # Format: rulesets/formats.md.
 
 meta: { ruleset: effects, ruleset_version: 1 }
@@ -27,6 +28,48 @@ cards:
   - { id: moon_witch,   type: creature, fields: { name: "Moon Witch",   cost: 3, power: 2 } }
   - { id: bone_giant,   type: creature, fields: { name: "Bone Giant",   cost: 5, power: 7 } }
   - { id: storm_roc,    type: creature, fields: { name: "Storm Roc",    cost: 4, power: 4 } }
+
+  # Creatures with a triggered Card Effect. Each draws one card for its controller, except the Shade.
+  # Draws when it enters the field.
+  - id: lamp_keeper
+    type: creature
+    fields: { name: "Lamp Keeper", cost: 1, power: 1 }
+    effects:
+      - on: { enter: field }
+        do: [ { draw: { player: controller, from: deck, to: hand, count: 1 } } ]
+  # Draws at the start of its controller's Turn, while it is in the field.
+  - id: dawn_scout
+    type: creature
+    fields: { name: "Dawn Scout", cost: 2, power: 2 }
+    effects:
+      - on: { turn_start: {} }
+        do: [ { draw: { player: controller, from: deck, to: hand, count: 1 } } ]
+  # Draws when it enters the trash, as when it dies in combat.
+  - id: grave_jackal
+    type: creature
+    fields: { name: "Grave Jackal", cost: 1, power: 1 }
+    effects:
+      - on: { enter: trash }
+        do: [ { draw: { player: controller, from: deck, to: hand, count: 1 } } ]
+  # Draws when it enters the field, but only if it was played this Turn (a play sets
+  # recently_played): the `if` is false when it arrives in the field any other way.
+  - id: eager_recruit
+    type: creature
+    fields: { name: "Eager Recruit", cost: 1, power: 1 }
+    effects:
+      - on: { enter: field }
+        if: { eq: [ { ref: self.recently_played }, true ] }
+        do: [ { draw: { player: controller, from: deck, to: hand, count: 1 } } ]
+  # A mutually-triggering pair: each of its two effects wakes the other, so playing it exceeds the
+  # Trigger Cap and the play is rejected. It exists to show the cap; keep it out of decks.
+  - id: restless_shade
+    type: creature
+    fields: { name: "Restless Shade", cost: 2, power: 2 }
+    effects:
+      - on: { enter: field }
+        do: [ { move: { card: { ref: self }, to: trash } } ]
+      - on: { enter: trash }
+        do: [ { move: { card: { ref: self }, to: field } } ]
 
   # Mana: the mana card has no fields, so one definition serves the whole mana deck.
   - { id: mana, type: mana, fields: {} }
