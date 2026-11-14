@@ -2,13 +2,19 @@
 
 use std::collections::BTreeMap;
 
-use super::draft::{CardCatalogDraft, CardDraft};
+use super::draft::{
+    CardCatalogDraft, CardDraft, CardEffectDraft, ModifyDraft, TriggerMatcherDraft,
+};
 use super::error::{CatalogError, CatalogErrorKind};
-use super::model::{CardCatalog, CardDefinition, CardId, CatalogMeta};
+use super::model::{
+    CardCatalog, CardDefinition, CardEffect, CardId, CatalogMeta, ContinuousCardEffect,
+    FieldModifier, TriggerMatcher, TriggeredCardEffect,
+};
 use crate::definition_path::DefinitionPath;
 use crate::id::is_valid_id;
 use crate::ruleset_definition::{
-    CardType, CardTypeId, FieldName, FieldValue, ReferenceTarget, RulesetDefinition,
+    CardType, CardTypeId, DefinitionError, EffectDraft, ExpressionDraft, FieldName, FieldType,
+    FieldValue, ReferenceTarget, RulesetDefinition, SelfScope, ZoneId,
 };
 
 fn fail<T>(path: DefinitionPath, kind: CatalogErrorKind) -> Result<T, CatalogError> {
@@ -95,26 +101,13 @@ fn validate_card(
 
     let fields = validate_fields(card_type, card, &at)?;
 
-    if !card.effects.is_empty() {
-        let effects_path = at.key("effects");
-        if !card_type.allows_effects() {
-            return fail(effects_path, CatalogErrorKind::EffectsNotAllowed);
-        }
-        // No effect primitive exists yet, so the first entry is already unsupported.
-        if let Some(effect) = card.effects.first() {
-            return fail(
-                effects_path.index(0),
-                CatalogErrorKind::UnsupportedEffect {
-                    primitive: effect.primitive.clone(),
-                },
-            );
-        }
-    }
+    let effects = validate_effects(ruleset, card_type, card, &at)?;
 
     Ok(CardDefinition {
         id: CardId::new(&card.id),
         card_type: CardTypeId::new(&card.card_type),
         fields,
+        effects,
     })
 }
 
@@ -176,4 +169,206 @@ fn validate_fields(
         }
     }
     Ok(ordered)
+}
+
+/// The Card Effects of a card (ADR-0022): the list against the card type's `effects` flag, then each
+/// element in order. Every element is checked and built; the first one that is well-formed is then
+/// rejected as unsupported, so the list that is returned is always empty today.
+fn validate_effects(
+    ruleset: &RulesetDefinition,
+    card_type: &CardType,
+    card: &CardDraft,
+    at: &DefinitionPath,
+) -> Result<Vec<CardEffect>, CatalogError> {
+    if card.effects.is_empty() {
+        return Ok(Vec::new());
+    }
+    let list = at.clone().key("effects");
+    if !card_type.allows_effects() {
+        return fail(list, CatalogErrorKind::EffectsNotAllowed);
+    }
+    let scope = SelfScope::new(ruleset, card_type.id());
+    let mut effects = Vec::with_capacity(card.effects.len());
+    for (index, draft) in card.effects.iter().enumerate() {
+        let at = list.clone().index(index);
+        let effect = validate_card_effect(ruleset, card_type, &scope, draft, &at)?;
+        if let Some(kind) = unsupported(&effect) {
+            return fail(at, kind);
+        }
+        effects.push(effect);
+    }
+    Ok(effects)
+}
+
+/// Why a well-formed Card Effect cannot be loaded yet. Ticket [17] lifts it for a triggered one and
+/// ticket [18] for a continuous one, each by returning `None` here.
+fn unsupported(effect: &CardEffect) -> Option<CatalogErrorKind> {
+    match effect {
+        CardEffect::Triggered(_) => Some(CatalogErrorKind::UnsupportedTriggeredCardEffect),
+        CardEffect::Continuous(_) => Some(CatalogErrorKind::UnsupportedContinuousCardEffect),
+    }
+}
+
+/// A Card Effect is triggered (`on`, `if`, `do`) or continuous (`while`, `modify`). An element with
+/// keys of both is mixed; one with neither `on` nor `while` has no shape.
+fn validate_card_effect(
+    ruleset: &RulesetDefinition,
+    card_type: &CardType,
+    scope: &SelfScope<'_>,
+    draft: &CardEffectDraft,
+    at: &DefinitionPath,
+) -> Result<CardEffect, CatalogError> {
+    let triggered_keys = draft.on.is_some() || draft.condition.is_some() || draft.body.is_some();
+    let continuous_keys = draft.while_condition.is_some() || draft.modify.is_some();
+    if triggered_keys && continuous_keys {
+        return fail(at.clone(), CatalogErrorKind::MixedCardEffectShapes);
+    }
+    if let Some(matcher) = &draft.on {
+        validate_triggered(ruleset, scope, draft, matcher, at).map(CardEffect::Triggered)
+    } else if let Some(condition) = &draft.while_condition {
+        validate_continuous(card_type, scope, condition, draft.modify.as_ref(), at)
+            .map(CardEffect::Continuous)
+    } else {
+        fail(at.clone(), CatalogErrorKind::MissingCardEffectShape)
+    }
+}
+
+/// `on`, then `if`, then `do`.
+fn validate_triggered(
+    ruleset: &RulesetDefinition,
+    scope: &SelfScope<'_>,
+    draft: &CardEffectDraft,
+    matcher: &TriggerMatcherDraft,
+    at: &DefinitionPath,
+) -> Result<TriggeredCardEffect, CatalogError> {
+    let on = at.clone().key("on");
+    let matcher = match matcher {
+        TriggerMatcherDraft::Enter(zone) => {
+            let zone_id = ZoneId::new(zone);
+            if ruleset.zone(&zone_id).is_none() {
+                return fail(
+                    on.key("enter"),
+                    CatalogErrorKind::DanglingReference {
+                        target: ReferenceTarget::Zone,
+                        id: zone.clone(),
+                    },
+                );
+            }
+            TriggerMatcher::Enter(zone_id)
+        }
+        TriggerMatcherDraft::TurnStart => TriggerMatcher::TurnStart,
+        TriggerMatcherDraft::Other(key) => {
+            return fail(
+                on,
+                CatalogErrorKind::UnknownTriggerMatcher {
+                    matcher: key.clone(),
+                },
+            )
+        }
+    };
+
+    let condition = draft
+        .condition
+        .as_ref()
+        .map(|condition| scope.check_condition(condition, at.clone().key("if")))
+        .transpose()
+        .map_err(invalid)?;
+
+    let do_path = at.clone().key("do");
+    let body = match &draft.body {
+        None => return fail(do_path, CatalogErrorKind::MissingDo),
+        Some(body) if body.is_empty() => return fail(do_path, CatalogErrorKind::EmptyDo),
+        Some(body) => body,
+    };
+    let checked = scope
+        .check_effects(body, do_path.clone())
+        .map_err(invalid)?;
+    if let Some(end_turn) = find_end_turn(body, &do_path) {
+        return fail(end_turn, CatalogErrorKind::EndTurnInCardEffect);
+    }
+
+    Ok(TriggeredCardEffect {
+        matcher,
+        condition,
+        body: checked,
+    })
+}
+
+/// `while`, then `modify`: a declared int field of the carrying card's card type.
+fn validate_continuous(
+    card_type: &CardType,
+    scope: &SelfScope<'_>,
+    condition: &ExpressionDraft,
+    modify: Option<&ModifyDraft>,
+    at: &DefinitionPath,
+) -> Result<ContinuousCardEffect, CatalogError> {
+    let condition = scope
+        .check_condition(condition, at.clone().key("while"))
+        .map_err(invalid)?;
+    let Some(modify) = modify else {
+        return fail(at.clone().key("modify"), CatalogErrorKind::MissingModify);
+    };
+    let field_path = at.clone().key("modify").key("field");
+    let Some(schema) = card_type
+        .fields()
+        .iter()
+        .find(|schema| schema.name().as_str() == modify.field)
+    else {
+        return fail(
+            field_path,
+            CatalogErrorKind::UnknownModifyField {
+                field: modify.field.clone(),
+            },
+        );
+    };
+    if schema.field_type() != FieldType::Int {
+        return fail(
+            field_path,
+            CatalogErrorKind::ModifyFieldNotInt {
+                field: modify.field.clone(),
+                found: schema.field_type(),
+            },
+        );
+    }
+    Ok(ContinuousCardEffect {
+        condition,
+        modify: FieldModifier {
+            field: schema.name().clone(),
+            amount: modify.amount,
+        },
+    })
+}
+
+/// The path of the first `end_turn` in `effects`, in order, `then` before `else`.
+fn find_end_turn(effects: &[EffectDraft], list: &DefinitionPath) -> Option<DefinitionPath> {
+    for (index, effect) in effects.iter().enumerate() {
+        let at = list.clone().index(index);
+        match effect {
+            EffectDraft::EndTurn => return Some(at),
+            EffectDraft::If {
+                then, otherwise, ..
+            } => {
+                if let Some(found) = find_end_turn(then, &at.clone().key("then")) {
+                    return Some(found);
+                }
+                if let Some(found) = find_end_turn(otherwise, &at.key("else")) {
+                    return Some(found);
+                }
+            }
+            EffectDraft::Move { .. }
+            | EffectDraft::SetState { .. }
+            | EffectDraft::AddState { .. } => {}
+        }
+    }
+    None
+}
+
+/// An error of the expression and effect checking, wrapped with the path it already has.
+fn invalid(error: DefinitionError) -> CatalogError {
+    CatalogError {
+        path: error.path,
+        kind: CatalogErrorKind::InvalidCardEffect {
+            error: Box::new(error.kind),
+        },
+    }
 }

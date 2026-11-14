@@ -5,9 +5,9 @@ use std::num::NonZeroU32;
 
 use super::draft::{
     ActionDraft, AutomaticStepDraft, CardTypeDraft, ConditionDraft, CostDraft, DeckInputDraft,
-    EffectDraft, FieldTypeDraft, InitializerDraft, InstanceStateDraft, ParamAlternativeDraft,
-    ParamCardsDraft, ParamDraft, PhaseDraft, RulesetDraft, SetupStepDraft, TurnDraft,
-    WinConditionDraft, WinConditionWhenDraft,
+    EffectDraft, ExpressionDraft, FieldTypeDraft, InitializerDraft, InstanceStateDraft,
+    ParamAlternativeDraft, ParamCardsDraft, ParamDraft, PhaseDraft, RulesetDraft, SetupStepDraft,
+    TurnDraft, WinConditionDraft, WinConditionWhenDraft,
 };
 use super::error::{DefinitionError, DefinitionErrorKind, ReferenceTarget};
 use super::expression::{
@@ -335,6 +335,47 @@ fn validate_action(
         costs,
         effects,
     })
+}
+
+/// The scope of a Card Effect (ADR-0022): the one name `self`, the carrying card, typed as the
+/// card's own card type. The seam through which the Card Catalog checks the conditions and the
+/// effects of a Card Effect with the machinery of ADR-0015 and ADR-0016.
+pub(crate) struct SelfScope<'a> {
+    refs: Refs<'a>,
+}
+
+impl<'a> SelfScope<'a> {
+    pub(crate) fn new(definition: &'a RulesetDefinition, card_type: &CardTypeId) -> Self {
+        Self {
+            refs: Refs {
+                zones: definition.zones(),
+                card_types: definition.card_types(),
+                params: vec![ScopedParam {
+                    name: ParamName::new("self"),
+                    types: vec![card_type.clone()],
+                }],
+                missing: ReferenceTarget::Param,
+            },
+        }
+    }
+
+    /// An `if` or a `while`: an expression that must be bool. `at` is its path.
+    pub(crate) fn check_condition(
+        &self,
+        draft: &ExpressionDraft,
+        at: DefinitionPath,
+    ) -> Result<Expression, DefinitionError> {
+        check_condition(draft, &self.refs, at)
+    }
+
+    /// A `do`: Action Effects, each at its position under `at`.
+    pub(crate) fn check_effects(
+        &self,
+        effects: &[EffectDraft],
+        at: DefinitionPath,
+    ) -> Result<Vec<Effect>, DefinitionError> {
+        validate_effects(effects, &self.refs, at)
+    }
 }
 
 /// What a param is validated against: the zones, the card types and the params before it.

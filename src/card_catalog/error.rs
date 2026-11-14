@@ -3,7 +3,9 @@
 use std::fmt;
 
 use crate::definition_path::DefinitionPath;
-use crate::ruleset_definition::{FieldName, FieldType, ReferenceTarget, RulesetId, RulesetVersion};
+use crate::ruleset_definition::{
+    DefinitionErrorKind, FieldName, FieldType, ReferenceTarget, RulesetId, RulesetVersion,
+};
 
 /// The first error found in a draft, and where.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,8 +46,35 @@ pub enum CatalogErrorKind {
     MissingField { field: FieldName },
     /// `cards[goblin].effects`: the card type is declared with `effects: false`.
     EffectsNotAllowed,
-    /// `cards[goblin].effects[0]`: no effect primitive exists yet.
-    UnsupportedEffect { primitive: String },
+    /// `cards[goblin].effects[0]`: the element has keys of both shapes (`on` or `if` or `do` with
+    /// `while` or `modify`).
+    MixedCardEffectShapes,
+    /// `cards[goblin].effects[0]`: the element has neither `on` nor `while`.
+    MissingCardEffectShape,
+    /// `cards[goblin].effects[0].do`: a triggered Card Effect without `do`.
+    MissingDo,
+    /// `cards[goblin].effects[0].do`: the list is empty.
+    EmptyDo,
+    /// `cards[goblin].effects[0].modify`: a continuous Card Effect without `modify`.
+    MissingModify,
+    /// `cards[goblin].effects[0].on`: only `enter` and `turn_start` exist.
+    UnknownTriggerMatcher { matcher: String },
+    /// `cards[goblin].effects[0].modify.field`: the card type declares no field of that name (an
+    /// instance state is not a field).
+    UnknownModifyField { field: String },
+    /// `cards[goblin].effects[0].modify.field`: the field is not an int.
+    ModifyFieldNotInt { field: String, found: FieldType },
+    /// The `end_turn` itself, such as `cards[goblin].effects[0].do[1]` or `...do[0].then[0]`: a
+    /// Card Effect does not end the Turn.
+    EndTurnInCardEffect,
+    /// An expression, ref or Action Effect of a Card Effect that Ruleset Definition checking
+    /// rejects; the error keeps its own path, such as `cards[goblin].effects[0].if.and[0].eq[1]`.
+    InvalidCardEffect { error: Box<DefinitionErrorKind> },
+    /// `cards[goblin].effects[0]`: a well-formed triggered Card Effect, which no ticket executes
+    /// yet.
+    UnsupportedTriggeredCardEffect,
+    /// `cards[goblin].effects[0]`: a well-formed continuous Card Effect, which no ticket reads yet.
+    UnsupportedContinuousCardEffect,
 }
 
 impl fmt::Display for CatalogErrorKind {
@@ -96,8 +125,35 @@ impl fmt::Display for CatalogErrorKind {
             Self::EffectsNotAllowed => {
                 write!(f, "the card type does not allow effects")
             }
-            Self::UnsupportedEffect { primitive } => {
-                write!(f, "the effect `{primitive}` is not supported yet")
+            Self::MixedCardEffectShapes => write!(
+                f,
+                "a Card Effect is triggered (`on`, `if`, `do`) or continuous (`while`, `modify`), not both"
+            ),
+            Self::MissingCardEffectShape => {
+                write!(f, "a Card Effect needs an `on` or a `while`")
+            }
+            Self::MissingDo => write!(f, "a triggered Card Effect needs a `do`"),
+            Self::EmptyDo => write!(f, "`do` must list at least one effect"),
+            Self::MissingModify => write!(f, "a continuous Card Effect needs a `modify`"),
+            Self::UnknownTriggerMatcher { matcher } => write!(
+                f,
+                "`{matcher}` is not a trigger matcher; they are `enter` and `turn_start`"
+            ),
+            Self::UnknownModifyField { field } => {
+                write!(f, "the card type has no field named `{field}`")
+            }
+            Self::ModifyFieldNotInt { field, found } => {
+                write!(f, "the field `{field}` is {found:?}, not an int")
+            }
+            Self::EndTurnInCardEffect => {
+                write!(f, "a Card Effect cannot end the Turn")
+            }
+            Self::InvalidCardEffect { error } => write!(f, "{error}"),
+            Self::UnsupportedTriggeredCardEffect => {
+                write!(f, "triggered Card Effects are not supported yet")
+            }
+            Self::UnsupportedContinuousCardEffect => {
+                write!(f, "continuous Card Effects are not supported yet")
             }
         }
     }

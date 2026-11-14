@@ -5,9 +5,13 @@ use std::fmt;
 
 use serde::de::{self, Deserializer, IgnoredAny, MapAccess, Visitor};
 use serde::Deserialize;
-use tcg_engine::card_catalog::{CardCatalogDraft, CardDraft, CatalogMetaDraft, EffectDraft};
+use tcg_engine::card_catalog::{
+    CardCatalogDraft, CardDraft, CardEffectDraft, CatalogMetaDraft, ModifyDraft,
+    TriggerMatcherDraft,
+};
 use tcg_engine::ruleset_definition::FieldValue;
 
+use crate::dto::{some, EffectDto, ExpressionDto};
 use crate::scalar::{self, ScalarDto};
 
 #[derive(Deserialize)]
@@ -33,7 +37,7 @@ struct CardDto {
     card_type: String,
     fields: FieldsDto,
     #[serde(default)]
-    effects: Vec<EffectDto>,
+    effects: Vec<CardEffectDto>,
 }
 
 /// The `fields` mapping, read into a list so that the order of the file is kept.
@@ -64,36 +68,100 @@ impl<'de> Deserialize<'de> for FieldsDto {
     }
 }
 
-/// An effect, `{ <primitive>: <arguments> }`. No primitive exists yet, so only the name is kept and
-/// the arguments are not read.
-struct EffectDto(String);
+/// A Card Effect, one element of `effects`: the keys of the triggered shape (`on`, `if`, `do`) and
+/// of the continuous shape (`while`, `modify`), all optional. Which shape it is, and whether the
+/// keys mix, is the engine's to decide; only an unknown key is a syntax error. A key that is
+/// present must have a value, so `on:` with nothing after it is an error, not an absent key.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CardEffectDto {
+    #[serde(default, deserialize_with = "some")]
+    on: Option<MatcherDto>,
+    #[serde(default, rename = "if", deserialize_with = "some")]
+    condition: Option<ExpressionDto>,
+    #[serde(default, rename = "do", deserialize_with = "some")]
+    body: Option<Vec<EffectDto>>,
+    #[serde(default, rename = "while", deserialize_with = "some")]
+    while_condition: Option<ExpressionDto>,
+    #[serde(default, deserialize_with = "some")]
+    modify: Option<ModifyDto>,
+}
 
-impl<'de> Deserialize<'de> for EffectDto {
+/// `modify: { field, amount }`; `amount` is an unquoted integer.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ModifyDto {
+    field: String,
+    #[serde(deserialize_with = "scalar::strict_i64")]
+    amount: i64,
+}
+
+/// `{}`: the value of a matcher that takes no argument.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EmptyDto {}
+
+/// The value of `on`: a single-key map, `{ enter: <zone> }` or `{ turn_start: {} }`. The key of any
+/// other matcher is kept, so that the engine rejects it and a code frontend gets the same error.
+enum MatcherDto {
+    Enter(String),
+    TurnStart,
+    Other(String),
+}
+
+impl<'de> Deserialize<'de> for MatcherDto {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        struct EffectVisitor;
+        struct MatcherVisitor;
 
-        impl<'de> Visitor<'de> for EffectVisitor {
-            type Value = EffectDto;
+        impl<'de> Visitor<'de> for MatcherVisitor {
+            type Value = MatcherDto;
 
             fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.write_str("a mapping with exactly one key, the name of the effect")
+                f.write_str("a mapping with exactly one key, the name of the matcher")
             }
 
-            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<EffectDto, A::Error> {
-                let Some(primitive) = map.next_key::<String>()? else {
-                    return Err(de::Error::custom("an effect must name a primitive"));
+            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<MatcherDto, A::Error> {
+                let Some(key) = map.next_key::<String>()? else {
+                    return Err(de::Error::custom("`on` must name a matcher"));
                 };
-                map.next_value::<IgnoredAny>()?;
+                let matcher = match key.as_str() {
+                    "enter" => MatcherDto::Enter(map.next_value()?),
+                    "turn_start" => {
+                        let EmptyDto {} = map.next_value()?;
+                        MatcherDto::TurnStart
+                    }
+                    _ => {
+                        map.next_value::<IgnoredAny>()?;
+                        MatcherDto::Other(key)
+                    }
+                };
                 if map.next_key::<IgnoredAny>()?.is_some() {
-                    return Err(de::Error::custom(
-                        "an effect must name exactly one primitive",
-                    ));
+                    return Err(de::Error::custom("`on` must name exactly one matcher"));
                 }
-                Ok(EffectDto(primitive))
+                Ok(matcher)
             }
         }
 
-        deserializer.deserialize_map(EffectVisitor)
+        deserializer.deserialize_map(MatcherVisitor)
+    }
+}
+
+impl CardEffectDto {
+    fn into_draft(self) -> CardEffectDraft {
+        CardEffectDraft {
+            on: self.on.map(|matcher| match matcher {
+                MatcherDto::Enter(zone) => TriggerMatcherDraft::Enter(zone),
+                MatcherDto::TurnStart => TriggerMatcherDraft::TurnStart,
+                MatcherDto::Other(key) => TriggerMatcherDraft::Other(key),
+            }),
+            condition: self.condition.map(ExpressionDto::into_draft),
+            body: self.body.map(EffectDto::into_drafts),
+            while_condition: self.while_condition.map(ExpressionDto::into_draft),
+            modify: self.modify.map(|modify| ModifyDraft {
+                field: modify.field,
+                amount: modify.amount,
+            }),
+        }
     }
 }
 
@@ -114,9 +182,7 @@ impl CatalogDto {
                     effects: card
                         .effects
                         .into_iter()
-                        .map(|effect| EffectDraft {
-                            primitive: effect.0,
-                        })
+                        .map(CardEffectDto::into_draft)
                         .collect(),
                 })
                 .collect(),
