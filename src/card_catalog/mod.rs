@@ -17,11 +17,11 @@ mod model;
 mod validate;
 
 pub use draft::{
-    CardCatalogDraft, CardDraft, CardEffectDraft, CatalogMetaDraft, ModifyDraft,
+    CardCatalogDraft, CardDraft, CardEffectDraft, CatalogMetaDraft, ModifyDraft, ScopeDraft,
     TriggerMatcherDraft,
 };
 pub use error::{CatalogError, CatalogErrorKind};
 pub use model::{
     CardCatalog, CardDefinition, CardEffect, CardId, CatalogMeta, ContinuousCardEffect,
-    FieldModifier, TriggerMatcher, TriggeredCardEffect,
+    FieldModifier, ModifierScope, ScopeOwner, TriggerMatcher, TriggeredCardEffect,
 };

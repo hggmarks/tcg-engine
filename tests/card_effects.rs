@@ -16,7 +16,7 @@ use std::num::NonZeroU32;
 
 use tcg_engine::card_catalog::{
     CardCatalog, CardCatalogDraft, CardDraft, CardEffect, CardEffectDraft, CardId, CatalogError,
-    CatalogErrorKind, ModifyDraft, TriggerMatcherDraft,
+    CatalogErrorKind, ModifyDraft, ScopeDraft, ScopeOwner, TriggerMatcherDraft,
 };
 use tcg_engine::definition_path::DefinitionPath;
 use tcg_engine::ruleset_definition::{
@@ -107,6 +107,7 @@ fn triggered() -> CardEffectDraft {
         body: Some(vec![move_self_to_trash()]),
         while_condition: None,
         modify: None,
+        scope: None,
     }
 }
 
@@ -121,6 +122,7 @@ fn continuous() -> CardEffectDraft {
             field: "power".to_string(),
             amount: 1,
         }),
+        scope: None,
     }
 }
 
@@ -829,5 +831,267 @@ fn the_active_zone_of_card_effects_must_be_a_declared_zone() {
                 id: "battlefield".to_string(),
             },
         })
+    );
+}
+
+// ---- ticket #52: the Modifier Scope of a continuous Card Effect (ADR-0025)
+
+/// A continuous Card Effect with a scope over the creatures of `field`:
+/// `while: true`, `scope: { zone: field, card_type: creature }`, `modify: { field: power, amount: 1 }`.
+fn scoped() -> CardEffectDraft {
+    let mut effect = continuous();
+    effect.scope = Some(ScopeDraft {
+        zone: "field".to_string(),
+        card_type: "creature".to_string(),
+        owner: None,
+        include_self: None,
+    });
+    effect
+}
+
+fn scoped_with(change: impl FnOnce(&mut ScopeDraft)) -> CardEffectDraft {
+    let mut effect = scoped();
+    if let Some(scope) = effect.scope.as_mut() {
+        change(scope);
+    }
+    effect
+}
+
+#[test]
+fn a_scope_loads_into_the_card_definition() {
+    // The absent `owner` is the controller and the absent `include_self` is false; `owner:
+    // opponent` and `include_self: true` are kept. A continuous Card Effect without a scope has
+    // none.
+    let catalog = CardCatalog::validate(
+        &effects_definition(),
+        catalog_of(vec![goblin_with(vec![
+            scoped(),
+            scoped_with(|scope| {
+                scope.owner = Some("opponent".to_string());
+                scope.include_self = Some(true);
+                scope.zone = "hand".to_string();
+                scope.card_type = "leader".to_string();
+            }),
+            continuous(),
+        ])]),
+    )
+    .expect("scoped continuous Card Effects are supported");
+    let goblin = catalog
+        .card(&CardId::new("goblin"))
+        .expect("the card exists");
+    let [CardEffect::Continuous(controller), CardEffect::Continuous(opponent), CardEffect::Continuous(own)] =
+        goblin.effects()
+    else {
+        panic!(
+            "expected three continuous Card Effects, got {:?}",
+            goblin.effects()
+        );
+    };
+    let controller = controller.scope().expect("the first has a scope");
+    assert_eq!(controller.zone(), &ZoneId::new("field"));
+    assert_eq!(controller.card_type().as_str(), "creature");
+    assert_eq!(controller.owner(), ScopeOwner::Controller);
+    assert!(!controller.include_self());
+    let opponent = opponent.scope().expect("the second has a scope");
+    assert_eq!(opponent.zone(), &ZoneId::new("hand"));
+    assert_eq!(opponent.card_type().as_str(), "leader");
+    assert_eq!(opponent.owner(), ScopeOwner::Opponent);
+    assert!(opponent.include_self());
+    assert_eq!(own.scope(), None);
+}
+
+#[test]
+fn a_scope_zone_must_be_a_declared_zone() {
+    assert_eq!(
+        effects_error_of(vec![scoped_with(
+            |scope| scope.zone = "graveyard".to_string()
+        )]),
+        CatalogError {
+            path: effect_path().key("scope").key("zone"),
+            kind: CatalogErrorKind::DanglingReference {
+                target: ReferenceTarget::Zone,
+                id: "graveyard".to_string(),
+            },
+        }
+    );
+}
+
+#[test]
+fn a_scope_card_type_must_be_declared() {
+    assert_eq!(
+        effects_error_of(vec![scoped_with(
+            |scope| scope.card_type = "dragon".to_string()
+        )]),
+        CatalogError {
+            path: effect_path().key("scope").key("card_type"),
+            kind: CatalogErrorKind::DanglingReference {
+                target: ReferenceTarget::CardType,
+                id: "dragon".to_string(),
+            },
+        }
+    );
+    // The scope's card type does not need `effects: true`: its targets carry nothing (`leader` is
+    // declared with `effects: false`).
+    assert_accepted(vec![scoped_with(|scope| {
+        scope.card_type = "leader".to_string();
+    })]);
+}
+
+#[test]
+fn an_unknown_scope_owner_is_rejected() {
+    // Only `opponent` exists; the controller is the absent key.
+    assert_eq!(
+        effects_error_of(vec![scoped_with(
+            |scope| scope.owner = Some("controller".to_string())
+        )]),
+        invalid_card_effect(
+            effect_path().key("scope").key("owner"),
+            DefinitionErrorKind::UnknownOwner {
+                owner: "controller".to_string(),
+            },
+        )
+    );
+}
+
+#[test]
+fn modify_of_a_field_the_scope_card_type_does_not_declare_is_rejected() {
+    // `mana` declares no field, and the carrier (a creature) declares `power`: the field is checked
+    // against the scope's card type.
+    let mut effect = scoped_with(|scope| scope.card_type = "mana".to_string());
+    effect.modify = Some(ModifyDraft {
+        field: "power".to_string(),
+        amount: 1,
+    });
+    assert_eq!(
+        effects_error_of(vec![effect]),
+        CatalogError {
+            path: effect_path().key("modify").key("field"),
+            kind: CatalogErrorKind::UnknownModifyField {
+                field: "power".to_string(),
+            },
+        }
+    );
+
+    // The other way round: `life` is a field of the scope's card type (`leader`) and not of the
+    // carrier's, and an aura must be able to grant it.
+    let mut effect = scoped_with(|scope| scope.card_type = "leader".to_string());
+    effect.modify = Some(ModifyDraft {
+        field: "life".to_string(),
+        amount: 1,
+    });
+    assert_accepted(vec![effect]);
+
+    // With no scope the carrier's card type is checked, as before.
+    let mut own = continuous();
+    own.modify = Some(ModifyDraft {
+        field: "life".to_string(),
+        amount: 1,
+    });
+    assert_eq!(
+        effects_error_of(vec![own]),
+        CatalogError {
+            path: effect_path().key("modify").key("field"),
+            kind: CatalogErrorKind::UnknownModifyField {
+                field: "life".to_string(),
+            },
+        }
+    );
+}
+
+#[test]
+fn modify_of_a_non_int_field_of_the_scope_card_type_is_rejected() {
+    let mut effect = scoped_with(|scope| scope.card_type = "leader".to_string());
+    effect.modify = Some(ModifyDraft {
+        field: "name".to_string(),
+        amount: 1,
+    });
+    assert_eq!(
+        effects_error_of(vec![effect]),
+        CatalogError {
+            path: effect_path().key("modify").key("field"),
+            kind: CatalogErrorKind::ModifyFieldNotInt {
+                field: "name".to_string(),
+                found: FieldType::Text,
+            },
+        }
+    );
+}
+
+#[test]
+fn a_scope_without_a_while_has_no_shape() {
+    // `while` stays required: a scope and a modify with no `while` is not a continuous Card Effect.
+    let mut effect = scoped();
+    effect.while_condition = None;
+    assert_eq!(
+        effects_error_of(vec![effect]),
+        CatalogError {
+            path: effect_path(),
+            kind: CatalogErrorKind::MissingCardEffectShape,
+        }
+    );
+}
+
+#[test]
+fn a_scope_beside_on_is_a_mixed_shape() {
+    let mut effect = triggered();
+    effect.scope = scoped().scope;
+    assert_eq!(
+        effects_error_of(vec![effect]),
+        CatalogError {
+            path: effect_path(),
+            kind: CatalogErrorKind::MixedCardEffectShapes,
+        }
+    );
+}
+
+#[test]
+fn a_scope_is_checked_after_while_and_before_modify() {
+    // An ill-typed `while` is reported before an undeclared scope zone.
+    let mut effect = scoped_with(|scope| scope.zone = "graveyard".to_string());
+    effect.while_condition = Some(ill_typed_deep_condition());
+    assert_eq!(
+        effects_error_of(vec![effect]).path,
+        effect_path()
+            .key("while")
+            .key("and")
+            .index(0)
+            .key("eq")
+            .index(1)
+    );
+    // An undeclared scope zone is reported before a missing `modify`, and the zone before the card
+    // type before the owner.
+    let mut effect = scoped_with(|scope| {
+        scope.zone = "graveyard".to_string();
+        scope.card_type = "dragon".to_string();
+        scope.owner = Some("nobody".to_string());
+    });
+    effect.modify = None;
+    assert_eq!(
+        effects_error_of(vec![effect.clone()]).path,
+        effect_path().key("scope").key("zone")
+    );
+    if let Some(scope) = effect.scope.as_mut() {
+        scope.zone = "field".to_string();
+    }
+    assert_eq!(
+        effects_error_of(vec![effect.clone()]).path,
+        effect_path().key("scope").key("card_type")
+    );
+    if let Some(scope) = effect.scope.as_mut() {
+        scope.card_type = "creature".to_string();
+    }
+    assert_eq!(
+        effects_error_of(vec![effect.clone()]).path,
+        effect_path().key("scope").key("owner")
+    );
+    if let Some(scope) = effect.scope.as_mut() {
+        scope.owner = None;
+    }
+    assert_eq!(
+        effects_error_of(vec![effect]),
+        CatalogError {
+            path: effect_path().key("modify"),
+            kind: CatalogErrorKind::MissingModify,
+        }
     );
 }

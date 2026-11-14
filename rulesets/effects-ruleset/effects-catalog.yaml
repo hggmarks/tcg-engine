@@ -1,6 +1,7 @@
 # Starter card catalog for the Effects Ruleset (rulesets/effects-ruleset/effects-ruleset.yaml): the
 # cards of the Small Ruleset catalog, then five creatures that carry a triggered Card Effect, one for
-# each family of effects-ruleset.md, and two that carry a continuous one (no shipped deck lists them).
+# each family of effects-ruleset.md, two that carry a continuous one and three auras, which carry a
+# continuous one over a matched set (no shipped deck lists them).
 # Format: rulesets/formats.md.
 
 meta: { ruleset: effects, ruleset_version: 1 }
@@ -76,6 +77,17 @@ cards:
   # combat compares powers, so while it is tapped it fights with the modified power.
   - { id: battle_veteran, type: creature, fields: { name: "Battle Veteran", cost: 1, power: 2 }, effects: [ { while: { eq: [ { ref: self.tapped }, true ] }, modify: { field: power, amount: 1 } } ] }
   - { id: weary_ox,       type: creature, fields: { name: "Weary Ox",       cost: 2, power: 3 }, effects: [ { while: { eq: [ { ref: self.tapped }, true ] }, modify: { field: power, amount: -1 } } ] }
+
+  # Creatures with a continuous Card Effect over a matched set: an aura (ADR-0025). While it is in the
+  # field it adds its amount to the power of every creature its `scope` matches; `while: true` makes it
+  # unconditional. A scope names the zone and card type of its targets, and optionally `owner:
+  # opponent` (the other Players' cards; absent is its controller's) and `include_self: true`.
+  # Raises the controller's other creatures by 1: not itself, not the opponent's.
+  - { id: banner_bearer, type: creature, fields: { name: "Banner Bearer", cost: 2, power: 1 }, effects: [ { while: true, scope: { zone: field, card_type: creature }, modify: { field: power, amount: 1 } } ] }
+  # Lowers every opponent creature by 1.
+  - { id: dread_herald,  type: creature, fields: { name: "Dread Herald",  cost: 3, power: 2 }, effects: [ { while: true, scope: { zone: field, card_type: creature, owner: opponent }, modify: { field: power, amount: -1 } } ] }
+  # Raises the controller's creatures by 1, itself included.
+  - { id: rally_captain, type: creature, fields: { name: "Rally Captain", cost: 3, power: 2 }, effects: [ { while: true, scope: { zone: field, card_type: creature, include_self: true }, modify: { field: power, amount: 1 } } ] }
 
   # Mana: the mana card has no fields, so one definition serves the whole mana deck.
   - { id: mana, type: mana, fields: {} }

@@ -37,6 +37,7 @@ pub struct CardEffectDraft {
     pub body: Option<Vec<EffectDraft>>,
     pub while_condition: Option<ExpressionDraft>,
     pub modify: Option<ModifyDraft>,
+    pub scope: Option<ScopeDraft>,
 }
 
 /// An unvalidated `on`: a single-key map. `Other` keeps the key of a matcher the engine does not
@@ -55,4 +56,13 @@ pub enum TriggerMatcherDraft {
 pub struct ModifyDraft {
     pub field: String,
     pub amount: i64,
+}
+
+/// An unvalidated `scope: { zone, card_type, owner?, include_self? }`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScopeDraft {
+    pub zone: String,
+    pub card_type: String,
+    pub owner: Option<String>,
+    pub include_self: Option<bool>,
 }

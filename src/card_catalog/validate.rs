@@ -2,19 +2,17 @@
 
 use std::collections::BTreeMap;
 
-use super::draft::{
-    CardCatalogDraft, CardDraft, CardEffectDraft, ModifyDraft, TriggerMatcherDraft,
-};
+use super::draft::{CardCatalogDraft, CardDraft, CardEffectDraft, ScopeDraft, TriggerMatcherDraft};
 use super::error::{CatalogError, CatalogErrorKind};
 use super::model::{
     CardCatalog, CardDefinition, CardEffect, CardId, CatalogMeta, ContinuousCardEffect,
-    FieldModifier, TriggerMatcher, TriggeredCardEffect,
+    FieldModifier, ModifierScope, ScopeOwner, TriggerMatcher, TriggeredCardEffect,
 };
 use crate::definition_path::DefinitionPath;
 use crate::id::is_valid_id;
 use crate::ruleset_definition::{
-    CardType, CardTypeId, DefinitionError, EffectDraft, ExpressionDraft, FieldName, FieldType,
-    FieldValue, ReferenceTarget, RulesetDefinition, SelfScope, ZoneId,
+    CardType, CardTypeId, DefinitionError, DefinitionErrorKind, EffectDraft, ExpressionDraft,
+    FieldName, FieldType, FieldValue, ReferenceTarget, RulesetDefinition, SelfScope, ZoneId,
 };
 
 fn fail<T>(path: DefinitionPath, kind: CatalogErrorKind) -> Result<T, CatalogError> {
@@ -209,14 +207,15 @@ fn validate_card_effect(
     at: &DefinitionPath,
 ) -> Result<CardEffect, CatalogError> {
     let triggered_keys = draft.on.is_some() || draft.condition.is_some() || draft.body.is_some();
-    let continuous_keys = draft.while_condition.is_some() || draft.modify.is_some();
+    let continuous_keys =
+        draft.while_condition.is_some() || draft.modify.is_some() || draft.scope.is_some();
     if triggered_keys && continuous_keys {
         return fail(at.clone(), CatalogErrorKind::MixedCardEffectShapes);
     }
     if let Some(matcher) = &draft.on {
         validate_triggered(ruleset, scope, draft, matcher, at).map(CardEffect::Triggered)
     } else if let Some(condition) = &draft.while_condition {
-        validate_continuous(card_type, scope, condition, draft.modify.as_ref(), at)
+        validate_continuous(ruleset, card_type, scope, condition, draft, at)
             .map(CardEffect::Continuous)
     } else {
         fail(at.clone(), CatalogErrorKind::MissingCardEffectShape)
@@ -284,22 +283,34 @@ fn validate_triggered(
     })
 }
 
-/// `while`, then `modify`: a declared int field of the carrying card's card type.
+/// `while`, then `scope`, then `modify`: a declared int field of the card type the modifier reaches,
+/// which is the scope's card type when there is a `scope` and the carrying card's otherwise.
 fn validate_continuous(
+    ruleset: &RulesetDefinition,
     card_type: &CardType,
     scope: &SelfScope<'_>,
     condition: &ExpressionDraft,
-    modify: Option<&ModifyDraft>,
+    draft: &CardEffectDraft,
     at: &DefinitionPath,
 ) -> Result<ContinuousCardEffect, CatalogError> {
     let condition = scope
         .check_condition(condition, at.clone().key("while"))
         .map_err(invalid)?;
-    let Some(modify) = modify else {
+    // The field is read on the cards the modifier reaches, so it is checked against their card type:
+    // the scope's when there is a scope, the carrying card's otherwise.
+    let (modifier_scope, target_type) = match &draft.scope {
+        None => (None, card_type),
+        Some(scope_draft) => {
+            let (modifier_scope, scope_type) =
+                validate_scope(ruleset, scope_draft, &at.clone().key("scope"))?;
+            (Some(modifier_scope), scope_type)
+        }
+    };
+    let Some(modify) = &draft.modify else {
         return fail(at.clone().key("modify"), CatalogErrorKind::MissingModify);
     };
     let field_path = at.clone().key("modify").key("field");
-    let Some(schema) = card_type
+    let Some(schema) = target_type
         .fields()
         .iter()
         .find(|schema| schema.name().as_str() == modify.field)
@@ -322,11 +333,59 @@ fn validate_continuous(
     }
     Ok(ContinuousCardEffect {
         condition,
+        scope: modifier_scope,
         modify: FieldModifier {
             field: schema.name().clone(),
             amount: modify.amount,
         },
     })
+}
+
+/// `scope`: the zone and the card type must be declared, then the owner is `opponent` or absent.
+fn validate_scope<'a>(
+    ruleset: &'a RulesetDefinition,
+    draft: &ScopeDraft,
+    at: &DefinitionPath,
+) -> Result<(ModifierScope, &'a CardType), CatalogError> {
+    let zone = ZoneId::new(&draft.zone);
+    if ruleset.zone(&zone).is_none() {
+        return fail(
+            at.clone().key("zone"),
+            CatalogErrorKind::DanglingReference {
+                target: ReferenceTarget::Zone,
+                id: draft.zone.clone(),
+            },
+        );
+    }
+    let card_type = CardTypeId::new(&draft.card_type);
+    let Some(scope_type) = ruleset.card_type(&card_type) else {
+        return fail(
+            at.clone().key("card_type"),
+            CatalogErrorKind::DanglingReference {
+                target: ReferenceTarget::CardType,
+                id: draft.card_type.clone(),
+            },
+        );
+    };
+    let owner = match draft.owner.as_deref() {
+        None => ScopeOwner::Controller,
+        Some("opponent") => ScopeOwner::Opponent,
+        Some(other) => {
+            return Err(invalid(DefinitionError {
+                path: at.clone().key("owner"),
+                kind: DefinitionErrorKind::UnknownOwner {
+                    owner: other.to_string(),
+                },
+            }))
+        }
+    };
+    let modifier_scope = ModifierScope {
+        zone,
+        card_type,
+        owner,
+        include_self: draft.include_self.unwrap_or(false),
+    };
+    Ok((modifier_scope, scope_type))
 }
 
 /// The path of the first `end_turn` in `effects`, in order, `then` before `else`.

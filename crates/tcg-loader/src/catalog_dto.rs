@@ -6,7 +6,7 @@ use std::fmt;
 use serde::de::{self, Deserializer, IgnoredAny, MapAccess, Visitor};
 use serde::Deserialize;
 use tcg_engine::card_catalog::{
-    CardCatalogDraft, CardDraft, CardEffectDraft, CatalogMetaDraft, ModifyDraft,
+    CardCatalogDraft, CardDraft, CardEffectDraft, CatalogMetaDraft, ModifyDraft, ScopeDraft,
     TriggerMatcherDraft,
 };
 use tcg_engine::ruleset_definition::FieldValue;
@@ -69,9 +69,10 @@ impl<'de> Deserialize<'de> for FieldsDto {
 }
 
 /// A Card Effect, one element of `effects`: the keys of the triggered shape (`on`, `if`, `do`) and
-/// of the continuous shape (`while`, `modify`), all optional. Which shape it is, and whether the
-/// keys mix, is the engine's to decide; only an unknown key is a syntax error. A key that is
-/// present must have a value, so `on:` with nothing after it is an error, not an absent key.
+/// of the continuous shape (`while`, `modify`, `scope`), all optional. Which shape it is, and
+/// whether the keys mix, is the engine's to decide; only an unknown key is a syntax error. A key
+/// that is present must have a value, so `on:` with nothing after it is an error, not an absent
+/// key.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CardEffectDto {
@@ -85,6 +86,8 @@ struct CardEffectDto {
     while_condition: Option<ExpressionDto>,
     #[serde(default, deserialize_with = "some")]
     modify: Option<ModifyDto>,
+    #[serde(default, deserialize_with = "some")]
+    scope: Option<ScopeDto>,
 }
 
 /// `modify: { field, amount }`; `amount` is an unquoted integer.
@@ -94,6 +97,19 @@ struct ModifyDto {
     field: String,
     #[serde(deserialize_with = "scalar::strict_i64")]
     amount: i64,
+}
+
+/// `scope: { zone, card_type, owner?, include_self? }`: the cards a modifier reaches. `owner` is
+/// `opponent` or absent; the engine rejects any other text. `include_self` is an unquoted bool.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ScopeDto {
+    zone: String,
+    card_type: String,
+    #[serde(default, deserialize_with = "some")]
+    owner: Option<String>,
+    #[serde(default, deserialize_with = "scalar::strict_present_bool")]
+    include_self: Option<bool>,
 }
 
 /// `{}`: the value of a matcher that takes no argument.
@@ -160,6 +176,12 @@ impl CardEffectDto {
             modify: self.modify.map(|modify| ModifyDraft {
                 field: modify.field,
                 amount: modify.amount,
+            }),
+            scope: self.scope.map(|scope| ScopeDraft {
+                zone: scope.zone,
+                card_type: scope.card_type,
+                owner: scope.owner,
+                include_self: scope.include_self,
             }),
         }
     }

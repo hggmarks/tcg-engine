@@ -16,4 +16,6 @@
 
 **Out of scope, by design.** Non-additive modifiers (set-to-X, granting abilities) and layering, modifying instance states, and set scopes are not decided here. Conflict with an older ADR: none beyond the lift above; ADR-0002, ADR-0010 and ADR-0015/0016 are untouched (no Event, no new state, the same refs).
 
+**Realized by ADR-0025:** the widening of `modifier_sum` predicted above (set-scoped modifiers) is ADR-0025.
+
 **Status**: accepted

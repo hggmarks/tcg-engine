@@ -143,6 +143,7 @@ pub enum TriggerMatcher {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContinuousCardEffect {
     pub(super) condition: Expression,
+    pub(super) scope: Option<ModifierScope>,
     pub(super) modify: FieldModifier,
 }
 
@@ -151,12 +152,58 @@ impl ContinuousCardEffect {
         &self.condition
     }
 
+    /// The cards the Field Modifier reaches; `None` for a modifier of the carrying card alone.
+    pub fn scope(&self) -> Option<&ModifierScope> {
+        self.scope.as_ref()
+    }
+
     pub fn modify(&self) -> &FieldModifier {
         &self.modify
     }
 }
 
-/// An additive integer on an int field of the carrying card's Card Definition.
+/// `scope: { zone, card_type, owner?, include_self? }`: the cards a Field Modifier reaches besides
+/// (or instead of) its carrier.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModifierScope {
+    pub(super) zone: ZoneId,
+    pub(super) card_type: CardTypeId,
+    pub(super) owner: ScopeOwner,
+    pub(super) include_self: bool,
+}
+
+impl ModifierScope {
+    /// The zone of its owner that a target is in.
+    pub fn zone(&self) -> &ZoneId {
+        &self.zone
+    }
+
+    /// The Card Type of a target's Card Definition.
+    pub fn card_type(&self) -> &CardTypeId {
+        &self.card_type
+    }
+
+    pub fn owner(&self) -> ScopeOwner {
+        self.owner
+    }
+
+    /// Whether the carrying card is itself a target, when it matches.
+    pub fn include_self(&self) -> bool {
+        self.include_self
+    }
+}
+
+/// Whose cards a Modifier Scope reaches, relative to the carrying card's owner.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScopeOwner {
+    /// The carrying card's owner (`owner` absent).
+    Controller,
+    /// Any Player other than the carrying card's owner (`owner: opponent`).
+    Opponent,
+}
+
+/// An additive integer on an int field of the Card Definition of each card a Continuous Card
+/// Effect reaches.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FieldModifier {
     pub(super) field: FieldName,

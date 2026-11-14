@@ -12,53 +12,73 @@ Every rule not stated on this page is the Small Ruleset's, word for word: parame
 | **Creature** `effects` | `false` | `true`: a creature definition may carry Card Effects |
 | `effects.active_zone` | none (no `effects` block) | `field`: the Active Zone, where Card Effects act (see Triggered Card Effects) |
 | **Leader** and **Mana** `effects` | `false` | `false`: Card Effects act only while the card is on the Field (roadmap #48); a Leader never reaches the Field, and a mana card never does either and has no int field to modify |
-| `effects.active_zone` | none | `field`: the zone where Card Effects act (below) |
 
-The files are `effects-ruleset.yaml` (the encoding), `effects-catalog.yaml` (the cards of the Small catalog, with `meta: { ruleset: effects, ruleset_version: 1 }`, the five creatures of the triggered Card Effect section and the two of the continuous one below) and `decks/deck-a.yaml` and `decks/deck-b.yaml` (the Small sample decks, which list none of the seven new creatures: that keeps the golden game equal to the Small Ruleset's).
+The files are `effects-ruleset.yaml` (the encoding), `effects-catalog.yaml` (the cards of the Small catalog, with `meta: { ruleset: effects, ruleset_version: 1 }`, the five creatures of the triggered Card Effect section, the two of the continuous one and the three auras below) and `decks/deck-a.yaml` and `decks/deck-b.yaml` (the Small sample decks, which list none of the ten new creatures: that keeps the golden game equal to the Small Ruleset's).
 
 ## Card Effects
 
-A card definition's `effects` is a list of **Card Effects**, allowed only on a card type declared `effects: true`. A Card Effect is one of two shapes, told apart by which shape keys appear (`on`, `if`, `do` or `while`, `modify`; any key of both shapes is a mixed shape):
+A card definition's `effects` is a list of **Card Effects**, allowed only on a card type declared `effects: true`. A Card Effect is one of two shapes, told apart by which shape keys appear (`on`, `if`, `do` or `while`, `modify`, `scope`; any key of both shapes is a mixed shape):
 
 ```yaml
 effects:
   - on: { enter: field }     # triggered: a Trigger Matcher over Events
     if: { ... }              # optional Expression, evaluated when it fires
     do: [ <action effects> ] # the existing Action Effects; at least one
-  - while: { ... }           # continuous: an Expression
-    modify: { field: power, amount: 1 }   # an additive int on the carrying card's fields
+  - while: { ... }           # continuous: an Expression (required; `true` for an always-on effect)
+    scope: { zone: field, card_type: creature }   # optional: the cards it reaches (a Modifier Scope)
+    modify: { field: power, amount: 1 }   # an additive int on the fields of those cards
 ```
 
 - **Triggered**: `on` (required), `if` (optional) and `do` (required, at least one effect).
   - `on` is a single-key map. `enter: <zone>` matches the card entering that zone (a declared zone); `turn_start: {}` matches the controller's Turn beginning (semantics in Triggered Card Effects below). Any other key is an unknown matcher.
   - `if` must be a bool Expression.
   - `do` is a list of Action Effects (`move`, `set_state`, `add_state`, `draw`, `if`; ADR-0015, ADR-0016, ADR-0023), except that **`end_turn` is rejected anywhere in it**, including inside an `if` effect: a trigger that ends the Turn is not covered yet.
-- **Continuous**: `while` (a bool Expression) and `modify: { field, amount }` (required). `field` must be a field the card's card type declares, of type int (an instance state is not a field); `amount` is an unquoted integer. The modifier adds `amount` to that field of the carrying card while it is active (see Continuous Card Effects).
+- **Continuous**: `while` (a bool Expression) and `modify: { field, amount }` (required), and an optional `scope` (a Modifier Scope, below). `field` must be a field of type int (an instance state is not a field) that the card's card type declares, or the scope's card type when there is a scope; `amount` is an unquoted integer. The modifier adds `amount` to that field of the carrying card, or of the cards its scope reaches, while it is active (see Continuous Card Effects). `while` is required: an always-on effect writes `while: true`, and a `scope` and `modify` with no `while` has no shape.
 - **`self`** is the one name an Expression or an effect of a Card Effect may use as a ref: the carrying card, of the card's own card type. `{ ref: self }` is a card and `{ ref: self.power }` is a value (a field or an instance state of the card's type). Any other name is a dangling reference to a param.
-- An element has the keys of one shape only: `on` or `if` or `do` together with `while` or `modify` is a mixed shape, and an element with neither `on` nor `while` has no shape.
+- An element has the keys of one shape only: `on` or `if` or `do` together with `while`, `modify` or `scope` is a mixed shape, and an element with neither `on` nor `while` has no shape.
 
 ### Validation
 
-The loader reads the syntax and rejects an unknown key of the envelope or of `modify`, and an `amount` that is not an unquoted integer. The engine checks the rest, the first error winning, in this order: the list against the card type's `effects` flag, then each element in order: its shape, then for a triggered one its `on`, `if` and `do` (and `end_turn` in `do`), for a continuous one its `while` and `modify`.
+The loader reads the syntax and rejects an unknown key of the envelope, of `modify` or of `scope`, an `amount` that is not an unquoted integer, and an `include_self` that is not an unquoted `true` or `false`. The engine checks the rest, the first error winning, in this order: the list against the card type's `effects` flag, then each element in order: its shape, then for a triggered one its `on`, `if` and `do` (and `end_turn` in `do`), for a continuous one its `while`, its `scope` (zone, then card type, then owner) and its `modify`.
 
-A well-formed Card Effect of either shape is kept by its card definition and acts: triggered ones run (ADR-0023) and continuous ones are read as Field Modifiers (ADR-0024). Nothing well-formed is rejected as unsupported any more (ADR-0022).
+A well-formed Card Effect of either shape is kept by its card definition and acts: triggered ones run (ADR-0023) and continuous ones are read as Field Modifiers (ADR-0024, ADR-0025). Nothing well-formed is rejected as unsupported any more (ADR-0022).
 
 ## Continuous Card Effects
 
 A Continuous Card Effect is a **derived read**: nothing is written to the Game and no Event is emitted for it. Every time a rule reads an int field of a card through a ref (a param `where`, an effect `if`, a cost's `count`, the combat comparison, a win condition `when`), the value is the field's base value plus the amounts of the Field Modifiers that are active at that moment (ADR-0024).
 
-- **Active zone.** The top-level `effects: { active_zone: field }` block names the zone where Card Effects act. A Field Modifier is active only while its carrying card is in that zone, and its `while` holds. A card anywhere else, a false `while`, or a ruleset without the block reads its base values.
+- **Active zone.** The top-level `effects: { active_zone: field }` block names the zone where Card Effects act. A Field Modifier is active only while its carrying card is in that zone, and its `while` holds. A carrier anywhere else, a false `while`, or a ruleset without the block adds nothing, and a card that no active modifier reaches reads its base values.
 - **`while` reads base values only.** The condition of a Field Modifier is evaluated on base values, never on modified ones, whatever field it reads. So `while: { gte: [ { ref: self.power }, 3 ] }` with `modify: { field: power, amount: -1 }` on a power-3 card holds, and the card is power 2 (a derived read of a `while` that read derived values would be circular).
-- **Additive and commuting.** Several active modifiers on the same field add up, in any order. An int that would overflow, the sum of modifiers included, is the rejection `DerivedValueOverflow`, never a wrap.
+- **Additive and commuting.** Several active modifiers on the same field add up, in any order. An int that would overflow, the sum of modifiers included, is the rejection `DerivedValueOverflow`, never a wrap. The sum is still taken in a fixed order, so an overflow is the same in every replay: first the card's own modifiers that have no scope (while the card is in the Active Zone), in `effects` order, then the scoped modifiers of the carriers in the Active Zone, in Player Order and zone order, each carrier's in `effects` order, a carrier's own `include_self` modifier among them (ADR-0025); an overflow at any step counts.
+- **No clamping.** Nothing clamps a modified int at 0: a derived power of 0 or below is reachable (two `dread_herald` on a power-1 creature) and the combat stays decided by `gte`, so nothing is undefined. A modified `cost` below 0 would be refused by the `tap` cost as a negative count, like a base value; no card of the catalog modifies `cost`.
 - **Fields only.** Only card fields (int) are modified; instance states (`tapped`, `current_life`) are read as stored.
-- **The carrying card only.** A modifier changes a field of the card that carries it. A modifier that reaches other cards is not in the format yet (ticket [19]).
+- **Own card, or a matched set.** With no `scope` a modifier changes a field of the card that carries it. With a `scope` it changes that field of the cards the scope reaches (below).
 
-The catalog carries two creatures that show it. A creature taps when it attacks, before the combat compares powers, so a modifier that holds `while` the creature is tapped is the one a Game flips:
+The catalog carries two creatures that show the modifier on the carrying card. A creature taps when it attacks, before the combat compares powers, so a modifier that holds `while` the creature is tapped is the one a Game flips:
 
 | Card | Cost | Power | Continuous Card Effect |
 |---|---|---|---|
 | `battle_veteran` | 1 | 2 | `while: { eq: [ { ref: self.tapped }, true ] }`, `modify: { field: power, amount: 1 }`: power 3 once tapped |
 | `weary_ox` | 2 | 3 | the same `while`, `amount: -1`: power 2 once tapped |
+
+### Modifier Scope
+
+`scope: { zone, card_type, owner?, include_self? }` selects the cards a Continuous Card Effect reaches (ADR-0025). It is a filter, not an Expression, so the match reads no field of any card and a derived read never needs another derived read.
+
+- `zone` (required) is a declared zone and `card_type` (required) a declared card type; it does not need `effects: true`, because targets carry nothing.
+- `owner` is absent (the Player who owns the carrying card, the controller) or `opponent` (any Player other than the carrying card's owner); any other text is an unknown owner. `include_self` is absent or false (the carrying card is not reached) or true.
+- A card is **reached** when it is in `zone` of its owner, its definition's type is `card_type`, its owner stands in the `owner` relation to the carrier's owner, and it is not the carrier unless `include_self`.
+- The modifier is **active** while its carrying card is in the Active Zone (`field`) and its `while` holds, whatever zone `scope.zone` names; a carrier anywhere else, or a ruleset without the Active Zone, adds nothing. `while` reads the carrier's base values (`self` is the carrier).
+- `modify.field` is checked against the scope's `card_type`, not the carrier's, so an aura on a type with no `power` can still grant `power`.
+- Two auras add up. Leaving the field removes the bonus, and entering it grants the bonus, in the same transition as the `CardMoved` Event. No Event is emitted for the bonus.
+
+The catalog carries three auras. Every one has `while: true`, `scope: { zone: field, card_type: creature, ... }` and a `power` modifier:
+
+| Card | Cost | Power | Aura |
+|---|---|---|---|
+| `banner_bearer` | 2 | 1 | `amount: 1`: the controller's other creatures in the field get +1 power, not itself, not the opponent's |
+| `dread_herald` | 3 | 2 | `owner: opponent`, `amount: -1`: every opponent creature in the field gets -1 power |
+| `rally_captain` | 3 | 2 | `include_self: true`, `amount: 1`: the controller's creatures in the field, itself included, get +1 power |
 
 ## The `draw` effect
 
@@ -94,12 +114,13 @@ One creature per family, in `effects-catalog.yaml`; none is in a shipped deck.
 |---|---|
 | **Card Effect** | An ability a card definition carries, in the `effects` list of a card of a type with `effects: true`. Triggered or continuous. |
 | **Triggered Card Effect** | `on`, optional `if` and `do`: when an Event matches the Trigger Matcher and the condition holds, the Action Effects run. |
-| **Continuous Card Effect** | `while` and `modify`: while the Field Modifier is active, every read of the field adds its amount. |
+| **Continuous Card Effect** | `while`, `modify` and an optional `scope`: while the Field Modifier is active, every read of the field of a card it reaches adds its amount. |
 | **Trigger Matcher** | What a triggered Card Effect matches among Events: `enter` (a `CardMoved` Event puts the card into a zone) or `turn_start` (the controller's Turn began). |
-| **Active Zone** | `effects.active_zone` (`field`): the zone where Card Effects act. `enter` is the exception. Without the block no Card Effect is active: no modifier applies and no trigger is eligible. |
+| **Active Zone** | `effects.active_zone` (`field`): the zone where Card Effects act: where a carrier must be. A Modifier Scope names the zone of its targets, which may be any zone. `enter` is the exception. Without the block no Card Effect is active: no modifier applies and no trigger is eligible. |
 | **Trigger Cap** | The most trigger resolutions in one transition: 100. A false `if` counts. One more rejects the transition (`TriggerCapExceeded`). |
 | **Controller** | The owner of `self`, the carrying card: the Player a `draw` in a Card Effect draws for. |
 | **Draw effect** | `draw: { player, from, to, count }`: draws like the `draw` step; an empty `from` records `DrawFromEmptyZone`. |
-| **Field Modifier** | `modify: { field, amount }`: an additive int on a field of the carrying card's definition. It is **active** while its card is in the Active Zone and its `while` holds. |
-| **Derived Read** | A read of a field through a ref: the base value plus the amounts of the active Field Modifiers, computed at read time and stored nowhere. |
+| **Field Modifier** | `modify: { field, amount }`: an additive int on a field of the definition of each card it reaches (the carrying card, or the cards of its Modifier Scope). It is **active** while its carrying card is in the Active Zone and its `while` holds. |
+| **Modifier Scope** | `scope: { zone, card_type, owner?, include_self? }`: the cards a Field Modifier reaches: in `zone` of their owner, of `card_type`, owned relative to the carrier's owner (`opponent` is any other Player), and not the carrier unless `include_self`. |
+| **Derived Read** | A read of a field through a ref: the base value plus the amounts of the active Field Modifiers that reach the card, computed at read time and stored nowhere. |
 | **Self** | `self`, the carrying card, the only name in a Card Effect's scope. |
