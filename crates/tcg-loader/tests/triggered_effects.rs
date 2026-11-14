@@ -139,7 +139,7 @@ const SPECIALS: [(&str, u32); 10] = [
     ("starved_scribe", 4),
     ("dawn_herald", 4),
     ("grave_hound", 4),
-    ("signal_pair", 2),
+    ("signal_pair", 3),
     ("ember_phoenix", 4),
     ("restless_wraith", 4),
     ("idle_25", 4),
@@ -149,25 +149,54 @@ const SPECIALS: [(&str, u32); 10] = [
 
 /// A deck of 50 creatures: the specials and then fillers up to 50.
 fn deck_yaml(leader: &str) -> String {
+    deck_yaml_of(leader, &SPECIALS)
+}
+
+/// A deck of 50 creatures: `specials`, then the fillers that are not among them, up to 50.
+fn deck_yaml_of(leader: &str, specials: &[(&str, u32)]) -> String {
     let mut yaml = format!(
         "inputs:\n  - input: leader\n    cards:\n      - {{ card: {leader}, count: 1 }}\n  - input: main_deck\n    cards:\n"
     );
     let mut total = 0;
-    for (card, count) in SPECIALS {
+    for &(card, count) in specials {
         yaml.push_str(&format!("      - {{ card: {card}, count: {count} }}\n"));
         total += count;
     }
-    let mut filler = 2;
+    let mut filler = 1;
     while total < 50 {
-        let count = (50 - total).min(4);
-        yaml.push_str(&format!(
-            "      - {{ card: filler_{filler:02}, count: {count} }}\n"
-        ));
-        total += count;
+        let name = format!("filler_{filler:02}");
         filler += 1;
+        if specials.iter().any(|&(card, _)| card == name) {
+            continue;
+        }
+        let count = (50 - total).min(4);
+        yaml.push_str(&format!("      - {{ card: {name}, count: {count} }}\n"));
+        total += count;
     }
     yaml.push_str("  - input: mana_deck\n    cards:\n      - { card: mana, count: 10 }\n");
     yaml
+}
+
+/// The ruleset of this file with the creatures `extra` (catalog list items) added to its catalog,
+/// and decks of 4 of each of `cards` topped up with fillers.
+fn probe(extra: &str, cards: &[&str]) -> (DeclarativeRuleset, Vec<DeckList>) {
+    let definition = definition();
+    let catalog_yaml = format!("{}{extra}", catalog_yaml());
+    let catalog = load_card_catalog(&definition, &catalog_yaml).expect("the probe catalog loads");
+    let ruleset = DeclarativeRuleset::new(definition, catalog);
+    let specials: Vec<(&str, u32)> = cards.iter().map(|&card| (card, 4)).collect();
+    let decks = ["lead_a", "lead_b"]
+        .iter()
+        .map(|leader| {
+            load_deck_list(
+                ruleset.definition(),
+                ruleset.catalog(),
+                &deck_yaml_of(leader, &specials),
+            )
+            .expect("the probe deck is legal")
+        })
+        .collect();
+    (ruleset, decks)
 }
 
 fn definition() -> RulesetDefinition {
@@ -432,6 +461,20 @@ fn card_effects_are_silent_outside_the_active_zone() {
     assert_eq!(in_field.len(), in_trash.len() + 1);
     assert_eq!(in_field[..in_trash.len()], in_trash[..]);
 
+    // In the deck, under the card the Start phase draws: no extra Event, and the herald is in none.
+    let mut state = base.clone();
+    park(&mut state, herald, "deck");
+    let other = in_zone(&state, 1, "hand")
+        .into_iter()
+        .find(|&card| card != herald)
+        .expect("the hand has another card");
+    park(&mut state, other, "deck");
+    let in_deck = events_of(&ruleset, &state, &pass(0));
+    assert_eq!(in_deck.len(), in_trash.len());
+    assert!(in_deck
+        .iter()
+        .all(|event| !matches!(event, Event::CardMoved { card, .. } if *card == herald)));
+
     // An `enter: field` card is silent when it leaves the field: it dies in combat and nothing
     // follows the move to the trash.
     let mut state = base.clone();
@@ -481,13 +524,15 @@ fn two_triggers_woken_by_one_event_fire_in_canonical_order() {
     let ruleset = ruleset();
     let mut state = start(&ruleset);
     let low = nth(&state, 1, "signal_pair", 0);
-    let high = nth(&state, 1, "signal_pair", 1);
-    assert!(low.0 < high.0);
+    let mid = nth(&state, 1, "signal_pair", 1);
+    let high = nth(&state, 1, "signal_pair", 2);
+    assert!(low.0 < mid.0 && mid.0 < high.0);
     let mut plain = state.clone();
-    for card in [high, low] {
+    for card in [mid, high, low] {
         park(&mut plain, card, "trash");
-        // The higher id enters the field first: the order of firing is the order of
-        // `state.cards()`, not of the zone.
+        // They enter the field as mid, high, low: neither that order nor its reverse (high, low,
+        // mid, the top of the zone first) is the order of `state.cards()`, which is the order of
+        // firing.
         park(&mut state, card, "field");
     }
 
@@ -497,6 +542,8 @@ fn two_triggers_woken_by_one_event_fire_in_canonical_order() {
     expected.extend([
         state_changed(low, "recently_played", true),
         state_changed(low, "tapped", true),
+        state_changed(mid, "recently_played", true),
+        state_changed(mid, "tapped", true),
         state_changed(high, "recently_played", true),
         state_changed(high, "tapped", true),
     ]);
@@ -738,4 +785,73 @@ fn without_an_effects_block_no_trigger_is_eligible() {
             state_changed(lantern, "recently_played", true),
         ]
     );
+}
+
+#[test]
+fn an_if_is_read_when_its_trigger_fires_not_when_it_is_enqueued() {
+    // Both effects are woken by the one CardMoved into the field. The `if` of the second is true
+    // when it is enqueued (the card is untapped) and false when it fires (the first tapped it).
+    let extra = creature(
+        "tap_then_check",
+        &[
+            triggered("{ enter: field }", None, &[TAP_SELF]),
+            triggered(
+                "{ enter: field }",
+                Some("{ eq: [ { ref: self.tapped }, false ] }"),
+                &[DRAW],
+            ),
+        ],
+    );
+    let (ruleset, decks) = probe(&extra, &["tap_then_check"]);
+    let mut state = ruleset
+        .create_game(&decks, Seed(1))
+        .expect("the decks create a game")
+        .opening
+        .state;
+    let card = nth(&state, 0, "tap_then_check", 0);
+    park(&mut state, card, "hand");
+    assert_eq!(
+        events_of(&ruleset, &state, &play(0, card)),
+        [
+            moved(0, card, "hand", "field"),
+            state_changed(card, "recently_played", true),
+            // No draw: the `if` was false when it fired.
+            state_changed(card, "tapped", true),
+        ]
+    );
+}
+
+#[test]
+fn game_creation_fires_no_trigger() {
+    // `enter` matches `CardMoved` only and creation resolves no trigger: the cards are created in
+    // the deck and the setup draw moves them to the hand, and no drawer draws.
+    let extra = format!(
+        "{}{}",
+        creature(
+            "hand_drawer",
+            &[triggered("{ enter: hand }", None, &[DRAW])]
+        ),
+        creature(
+            "deck_drawer",
+            &[triggered("{ enter: deck }", None, &[DRAW])]
+        ),
+    );
+    let (ruleset, decks) = probe(&extra, &["hand_drawer", "deck_drawer"]);
+    let mut dealt = 0;
+    for seed in 0..50 {
+        let state = ruleset
+            .create_game(&decks, Seed(seed))
+            .expect("the decks create a game")
+            .opening
+            .state;
+        assert_eq!(in_zone(&state, 0, "hand").len(), 5, "seed {seed}");
+        assert_eq!(in_zone(&state, 1, "hand").len(), 5, "seed {seed}");
+        dealt += usize::from(in_zone(&state, 0, "hand").iter().any(|&card| {
+            state
+                .card(card)
+                .is_some_and(|instance| instance.definition().as_str() == "hand_drawer")
+        }));
+    }
+    // Some opening hands did hold a drawer, so the test could have failed.
+    assert!(dealt > 0);
 }

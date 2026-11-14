@@ -707,6 +707,21 @@ fn draw_effect_in_a_card_effect_checks_its_zones_count_and_player() {
             },
         )
     );
+    assert_eq!(
+        with(EffectDraft::Draw {
+            player: "controller".to_string(),
+            from: "deck".to_string(),
+            to: "nowhere".to_string(),
+            count: 1,
+        }),
+        invalid_card_effect(
+            draw_path().key("to"),
+            DefinitionErrorKind::DanglingReference {
+                target: ReferenceTarget::Zone,
+                id: "nowhere".to_string(),
+            },
+        )
+    );
     // The source of a draw is an ordered zone, like the source of a draw step.
     assert_eq!(
         with(draw_of("controller", "hand", 1)),

@@ -51,8 +51,9 @@ cards:
     effects:
       - on: { enter: trash }
         do: [ { draw: { player: controller, from: deck, to: hand, count: 1 } } ]
-  # Draws when it enters the field, but only if it was played this Turn (a play sets
-  # recently_played): the `if` is false when it arrives in the field any other way.
+  # Draws when it enters the field, but only if `recently_played` is true (a play sets it, and it
+  # stays until the start of its controller's next Turn): false, for example, when it arrives in the
+  # field after the Turn it was played.
   - id: eager_recruit
     type: creature
     fields: { name: "Eager Recruit", cost: 1, power: 1 }
@@ -60,7 +61,7 @@ cards:
       - on: { enter: field }
         if: { eq: [ { ref: self.recently_played }, true ] }
         do: [ { draw: { player: controller, from: deck, to: hand, count: 1 } } ]
-  # A mutually-triggering pair: each of its two effects wakes the other, so playing it exceeds the
+  # A mutually-triggering pair of effects on one card: each wakes the other, so playing it exceeds the
   # Trigger Cap and the play is rejected. It exists to show the cap; keep it out of decks.
   - id: restless_shade
     type: creature
