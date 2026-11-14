@@ -91,6 +91,7 @@ win_conditions:
 - `when` is a single-key map. `draw_from_empty: <zone>` holds for a Player when a draw of that Player in the transition found the zone empty; the zone must be declared. An expression (`lte`, `gte`, `eq`, `and`, `is_card_type`, as `leader_dead` of the Small Ruleset is written) is about one card type, its **Subject**: the first name of every ref in it is a card type id (`leader.current_life`) and it must read exactly one. It holds for a Player when some card instance of the Subject owned by that Player, in any zone, makes it true in the state the transition produced. A scalar `when` is read as an expression too: `true` or `false` is rejected as `InvalidSubjectCount` (it reads no card type), and an int or a text as an expression type mismatch. Any other key is an unknown key.
 - `loser` is `owner`: the Player the condition holds for (for an expression, the owner of the card instance that makes it true). No other value exists.
 - Win conditions are evaluated once after every accepted action and at the end of Game creation, after everything the transition ran: `draw_from_empty` holds by the Events of that transition, and an expression reads the resulting state (so a Leader created at 0 life or below loses at once). For each Player in seat order the reason is the first condition, in declaration order, that holds for them; every Player who has one loses, the others win, and if all lose the Game is drawn. The Game then ends: no Action is accepted. Errors are addressed by id: `win_conditions[deck_out].when`, `win_conditions[deck_out].when.draw_from_empty`, `win_conditions[deck_out].loser`, and inside an expression `win_conditions[leader_dead].when.lte[0]`. Win conditions are validated last, after `turn`. The decisions are in ADR-0014 and ADR-0016.
+- `effects` is an optional top-level block `{ active_zone: <zone> }`: the zone where Card Effects act (ADR-0024). `active_zone` is required in it and must be a declared zone (`DanglingReference` at `effects.active_zone`); any other key is an unknown key. Without the block no Card Effect is ever active. It is validated after `win_conditions`.
 
 ## Card catalog
 
@@ -121,7 +122,7 @@ cards:
   - Keys of both shapes in one element are an error, and so is an element with neither `on` nor `while`. An unknown key of the envelope or of `modify` is a syntax error, and so is an `amount` that is not an unquoted integer. An unknown matcher key is not: the loader keeps it and the engine rejects it.
   - `if`, `while` and `do` are the expressions and action effects of the ruleset format (see Turn and actions). Their refs start with `self`, the carrying card: `{ ref: self }` is the card, `{ ref: self.power }` a field or an instance state of the card's own card type. No other name is in scope.
   - Errors are addressed like any catalog error, by card id: `cards[goblin].effects[0].do`, and for an error of an expression or an action effect at its own path under it, such as `cards[goblin].effects[0].if.and[0].eq[1]`.
-  - No Card Effect executes yet: a well-formed one is rejected, as an unsupported triggered or an unsupported continuous Card Effect at `cards[goblin].effects[0]`. The decisions are in ADR-0022.
+  - A triggered Card Effect does not execute yet: a well-formed one is rejected as an unsupported triggered Card Effect at `cards[goblin].effects[0]`. A continuous one is a derived read of a field (ADR-0024), active while its card is in the ruleset's `effects.active_zone`; its `while` reads base values only. The decisions are in ADR-0022 and ADR-0024.
 
 ## Deck list
 
@@ -147,4 +148,4 @@ inputs:
 
 ## Starter data for the Effects Ruleset
 
-The Small Ruleset is frozen; the Effects Ruleset is derived from it (ADR-0022). `effects-ruleset/effects-ruleset.yaml`, `effects-catalog.yaml` and `decks/deck-a.yaml` and `deck-b.yaml` are the Small files with `meta` renamed and `effects: true` on `creature`. The catalog carries no Card Effect yet.
+The Small Ruleset is frozen; the Effects Ruleset is derived from it (ADR-0022). `effects-ruleset/effects-ruleset.yaml`, `effects-catalog.yaml` and `decks/deck-a.yaml` and `deck-b.yaml` are the Small files with `meta` renamed and `effects: true` on `creature`. The catalog adds two creatures with a continuous Card Effect (`battle_veteran`, `weary_ox`), and the ruleset file adds the `effects` block below; the decks are unchanged.
