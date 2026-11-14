@@ -1,0 +1,19 @@
+# The test half of the gate in CLAUDE.md. The toolchain, components and the wasm
+# target come from rust-toolchain.toml, which rustup reads on the first cargo call.
+name: test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Run the workspace tests
+        run: cargo test --workspace
+      - name: Build the engine for wasm32-unknown-unknown
+        run: cargo build -p tcg-engine --target wasm32-unknown-unknown
