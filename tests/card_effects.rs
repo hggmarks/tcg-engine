@@ -2,8 +2,9 @@
 //! an already loaded Ruleset Definition (ADR-0022).
 //!
 //! Drafts are built in Rust, the way a code frontend would build them. Every error test asserts the
-//! whole `CatalogError`: kind and path. No Card Effect is supported yet, so every well-formed one
-//! ends in an unsupported error naming its path, one variant per kind.
+//! whole `CatalogError`: kind and path. A triggered Card Effect is not supported yet, so a
+//! well-formed one ends in an unsupported error naming its path; a continuous one is supported
+//! since ticket #51 (ADR-0024) and is kept by the Card Definition.
 
 mod common;
 
@@ -12,13 +13,13 @@ use common::{
     small_draft,
 };
 use tcg_engine::card_catalog::{
-    CardCatalog, CardCatalogDraft, CardDraft, CardEffectDraft, CatalogError, CatalogErrorKind,
-    ModifyDraft, TriggerMatcherDraft,
+    CardCatalog, CardCatalogDraft, CardDraft, CardEffect, CardEffectDraft, CardId, CatalogError,
+    CatalogErrorKind, ModifyDraft, TriggerMatcherDraft,
 };
 use tcg_engine::definition_path::DefinitionPath;
 use tcg_engine::ruleset_definition::{
-    DefinitionErrorKind, EffectDraft, ExpressionDraft, FieldType, FieldValue, RefDraft,
-    ReferenceTarget, RulesetDefinition,
+    DefinitionErrorKind, EffectDraft, Expression, ExpressionDraft, FieldName, FieldType,
+    FieldValue, RefDraft, ReferenceTarget, RulesetDefinition,
 };
 
 fn int(value: i64) -> FieldValue {
@@ -339,8 +340,8 @@ fn ill_typed_continuous_condition_is_rejected() {
 
 #[test]
 fn empty_and_condition_is_a_valid_bool() {
-    // `and: []` holds, so it passes expression checking; the Card Effect then fails only as
-    // unsupported.
+    // `and: []` holds, so it passes expression checking; a triggered Card Effect then fails only
+    // as unsupported, and a continuous one is accepted.
     let mut trigger = triggered();
     trigger.condition = Some(ExpressionDraft::And(vec![]));
     assert_eq!(
@@ -349,10 +350,11 @@ fn empty_and_condition_is_a_valid_bool() {
     );
     let mut continuous = continuous();
     continuous.while_condition = Some(ExpressionDraft::And(vec![]));
-    assert_eq!(
-        effects_error_of(vec![continuous]).kind,
-        CatalogErrorKind::UnsupportedContinuousCardEffect
-    );
+    assert!(CardCatalog::validate(
+        &effects_definition(),
+        catalog_of(vec![goblin_with(vec![continuous])])
+    )
+    .is_ok());
 }
 
 // ---- the self ref
@@ -561,14 +563,55 @@ fn loaded_triggered_card_effect_is_unsupported() {
 }
 
 #[test]
-fn loaded_continuous_card_effect_is_unsupported() {
+fn triggered_card_effects_still_reject_as_unsupported() {
+    // A triggered Card Effect is rejected as before, whatever comes before it: a continuous
+    // element in front of it is accepted and the triggered one is reported at its own index.
     assert_eq!(
-        effects_error_of(vec![continuous()]),
+        effects_error_of(vec![triggered()]),
         CatalogError {
             path: effect_path(),
-            kind: CatalogErrorKind::UnsupportedContinuousCardEffect,
+            kind: CatalogErrorKind::UnsupportedTriggeredCardEffect,
         }
     );
+    assert_eq!(
+        effects_error_of(vec![continuous(), triggered()]),
+        CatalogError {
+            path: path().key("cards").id("goblin").key("effects").index(1),
+            kind: CatalogErrorKind::UnsupportedTriggeredCardEffect,
+        }
+    );
+}
+
+#[test]
+fn continuous_card_effects_load_into_the_card_definition() {
+    // A continuous Card Effect is accepted on the carrying card and is visible in `effects()`, in
+    // file order, with its `while` and its `modify`.
+    let mut second = continuous();
+    second.modify = Some(ModifyDraft {
+        field: "power".to_string(),
+        amount: -3,
+    });
+    let catalog = CardCatalog::validate(
+        &effects_definition(),
+        catalog_of(vec![goblin_with(vec![continuous(), second])]),
+    )
+    .expect("continuous Card Effects are supported");
+    let goblin = catalog
+        .card(&CardId::new("goblin"))
+        .expect("the card exists");
+    let [CardEffect::Continuous(first), CardEffect::Continuous(second)] = goblin.effects() else {
+        panic!(
+            "expected two continuous Card Effects, got {:?}",
+            goblin.effects()
+        );
+    };
+    assert_eq!(
+        first.condition(),
+        &Expression::Literal(FieldValue::Bool(true))
+    );
+    assert_eq!(first.modify().field(), &FieldName::new("power"));
+    assert_eq!(first.modify().amount(), 1);
+    assert_eq!(second.modify().amount(), -3);
 }
 
 #[test]
@@ -578,15 +621,25 @@ fn card_effects_are_checked_in_order_and_the_first_error_wins() {
     let mut empty_do = triggered();
     empty_do.body = Some(vec![]);
     assert_eq!(
-        effects_error_of(vec![empty_do.clone(), continuous()]).path,
+        effects_error_of(vec![empty_do.clone(), triggered()]).path,
         effect_path().key("do")
     );
     assert_eq!(
-        effects_error_of(vec![continuous(), empty_do]),
+        effects_error_of(vec![triggered(), empty_do.clone()]),
         CatalogError {
             path: effect_path(),
-            kind: CatalogErrorKind::UnsupportedContinuousCardEffect,
+            kind: CatalogErrorKind::UnsupportedTriggeredCardEffect,
         }
+    );
+    // A continuous element is accepted, so the ill-formed one after it is reported.
+    assert_eq!(
+        effects_error_of(vec![continuous(), empty_do]).path,
+        path()
+            .key("cards")
+            .id("goblin")
+            .key("effects")
+            .index(1)
+            .key("do")
     );
 }
 

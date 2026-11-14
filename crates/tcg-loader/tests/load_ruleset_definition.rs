@@ -150,6 +150,7 @@ fn small_ruleset_draft() -> RulesetDraft {
         actions: vec![],
         turn: None,
         win_conditions: vec![],
+        effects: None,
     }
 }
 

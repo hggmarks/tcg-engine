@@ -124,6 +124,7 @@ fn base() -> RulesetDraft {
         actions: vec![],
         turn: None,
         win_conditions: vec![],
+        effects: None,
     }
 }
 
