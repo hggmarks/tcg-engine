@@ -8,7 +8,7 @@
 //! `regenerate_golden_snapshot`, never by a normal run (ADR-0017).
 
 use tcg_engine::card_catalog::{
-    CardEffectDraft, CatalogError, CatalogErrorKind, ModifyDraft, TriggerMatcherDraft,
+    CardEffectDraft, CatalogError, CatalogErrorKind, ModifyDraft, ScopeDraft, TriggerMatcherDraft,
 };
 use tcg_engine::deck_list::DeckList;
 use tcg_engine::declarative::{
@@ -324,6 +324,9 @@ fn effects_ruleset_loads_and_creates_a_game() {
             "restless_shade",
             "battle_veteran",
             "weary_ox",
+            "banner_bearer",
+            "dread_herald",
+            "rally_captain",
         ]
     );
     let small_ruleset = small();
@@ -468,6 +471,53 @@ fn unknown_primitive_or_operator_in_a_card_effect_is_an_unknown_key() {
 }
 
 #[test]
+fn an_unknown_key_in_a_scope_is_a_syntax_error() {
+    // Like `modify`'s, a scope knows its four keys and nothing else.
+    let yaml = sage_yaml(
+        "      - { while: true, scope: { zone: field, card_type: creature, range: 2 }, modify: { field: power, amount: 1 } }\n",
+    );
+    let error = yaml_error(&yaml);
+    assert_eq!(
+        error.kind,
+        YamlErrorKind::UnknownKey {
+            key: "range".to_string()
+        }
+    );
+    assert_eq!(error.path, sage_syntax_path().key("scope").key("range"));
+}
+
+#[test]
+fn a_scope_is_read_into_its_draft() {
+    // The loader reads no meaning: the owner text and the flag reach the engine as written, and a
+    // missing key stays absent.
+    let yaml = sage_yaml(
+        "      - while: true\n        scope: { zone: field, card_type: creature, owner: opponent, include_self: true }\n        modify: { field: power, amount: -1 }\n      - while: true\n        scope: { zone: field, card_type: creature }\n        modify: { field: power, amount: 1 }\n",
+    );
+    let draft = parse_card_catalog_draft(&yaml).expect("parses");
+    assert_eq!(
+        draft.cards[0]
+            .effects
+            .iter()
+            .map(|effect| effect.scope.clone())
+            .collect::<Vec<_>>(),
+        vec![
+            Some(ScopeDraft {
+                zone: "field".to_string(),
+                card_type: "creature".to_string(),
+                owner: Some("opponent".to_string()),
+                include_self: Some(true),
+            }),
+            Some(ScopeDraft {
+                zone: "field".to_string(),
+                card_type: "creature".to_string(),
+                owner: None,
+                include_self: None,
+            }),
+        ]
+    );
+}
+
+#[test]
 fn non_integer_modify_amount_is_a_syntax_error() {
     for amount in ["\"1\"", "1.5", "true", "~"] {
         let yaml = sage_yaml(&format!(
@@ -518,6 +568,7 @@ fn card_effect_envelope_loads_into_the_draft() {
                 }]),
                 while_condition: None,
                 modify: None,
+                scope: None,
             },
             CardEffectDraft {
                 on: Some(TriggerMatcherDraft::TurnStart),
@@ -529,6 +580,7 @@ fn card_effect_envelope_loads_into_the_draft() {
                 }]),
                 while_condition: None,
                 modify: None,
+                scope: None,
             },
             CardEffectDraft {
                 on: None,
@@ -539,6 +591,7 @@ fn card_effect_envelope_loads_into_the_draft() {
                     field: "power".to_string(),
                     amount: 1,
                 }),
+                scope: None,
             },
         ]
     );
