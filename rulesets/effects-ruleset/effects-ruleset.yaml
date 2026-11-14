@@ -138,3 +138,8 @@ win_conditions:
   - id: deck_out
     when: { draw_from_empty: deck }
     loser: owner
+
+# Card Effects act only on cards in this zone (ADR-0023): a `turn_start` trigger fires only while its
+# card is there. An `enter` trigger fires on arrival in the zone it names, whichever zone that is.
+effects:
+  active_zone: field

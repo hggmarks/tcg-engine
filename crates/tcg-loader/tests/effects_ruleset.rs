@@ -294,8 +294,7 @@ fn effects_ruleset_loads_and_creates_a_game() {
     assert_eq!(definition.meta().version().get(), 1);
     assert_eq!(ruleset.catalog().meta().ruleset().as_str(), "effects");
 
-    // The one difference from the Small Ruleset: creatures may carry Card Effects. The catalog
-    // carries none yet.
+    // The one difference from the Small Ruleset: creatures may carry Card Effects.
     let allows: Vec<(&str, bool)> = definition
         .card_types()
         .iter()
@@ -305,10 +304,20 @@ fn effects_ruleset_loads_and_creates_a_game() {
         allows,
         [("leader", false), ("creature", true), ("mana", false)]
     );
+    // The catalog's creatures carrying Card Effects are the ones that exist for triggers
+    // (effects-ruleset.md); the cards of the Small catalog carry none.
+    let small_ruleset = small();
+    let small_ids: Vec<&str> = small_ruleset
+        .catalog()
+        .cards()
+        .iter()
+        .map(|card| card.id().as_str())
+        .collect();
     assert!(ruleset
         .catalog()
         .cards()
         .iter()
+        .filter(|card| small_ids.contains(&card.id().as_str()))
         .all(|card| card.effects().is_empty()));
 }
 
@@ -410,8 +419,8 @@ fn unknown_primitive_or_operator_in_a_card_effect_is_an_unknown_key() {
     // unknown primitive or operator is an unknown key at the map that names it.
     let cases = [
         (
-            "      - { on: { enter: field }, do: [ { draw: {} } ] }\n",
-            "draw",
+            "      - { on: { enter: field }, do: [ { discard: {} } ] }\n",
+            "discard",
             sage_syntax_path().key("do").index(0),
         ),
         (
@@ -528,18 +537,14 @@ fn card_effect_envelope_loads_into_the_draft() {
 }
 
 #[test]
-fn the_engine_rejects_every_loaded_card_effect_with_a_path() {
+fn the_engine_accepts_a_loaded_triggered_card_effect_and_rejects_a_continuous_one_with_a_path() {
     // A YAML frontend gets the engine's errors, with the same paths a code frontend gets.
     let triggered = sage_yaml(
         "      - { on: { enter: field }, if: { gte: [ { ref: self.power }, 1 ] }, do: [ { move: { card: { ref: self }, to: trash } } ] }\n",
     );
-    assert_eq!(
-        catalog_error(&triggered),
-        CatalogError {
-            path: sage_effect_path(),
-            kind: CatalogErrorKind::UnsupportedTriggeredCardEffect,
-        }
-    );
+    let catalog = load_card_catalog(&effects_definition(), &triggered)
+        .expect("a triggered Card Effect is supported (ADR-0023)");
+    assert_eq!(catalog.cards()[0].effects().len(), 1);
 
     let continuous = sage_yaml("      - { while: true, modify: { field: power, amount: 1 } }\n");
     assert_eq!(
@@ -574,4 +579,107 @@ fn the_engine_rejects_every_loaded_card_effect_with_a_path() {
         ),
         other => panic!("expected EffectsNotAllowed, got {other:?}"),
     }
+}
+
+// ---- the triggered Card Effects of the catalog (ADR-0023)
+
+/// A deck of the shipped catalog that lists the five creatures with a Card Effect, which no
+/// shipped deck does.
+const EFFECT_CARDS_DECK: &str = "inputs:
+  - input: leader
+    cards:
+      - { card: captain_ardel, count: 1 }
+  - input: main_deck
+    cards:
+      - { card: lamp_keeper,     count: 4 }
+      - { card: dawn_scout,      count: 4 }
+      - { card: grave_jackal,    count: 4 }
+      - { card: eager_recruit,   count: 4 }
+      - { card: restless_shade,  count: 4 }
+      - { card: goblin_scout,    count: 4 }
+      - { card: moss_sprite,     count: 4 }
+      - { card: ember_hound,     count: 4 }
+      - { card: river_otter,     count: 4 }
+      - { card: stone_golem,     count: 4 }
+      - { card: shadow_cat,      count: 4 }
+      - { card: iron_guard,      count: 4 }
+      - { card: wind_hawk,       count: 2 }
+  - input: mana_deck
+    cards:
+      - { card: mana, count: 10 }
+";
+
+/// The transition of Player 0 playing their `id` card, arranged into the hand, in Main of Turn 1
+/// (the Start phase moved 2 mana cards, enough for every cost here).
+fn play_catalog_card(id: &str) -> Result<Vec<Event>, tcg_engine::declarative::Rejection> {
+    let ruleset = effects();
+    let deck = load_deck_list(ruleset.definition(), ruleset.catalog(), EFFECT_CARDS_DECK)
+        .expect("the deck is legal");
+    let mut state = ruleset
+        .create_game(&[deck.clone(), deck], Seed(1))
+        .expect("the decks create a game")
+        .opening
+        .state;
+    let card = state
+        .cards()
+        .iter()
+        .find(|card| card.owner() == PlayerId(0) && card.definition().as_str() == id)
+        .expect("the deck has the card")
+        .id();
+    let from = state.zone_of(card).expect("in a zone").clone();
+    if from.as_str() != "hand" {
+        state
+            .apply(&Event::CardMoved {
+                card,
+                player: PlayerId(0),
+                from,
+                to: tcg_engine::ruleset_definition::ZoneId::new("hand"),
+            })
+            .expect("the arrangement is legal");
+    }
+    ruleset
+        .transition(&state, &play(0, card))
+        .map(|transition| transition.trace.into_events())
+}
+
+#[test]
+fn the_catalog_creatures_with_a_card_effect_trigger_as_documented() {
+    let ruleset = effects();
+    let effects_of = |id: &str| {
+        ruleset
+            .catalog()
+            .cards()
+            .iter()
+            .find(|card| card.id().as_str() == id)
+            .map(|card| card.effects().len())
+    };
+    for (id, count) in [
+        ("lamp_keeper", 1),
+        ("dawn_scout", 1),
+        ("grave_jackal", 1),
+        ("eager_recruit", 1),
+        ("restless_shade", 2),
+        ("goblin_scout", 0),
+    ] {
+        assert_eq!(effects_of(id), Some(count), "{id}");
+    }
+
+    // Played, the two drawers draw a card for their controller: the last Event of the trace.
+    for id in ["lamp_keeper", "eager_recruit"] {
+        let events = play_catalog_card(id).expect("the play is accepted");
+        assert!(
+            matches!(
+                events.last(),
+                Some(Event::CardMoved { player, from, to, .. })
+                    if *player == PlayerId(0) && from.as_str() == "deck" && to.as_str() == "hand"
+            ),
+            "{id}: {events:?}"
+        );
+    }
+
+    // The Shade's two effects wake each other for ever: the cap rejects the play.
+    assert_eq!(
+        play_catalog_card("restless_shade"),
+        Err(tcg_engine::declarative::Rejection::TriggerCapExceeded { cap: 100 })
+    );
 }

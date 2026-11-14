@@ -8,8 +8,8 @@
 //! version), then each card in file order. Within a card: its id grammar, its id against earlier
 //! cards, its card type, then its fields in file order (a repeat, an unknown field, a type
 //! mismatch), then the missing fields in schema order, then its effects (ADR-0022): the list against
-//! the card type's `effects` flag, then each element in order, which is checked fully and, since no
-//! Card Effect is supported yet, rejected as unsupported.
+//! the card type's `effects` flag, then each element in order, which is checked fully and, if it is
+//! continuous (not supported yet), rejected as unsupported (ADR-0023).
 
 mod draft;
 mod error;

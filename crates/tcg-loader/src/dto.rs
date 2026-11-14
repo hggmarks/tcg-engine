@@ -11,10 +11,10 @@ use serde::de::{self, Deserializer, IgnoredAny, MapAccess, SeqAccess, Visitor};
 use serde::Deserialize;
 use tcg_engine::ruleset_definition::{
     ActionDraft, AutomaticStepDraft, CardTypeDraft, ConditionDraft, CostDraft, DeckInputDraft,
-    EffectDraft, ExpressionDraft, FieldDraft, FieldTypeDraft, FieldValue, InitializerDraft,
-    InstanceStateDraft, MetaDraft, ParamAlternativeDraft, ParamCardsDraft, ParamDraft,
-    ParametersDraft, PhaseDraft, RefDraft, RulesetDraft, SetupStepDraft, TurnDraft, Visibility,
-    WinConditionDraft, WinConditionWhenDraft, ZoneDraft,
+    EffectDraft, EffectsDraft, ExpressionDraft, FieldDraft, FieldTypeDraft, FieldValue,
+    InitializerDraft, InstanceStateDraft, MetaDraft, ParamAlternativeDraft, ParamCardsDraft,
+    ParamDraft, ParametersDraft, PhaseDraft, RefDraft, RulesetDraft, SetupStepDraft, TurnDraft,
+    Visibility, WinConditionDraft, WinConditionWhenDraft, ZoneDraft,
 };
 
 #[derive(Deserialize)]
@@ -35,6 +35,15 @@ pub(crate) struct RulesetDto {
     turn: Option<TurnDto>,
     #[serde(default)]
     win_conditions: Vec<WinConditionDto>,
+    // An absent key is `None`; a present key must be a block.
+    #[serde(default, deserialize_with = "some")]
+    effects: Option<EffectsDto>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EffectsDto {
+    active_zone: String,
 }
 
 /// A value of a key that is present: unlike `Option`, a null is not accepted as `None`.
@@ -315,7 +324,7 @@ struct ShuffleDto {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct DrawDto {
+pub(crate) struct DrawDto {
     player: String,
     from: String,
     to: String,
@@ -445,6 +454,7 @@ pub(crate) enum EffectDto {
     Move(MoveEffectDto),
     SetState(SetStateEffectDto),
     AddState(AddStateEffectDto),
+    Draw(DrawDto),
     If {
         condition: ExpressionDto,
         then: Vec<EffectDto>,
@@ -482,6 +492,7 @@ const EFFECT_KEYS: &[&str] = &[
     "move",
     "set_state",
     "add_state",
+    "draw",
     "if",
     "then",
     "else",
@@ -515,6 +526,7 @@ impl<'de> Deserialize<'de> for EffectDto {
                         "move" => Some(EffectDto::Move(map.next_value()?)),
                         "set_state" => Some(EffectDto::SetState(map.next_value()?)),
                         "add_state" => Some(EffectDto::AddState(map.next_value()?)),
+                        "draw" => Some(EffectDto::Draw(map.next_value()?)),
                         "if" => {
                             condition = Some(map.next_value()?);
                             None
@@ -887,6 +899,9 @@ impl RulesetDto {
                 .into_iter()
                 .map(WinConditionDto::into_draft)
                 .collect(),
+            effects: self.effects.map(|effects| EffectsDraft {
+                active_zone: effects.active_zone,
+            }),
         }
     }
 }
@@ -949,6 +964,12 @@ impl EffectDto {
                 card: RefDraft(step.card.reference),
                 state: step.state,
                 amount: step.amount,
+            },
+            Self::Draw(step) => EffectDraft::Draw {
+                player: step.player,
+                from: step.from,
+                to: step.to,
+                count: step.count,
             },
             Self::If {
                 condition,

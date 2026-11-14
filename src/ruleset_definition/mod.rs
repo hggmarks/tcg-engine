@@ -47,17 +47,18 @@ pub(crate) use validate::SelfScope;
 
 pub use draft::{
     ActionDraft, AutomaticStepDraft, CardTypeDraft, ConditionDraft, CostDraft, DeckInputDraft,
-    EffectDraft, ExpressionDraft, FieldDraft, FieldTypeDraft, InitializerDraft, InstanceStateDraft,
-    MetaDraft, ParamAlternativeDraft, ParamCardsDraft, ParamDraft, ParametersDraft, PhaseDraft,
-    RefDraft, RulesetDraft, SetupStepDraft, TurnDraft, WinConditionDraft, WinConditionWhenDraft,
-    ZoneDraft,
+    EffectDraft, EffectsDraft, ExpressionDraft, FieldDraft, FieldTypeDraft, InitializerDraft,
+    InstanceStateDraft, MetaDraft, ParamAlternativeDraft, ParamCardsDraft, ParamDraft,
+    ParametersDraft, PhaseDraft, RefDraft, RulesetDraft, SetupStepDraft, TurnDraft,
+    WinConditionDraft, WinConditionWhenDraft, ZoneDraft,
 };
 pub use error::{DefinitionError, DefinitionErrorKind, RefType, ReferenceTarget};
 pub use model::{
     ActionDefinition, ActionId, AutomaticStep, CardRef, CardType, CardTypeId, CardValue, Condition,
-    Cost, DeckInput, DeckInputId, Effect, Expression, FieldName, FieldSchema, FieldType,
-    FieldValue, Initializer, InstanceStateSchema, Loser, Meta, Param, ParamAlternative, ParamName,
-    ParamOwner, Parameters, Phase, PhaseId, PhaseKind, PlayerCount, PlayerPosition, PlayerSelector,
-    Position, RulesetDefinition, RulesetId, RulesetVersion, SetupStep, StateName, TurnStructure,
-    ValueRef, Visibility, WinCondition, WinConditionId, WinConditionWhen, Zone, ZoneId,
+    Cost, DeckInput, DeckInputId, Effect, EffectPlayer, Expression, FieldName, FieldSchema,
+    FieldType, FieldValue, Initializer, InstanceStateSchema, Loser, Meta, Param, ParamAlternative,
+    ParamName, ParamOwner, Parameters, Phase, PhaseId, PhaseKind, PlayerCount, PlayerPosition,
+    PlayerSelector, Position, RulesetDefinition, RulesetId, RulesetVersion, SetupStep, StateName,
+    TurnStructure, ValueRef, Visibility, WinCondition, WinConditionId, WinConditionWhen, Zone,
+    ZoneId,
 };

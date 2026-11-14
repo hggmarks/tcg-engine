@@ -51,6 +51,9 @@ pub(super) struct Refs<'a> {
     /// What a ref to a name nothing declares is a dangling reference to: a param, or for a win
     /// condition a card type.
     pub(super) missing: ReferenceTarget,
+    /// Whether `self`, the carrying card, is in scope: only in a Card Effect, where the
+    /// `controller` of a `draw` is its owner.
+    pub(super) has_self: bool,
 }
 
 impl Refs<'_> {
