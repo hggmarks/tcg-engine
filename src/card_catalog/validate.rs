@@ -172,8 +172,8 @@ fn validate_fields(
 }
 
 /// The Card Effects of a card (ADR-0022): the list against the card type's `effects` flag, then each
-/// element in order. Every element is checked and built; the first one that is well-formed is then
-/// rejected as unsupported, so the list that is returned is always empty today.
+/// element in order. Every element is checked and built; the first triggered one is then rejected as
+/// unsupported, so the list that is returned holds continuous Card Effects only today (ADR-0024).
 fn validate_effects(
     ruleset: &RulesetDefinition,
     card_type: &CardType,
@@ -200,12 +200,12 @@ fn validate_effects(
     Ok(effects)
 }
 
-/// Why a well-formed Card Effect cannot be loaded yet. Ticket [17] lifts it for a triggered one and
-/// ticket [18] for a continuous one, each by returning `None` here.
+/// Why a well-formed Card Effect cannot be loaded yet. Ticket [17] lifts it for a triggered one by
+/// returning `None` here; a continuous one has been supported since ticket [18] (ADR-0024).
 fn unsupported(effect: &CardEffect) -> Option<CatalogErrorKind> {
     match effect {
         CardEffect::Triggered(_) => Some(CatalogErrorKind::UnsupportedTriggeredCardEffect),
-        CardEffect::Continuous(_) => Some(CatalogErrorKind::UnsupportedContinuousCardEffect),
+        CardEffect::Continuous(_) => None,
     }
 }
 

@@ -138,3 +138,9 @@ win_conditions:
   - id: deck_out
     when: { draw_from_empty: deck }
     loser: owner
+
+# Where Card Effects act (ADR-0024). A Continuous Card Effect modifies a field of its own card only
+# while that card is in this zone; a card anywhere else reads its base values. Without this block no
+# Card Effect is ever active.
+effects:
+  active_zone: field

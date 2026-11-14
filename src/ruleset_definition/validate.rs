@@ -99,6 +99,7 @@ pub(super) fn validate(draft: RulesetDraft) -> Result<RulesetDefinition, Definit
         actions,
         turn,
         win_conditions,
+        effects,
     } = draft;
 
     if !is_valid_id(&meta.id) {
@@ -200,6 +201,17 @@ pub(super) fn validate(draft: RulesetDraft) -> Result<RulesetDefinition, Definit
         )?);
     }
 
+    let effects_active_zone = effects
+        .as_ref()
+        .map(|effects| {
+            validate_zone_reference(
+                &effects.active_zone,
+                &valid_zones,
+                DefinitionPath::root().key("effects").key("active_zone"),
+            )
+        })
+        .transpose()?;
+
     Ok(RulesetDefinition {
         meta: Meta {
             id: RulesetId::new(meta.id),
@@ -216,6 +228,7 @@ pub(super) fn validate(draft: RulesetDraft) -> Result<RulesetDefinition, Definit
         actions: valid_actions,
         turn: valid_turn,
         win_conditions: valid_win_conditions,
+        effects_active_zone,
     })
 }
 

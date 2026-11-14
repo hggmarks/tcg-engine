@@ -15,6 +15,7 @@ mod execution;
 mod expression;
 mod game_end;
 mod legal_actions;
+mod modifiers;
 mod record;
 mod state;
 mod turn_cycle;

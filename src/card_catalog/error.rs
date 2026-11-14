@@ -73,8 +73,6 @@ pub enum CatalogErrorKind {
     /// `cards[goblin].effects[0]`: a well-formed triggered Card Effect, which no ticket executes
     /// yet.
     UnsupportedTriggeredCardEffect,
-    /// `cards[goblin].effects[0]`: a well-formed continuous Card Effect, which no ticket reads yet.
-    UnsupportedContinuousCardEffect,
 }
 
 impl fmt::Display for CatalogErrorKind {
@@ -151,9 +149,6 @@ impl fmt::Display for CatalogErrorKind {
             Self::InvalidCardEffect { error } => write!(f, "{error}"),
             Self::UnsupportedTriggeredCardEffect => {
                 write!(f, "triggered Card Effects are not supported yet")
-            }
-            Self::UnsupportedContinuousCardEffect => {
-                write!(f, "continuous Card Effects are not supported yet")
             }
         }
     }

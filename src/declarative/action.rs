@@ -17,7 +17,9 @@ use super::game_end;
 use super::state::{ApplyError, CardInstanceId, GameState};
 use crate::player::PlayerId;
 use crate::ruleset::{EventTrace, Ruleset, Transition};
-use crate::ruleset_definition::{ActionId, CardTypeId, ParamName, PhaseKind, StateName, ZoneId};
+use crate::ruleset_definition::{
+    ActionId, CardTypeId, FieldName, ParamName, PhaseKind, StateName, ZoneId,
+};
 
 /// An Action of the declarative Ruleset: `player` takes the declared action `action`, with one
 /// argument for each of its params, in param order.
@@ -107,6 +109,12 @@ pub enum Rejection {
     StateOverflow {
         card: CardInstanceId,
         state: StateName,
+    },
+    /// A derived read of the int field `field` of `card` would go beyond what an int can hold: its
+    /// base value plus the Field Modifiers that are active, or the sum of those (ADR-0024).
+    DerivedValueOverflow {
+        card: CardInstanceId,
+        field: FieldName,
     },
     /// Ending the Turn would take the Turn Number above its maximum.
     TurnNumberOverflow,
@@ -213,6 +221,12 @@ impl fmt::Display for Rejection {
                 f,
                 "adding to the state `{}` of the card instance {} overflows",
                 state.as_str(),
+                card.0
+            ),
+            Self::DerivedValueOverflow { card, field } => write!(
+                f,
+                "reading the field `{}` of the card instance {} overflows",
+                field.as_str(),
                 card.0
             ),
             Self::TurnNumberOverflow => write!(f, "the Turn Number cannot go any higher"),
