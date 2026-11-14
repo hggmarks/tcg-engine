@@ -61,6 +61,7 @@ pub struct RulesetDefinition {
     pub(super) actions: Vec<ActionDefinition>,
     pub(super) turn: Option<TurnStructure>,
     pub(super) win_conditions: Vec<WinCondition>,
+    pub(super) effects_active_zone: Option<ZoneId>,
 }
 
 impl RulesetDefinition {
@@ -126,6 +127,12 @@ impl RulesetDefinition {
     /// then never ends.
     pub fn win_conditions(&self) -> &[WinCondition] {
         &self.win_conditions
+    }
+
+    /// The zone where Card Effects act: a Card Effect is active only on a card in it (ADR-0024).
+    /// `None` when the ruleset declares none, and no Card Effect is then ever active.
+    pub fn effects_active_zone(&self) -> Option<&ZoneId> {
+        self.effects_active_zone.as_ref()
     }
 }
 

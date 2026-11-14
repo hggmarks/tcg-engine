@@ -1,5 +1,5 @@
 # Starter card catalog for the Effects Ruleset (rulesets/effects-ruleset/effects-ruleset.yaml): the
-# cards of the Small Ruleset catalog. No card carries a Card Effect yet.
+# cards of the Small Ruleset catalog, and two creatures that carry a Continuous Card Effect.
 # Format: rulesets/formats.md.
 
 meta: { ruleset: effects, ruleset_version: 1 }
@@ -27,6 +27,11 @@ cards:
   - { id: moon_witch,   type: creature, fields: { name: "Moon Witch",   cost: 3, power: 2 } }
   - { id: bone_giant,   type: creature, fields: { name: "Bone Giant",   cost: 5, power: 7 } }
   - { id: storm_roc,    type: creature, fields: { name: "Storm Roc",    cost: 4, power: 4 } }
+
+  # Continuous Card Effects (ADR-0024). A creature taps when it attacks, before the combat compares
+  # powers, so while it is tapped it fights with the modified power.
+  - { id: battle_veteran, type: creature, fields: { name: "Battle Veteran", cost: 1, power: 2 }, effects: [ { while: { eq: [ { ref: self.tapped }, true ] }, modify: { field: power, amount: 1 } } ] }
+  - { id: weary_ox,       type: creature, fields: { name: "Weary Ox",       cost: 2, power: 3 }, effects: [ { while: { eq: [ { ref: self.tapped }, true ] }, modify: { field: power, amount: -1 } } ] }
 
   # Mana: the mana card has no fields, so one definition serves the whole mana deck.
   - { id: mana, type: mana, fields: {} }

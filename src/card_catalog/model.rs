@@ -91,8 +91,8 @@ impl CardDefinition {
             .map(|(_, value)| value)
     }
 
-    /// The Card Effects the card carries, in file order. Every Card Effect is still rejected as
-    /// unsupported when a catalog is validated, so this is empty (ADR-0022).
+    /// The Card Effects the card carries, in file order. A triggered Card Effect is still rejected
+    /// as unsupported when a catalog is validated, so these are continuous (ADR-0022, ADR-0024).
     pub fn effects(&self) -> &[CardEffect] {
         &self.effects
     }

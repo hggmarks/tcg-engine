@@ -11,10 +11,10 @@ use serde::de::{self, Deserializer, IgnoredAny, MapAccess, SeqAccess, Visitor};
 use serde::Deserialize;
 use tcg_engine::ruleset_definition::{
     ActionDraft, AutomaticStepDraft, CardTypeDraft, ConditionDraft, CostDraft, DeckInputDraft,
-    EffectDraft, ExpressionDraft, FieldDraft, FieldTypeDraft, FieldValue, InitializerDraft,
-    InstanceStateDraft, MetaDraft, ParamAlternativeDraft, ParamCardsDraft, ParamDraft,
-    ParametersDraft, PhaseDraft, RefDraft, RulesetDraft, SetupStepDraft, TurnDraft, Visibility,
-    WinConditionDraft, WinConditionWhenDraft, ZoneDraft,
+    EffectDraft, EffectsDraft, ExpressionDraft, FieldDraft, FieldTypeDraft, FieldValue,
+    InitializerDraft, InstanceStateDraft, MetaDraft, ParamAlternativeDraft, ParamCardsDraft,
+    ParamDraft, ParametersDraft, PhaseDraft, RefDraft, RulesetDraft, SetupStepDraft, TurnDraft,
+    Visibility, WinConditionDraft, WinConditionWhenDraft, ZoneDraft,
 };
 
 #[derive(Deserialize)]
@@ -35,6 +35,15 @@ pub(crate) struct RulesetDto {
     turn: Option<TurnDto>,
     #[serde(default)]
     win_conditions: Vec<WinConditionDto>,
+    #[serde(default, deserialize_with = "some")]
+    effects: Option<EffectsDto>,
+}
+
+/// The `effects` block: the zone where Card Effects act.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EffectsDto {
+    active_zone: String,
 }
 
 /// A value of a key that is present: unlike `Option`, a null is not accepted as `None`.
@@ -887,6 +896,9 @@ impl RulesetDto {
                 .into_iter()
                 .map(WinConditionDto::into_draft)
                 .collect(),
+            effects: self.effects.map(|effects| EffectsDraft {
+                active_zone: effects.active_zone,
+            }),
         }
     }
 }
