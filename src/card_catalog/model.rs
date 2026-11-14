@@ -134,7 +134,7 @@ impl TriggeredCardEffect {
 pub enum TriggerMatcher {
     /// The card enters the zone.
     Enter(ZoneId),
-    /// A Turn begins.
+    /// The controller's Turn began (the semantics land in ticket [17]).
     TurnStart,
 }
 

@@ -45,7 +45,7 @@ pub struct CardEffectDraft {
 pub enum TriggerMatcherDraft {
     /// `enter: <zone>`.
     Enter(String),
-    /// `turn_start`.
+    /// `turn_start`: the controller's Turn began.
     TurnStart,
     Other(String),
 }

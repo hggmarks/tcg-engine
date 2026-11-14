@@ -306,7 +306,7 @@ fn validate_continuous(
         .check_condition(condition, at.clone().key("while"))
         .map_err(invalid)?;
     let Some(modify) = modify else {
-        return fail(at.clone(), CatalogErrorKind::MissingModify);
+        return fail(at.clone().key("modify"), CatalogErrorKind::MissingModify);
     };
     let field_path = at.clone().key("modify").key("field");
     let Some(schema) = card_type

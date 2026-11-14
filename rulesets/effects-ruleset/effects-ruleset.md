@@ -10,13 +10,13 @@ Every rule not stated on this page is the Small Ruleset's, word for word: parame
 |---|---|---|
 | `meta` | `id: small`, `version: 1` | `id: effects`, `version: 1` |
 | **Creature** `effects` | `false` | `true`: a creature definition may carry Card Effects |
-| **Leader** and **Mana** `effects` | `false` | `false`: a Leader never reaches the Field, a mana card has no int field to modify |
+| **Leader** and **Mana** `effects` | `false` | `false`: Card Effects act only while the card is on the Field (roadmap #48); a Leader never reaches the Field, and a mana card never does either and has no int field to modify |
 
 The files are `effects-ruleset.yaml` (the encoding), `effects-catalog.yaml` (the cards of the Small catalog, with `meta: { ruleset: effects, ruleset_version: 1 }`) and `decks/deck-a.yaml` and `decks/deck-b.yaml` (the Small sample decks). **No card of the catalog carries a Card Effect yet.**
 
 ## Card Effects
 
-A card definition's `effects` is a list of **Card Effects**, allowed only on a card type declared `effects: true`. A Card Effect is one of two shapes, told apart by their first key:
+A card definition's `effects` is a list of **Card Effects**, allowed only on a card type declared `effects: true`. A Card Effect is one of two shapes, told apart by which shape keys appear (`on`, `if`, `do` or `while`, `modify`; any key of both shapes is a mixed shape):
 
 ```yaml
 effects:
@@ -28,7 +28,7 @@ effects:
 ```
 
 - **Triggered**: `on` (required), `if` (optional) and `do` (required, at least one effect).
-  - `on` is a single-key map. `enter: <zone>` matches the card entering that zone (a declared zone); `turn_start: {}` matches a Turn beginning. Any other key is an unknown matcher.
+  - `on` is a single-key map. `enter: <zone>` matches the card entering that zone (a declared zone); `turn_start: {}` matches the controller's Turn beginning (the semantics land in ticket [17], #50). Any other key is an unknown matcher.
   - `if` must be a bool Expression.
   - `do` is a list of Action Effects (`move`, `set_state`, `add_state`, `if`; ADR-0015, ADR-0016), except that **`end_turn` is rejected anywhere in it**, including inside an `if` effect: a trigger that ends the Turn is not covered yet.
 - **Continuous**: `while` (a bool Expression) and `modify: { field, amount }` (required). `field` must be a field the card's card type declares, of type int (an instance state is not a field); `amount` is an unquoted integer. The modifier is meant to add `amount` to that field of the carrying card while the condition holds.
@@ -48,6 +48,6 @@ The loader reads the syntax and rejects an unknown key of the envelope or of `mo
 | **Card Effect** | An ability a card definition carries, in the `effects` list of a card of a type with `effects: true`. Triggered or continuous. |
 | **Triggered Card Effect** | `on`, optional `if` and `do`: when an Event matches the Trigger Matcher and the condition holds, the Action Effects run. |
 | **Continuous Card Effect** | `while` and `modify`: while the condition holds, the Field Modifier applies to the carrying card. |
-| **Trigger Matcher** | What a triggered Card Effect matches among Events: `enter` (the card enters a zone) or `turn_start`. |
+| **Trigger Matcher** | What a triggered Card Effect matches among Events: `enter` (the card enters a zone) or `turn_start` (the controller's Turn began). |
 | **Field Modifier** | `modify: { field, amount }`: an additive int on a field of the carrying card's definition. |
 | **Self** | `self`, the carrying card, the only name in a Card Effect's scope. |

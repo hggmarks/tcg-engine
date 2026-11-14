@@ -55,7 +55,7 @@ pub enum CatalogErrorKind {
     MissingDo,
     /// `cards[goblin].effects[0].do`: the list is empty.
     EmptyDo,
-    /// `cards[goblin].effects[0]`: a continuous Card Effect without `modify`.
+    /// `cards[goblin].effects[0].modify`: a continuous Card Effect without `modify`.
     MissingModify,
     /// `cards[goblin].effects[0].on`: only `enter` and `turn_start` exist.
     UnknownTriggerMatcher { matcher: String },

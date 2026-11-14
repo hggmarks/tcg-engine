@@ -322,10 +322,10 @@ An ability carried by a Card Definition, one element of its `effects` list, allo
 A Card Effect `on: <Trigger Matcher>`, optional `if: <Expression>` and `do: [<Action Effects>]` with at least one effect (`MissingDo`, `EmptyDo`). Meant to run its effects when an Event matches the matcher and the condition holds. `end_turn` anywhere in `do`, nested in an `if` effect included, is `EndTurnInCardEffect`. Its condition and effects are checked with `self` as the only name in scope (a Self Ref).
 
 **Continuous Card Effect**:
-A Card Effect `while: <Expression>` with `modify: { field, amount }` (`MissingModify`). Meant to apply its Field Modifier to the carrying card while the condition, a bool Expression checked in the scope of `self`, holds.
+A Card Effect `while: <Expression>` with `modify: { field, amount }` (`MissingModify`, at `modify`). Meant to apply its Field Modifier to the carrying card while the condition, a bool Expression checked in the scope of `self`, holds.
 
 **Trigger Matcher**:
-What a Triggered Card Effect matches among Events, the single key of `on`: `enter: <zone>` (the card enters a declared zone, `DanglingReference` if the zone does not exist) or `turn_start: {}` (a Turn begins). Any other key is `UnknownTriggerMatcher`: the loader keeps it as `Other` and the engine rejects it.
+What a Triggered Card Effect matches among Events, the single key of `on`: `enter: <zone>` (the card enters a declared zone, `DanglingReference` if the zone does not exist) or `turn_start: {}` (the controller's Turn began; the semantics land in ticket [17], #50). Any other key is `UnknownTriggerMatcher`: the loader keeps it as `Other` and the engine rejects it.
 
 **Self Ref**:
 `self`, the carrying card, the only name in the scope of a Card Effect's `if`, `while` and `do`, typed as the card's own card type (exactly one possible card type). `{ ref: self }` is a Card Ref and `{ ref: self.power }` a Value Ref, resolved by the machinery of Refs and Expressions (ADR-0015, ADR-0016); any other name is a dangling reference to a param.

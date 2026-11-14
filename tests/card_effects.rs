@@ -240,7 +240,7 @@ fn continuous_card_effect_without_modify_is_rejected() {
     assert_eq!(
         effects_error_of(vec![missing]),
         CatalogError {
-            path: effect_path(),
+            path: effect_path().key("modify"),
             kind: CatalogErrorKind::MissingModify,
         }
     );
