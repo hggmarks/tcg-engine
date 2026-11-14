@@ -2,8 +2,8 @@
 //! an already loaded Ruleset Definition (ADR-0022).
 //!
 //! Drafts are built in Rust, the way a code frontend would build them. Every error test asserts the
-//! whole `CatalogError`: kind and path. No Card Effect is supported yet, so every well-formed one
-//! ends in an unsupported error naming its path, one variant per kind.
+//! whole `CatalogError`: kind and path. A well-formed triggered Card Effect is accepted (ticket #50,
+//! ADR-0023); a continuous one still ends in an unsupported error naming its path.
 
 mod common;
 
@@ -70,6 +70,16 @@ fn error_of(definition: &RulesetDefinition, effects: Vec<CardEffectDraft>) -> Ca
 /// The error for the effects of one goblin, validated against the effects ruleset.
 fn effects_error_of(effects: Vec<CardEffectDraft>) -> CatalogError {
     error_of(&effects_definition(), effects)
+}
+
+/// Validates one goblin with these effects against the effects ruleset: they must be accepted.
+fn assert_accepted(effects: Vec<CardEffectDraft>) {
+    if let Err(error) = CardCatalog::validate(
+        &effects_definition(),
+        catalog_of(vec![goblin_with(effects)]),
+    ) {
+        panic!("expected the Card Effects to be accepted, got {error:?}");
+    }
 }
 
 /// `cards[goblin].effects[0]`.
@@ -342,14 +352,11 @@ fn ill_typed_continuous_condition_is_rejected() {
 
 #[test]
 fn empty_and_condition_is_a_valid_bool() {
-    // `and: []` holds, so it passes expression checking; the Card Effect then fails only as
-    // unsupported.
+    // `and: []` holds, so it passes expression checking; a triggered Card Effect is then accepted
+    // and a continuous one fails only as unsupported.
     let mut trigger = triggered();
     trigger.condition = Some(ExpressionDraft::And(vec![]));
-    assert_eq!(
-        effects_error_of(vec![trigger]).kind,
-        CatalogErrorKind::UnsupportedTriggeredCardEffect
-    );
+    assert_accepted(vec![trigger]);
     let mut continuous = continuous();
     continuous.while_condition = Some(ExpressionDraft::And(vec![]));
     assert_eq!(
@@ -362,20 +369,13 @@ fn empty_and_condition_is_a_valid_bool() {
 
 #[test]
 fn self_ref_resolves_against_the_carrying_card_type() {
-    // `self.power` in `if` and `{ ref: self }` in `do` resolve: the Card Effect fails only as
-    // unsupported.
+    // `self.power` in `if` and `{ ref: self }` in `do` resolve: the Card Effect is accepted.
     let mut using_self = triggered();
     using_self.condition = Some(ExpressionDraft::Gte(
         Box::new(ExpressionDraft::Ref(self_ref("self.power"))),
         Box::new(ExpressionDraft::Literal(int(1))),
     ));
-    assert_eq!(
-        effects_error_of(vec![using_self]),
-        CatalogError {
-            path: effect_path(),
-            kind: CatalogErrorKind::UnsupportedTriggeredCardEffect,
-        }
-    );
+    assert_accepted(vec![using_self]);
 
     // Self is typed as the card's own type: a field that creatures lack (a Leader's `life`) does
     // not resolve.
@@ -420,10 +420,7 @@ fn self_ref_resolves_against_the_carrying_card_type() {
         state: "tapped".to_string(),
         value: FieldValue::Bool(true),
     }]);
-    assert_eq!(
-        effects_error_of(vec![set_declared]).kind,
-        CatalogErrorKind::UnsupportedTriggeredCardEffect
-    );
+    assert_accepted(vec![set_declared]);
     let mut set_lacking = triggered();
     set_lacking.body = Some(vec![EffectDraft::SetState {
         card: self_ref("self"),
@@ -536,31 +533,19 @@ fn modify_of_non_int_field_is_rejected() {
     );
 }
 
-// ---- unsupported until implemented
+// ---- unsupported until implemented (continuous only; triggered was lifted by ADR-0023)
 
 #[test]
-fn loaded_triggered_card_effect_is_unsupported() {
-    // The first element, and a later one after a well-formed first.
-    assert_eq!(
-        effects_error_of(vec![triggered()]),
-        CatalogError {
-            path: effect_path(),
-            kind: CatalogErrorKind::UnsupportedTriggeredCardEffect,
-        }
-    );
+fn loaded_triggered_card_effect_is_accepted() {
+    // ADR-0023 lifted the rejection of triggered Card Effects (ADR-0022).
+    assert_accepted(vec![triggered()]);
     let mut with_condition = triggered();
     with_condition.condition = Some(ExpressionDraft::And(vec![]));
-    assert_eq!(
-        effects_error_of(vec![with_condition]).kind,
-        CatalogErrorKind::UnsupportedTriggeredCardEffect
-    );
+    assert_accepted(vec![with_condition]);
     // `on: { turn_start }` is a triggered Card Effect too.
     let mut turn_start = triggered();
     turn_start.on = Some(TriggerMatcherDraft::TurnStart);
-    assert_eq!(
-        effects_error_of(vec![turn_start]).kind,
-        CatalogErrorKind::UnsupportedTriggeredCardEffect
-    );
+    assert_accepted(vec![turn_start]);
 }
 
 #[test]
@@ -605,8 +590,8 @@ fn card_effect_of_a_card_in_a_full_catalog_is_addressed_by_its_card_id() {
         .all(|definition| definition.effects().is_empty()));
     assert!(CardCatalog::validate(&effects_definition(), small_catalog_draft()).is_ok());
 
-    // An effect on the third creature is addressed by that card's id, after the cards before it
-    // were accepted.
+    // A continuous effect on the third creature is addressed by that card's id, after the cards
+    // before it and the triggered effect before it were accepted.
     let mut draft = small_catalog_draft();
     let id = creature_id(3);
     let Some(third) = draft.cards.iter_mut().find(|card| card.id == id) else {
@@ -619,8 +604,8 @@ fn card_effect_of_a_card_in_a_full_catalog_is_addressed_by_its_card_id() {
     assert_eq!(
         error,
         CatalogError {
-            path: path().key("cards").id(&id).key("effects").index(0),
-            kind: CatalogErrorKind::UnsupportedTriggeredCardEffect,
+            path: path().key("cards").id(&id).key("effects").index(1),
+            kind: CatalogErrorKind::UnsupportedContinuousCardEffect,
         }
     );
 }

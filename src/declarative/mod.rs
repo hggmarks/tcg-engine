@@ -17,6 +17,7 @@ mod game_end;
 mod legal_actions;
 mod record;
 mod state;
+mod triggers;
 mod turn_cycle;
 
 pub use action::{Action, Argument, Rejection};

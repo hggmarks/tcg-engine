@@ -61,6 +61,7 @@ pub struct RulesetDefinition {
     pub(super) actions: Vec<ActionDefinition>,
     pub(super) turn: Option<TurnStructure>,
     pub(super) win_conditions: Vec<WinCondition>,
+    pub(super) effects_active_zone: Option<ZoneId>,
 }
 
 impl RulesetDefinition {
@@ -126,6 +127,12 @@ impl RulesetDefinition {
     /// then never ends.
     pub fn win_conditions(&self) -> &[WinCondition] {
         &self.win_conditions
+    }
+
+    /// The zone where Card Effects act (`effects.active_zone`); `None` when the ruleset declares
+    /// none, and no triggered Card Effect is then ever eligible (ADR-0023).
+    pub fn effects_active_zone(&self) -> Option<&ZoneId> {
+        self.effects_active_zone.as_ref()
     }
 }
 
@@ -556,12 +563,27 @@ pub enum Effect {
         state: StateName,
         amount: i64,
     },
+    /// Draws for `player`: moves `count` cards one at a time from the Top of `from` onto the Top
+    /// of `to` of that player; an empty `from` emits DrawFromEmptyZone and stops.
+    Draw {
+        player: EffectPlayer,
+        from: ZoneId,
+        to: ZoneId,
+        count: NonZeroU32,
+    },
     /// Runs `then` if the condition holds when the effect runs, `otherwise` if not.
     If {
         condition: Expression,
         then: Vec<Effect>,
         otherwise: Vec<Effect>,
     },
+}
+
+/// The player an effect acts for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EffectPlayer {
+    /// The owner of `self`, the carrying card.
+    Controller,
 }
 
 /// The phases of every Turn, in order. Exactly one has actions: the Game waits there for the

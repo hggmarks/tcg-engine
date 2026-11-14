@@ -294,8 +294,7 @@ fn effects_ruleset_loads_and_creates_a_game() {
     assert_eq!(definition.meta().version().get(), 1);
     assert_eq!(ruleset.catalog().meta().ruleset().as_str(), "effects");
 
-    // The one difference from the Small Ruleset: creatures may carry Card Effects. The catalog
-    // carries none yet.
+    // The one difference from the Small Ruleset: creatures may carry Card Effects.
     let allows: Vec<(&str, bool)> = definition
         .card_types()
         .iter()
@@ -305,10 +304,20 @@ fn effects_ruleset_loads_and_creates_a_game() {
         allows,
         [("leader", false), ("creature", true), ("mana", false)]
     );
+    // The catalog's creatures carrying Card Effects are the ones that exist for triggers
+    // (effects-ruleset.md); the cards of the Small catalog carry none.
+    let small_ruleset = small();
+    let small_ids: Vec<&str> = small_ruleset
+        .catalog()
+        .cards()
+        .iter()
+        .map(|card| card.id().as_str())
+        .collect();
     assert!(ruleset
         .catalog()
         .cards()
         .iter()
+        .filter(|card| small_ids.contains(&card.id().as_str()))
         .all(|card| card.effects().is_empty()));
 }
 
@@ -410,8 +419,8 @@ fn unknown_primitive_or_operator_in_a_card_effect_is_an_unknown_key() {
     // unknown primitive or operator is an unknown key at the map that names it.
     let cases = [
         (
-            "      - { on: { enter: field }, do: [ { draw: {} } ] }\n",
-            "draw",
+            "      - { on: { enter: field }, do: [ { discard: {} } ] }\n",
+            "discard",
             sage_syntax_path().key("do").index(0),
         ),
         (
@@ -528,18 +537,14 @@ fn card_effect_envelope_loads_into_the_draft() {
 }
 
 #[test]
-fn the_engine_rejects_every_loaded_card_effect_with_a_path() {
+fn the_engine_accepts_a_loaded_triggered_card_effect_and_rejects_a_continuous_one_with_a_path() {
     // A YAML frontend gets the engine's errors, with the same paths a code frontend gets.
     let triggered = sage_yaml(
         "      - { on: { enter: field }, if: { gte: [ { ref: self.power }, 1 ] }, do: [ { move: { card: { ref: self }, to: trash } } ] }\n",
     );
-    assert_eq!(
-        catalog_error(&triggered),
-        CatalogError {
-            path: sage_effect_path(),
-            kind: CatalogErrorKind::UnsupportedTriggeredCardEffect,
-        }
-    );
+    let catalog = load_card_catalog(&effects_definition(), &triggered)
+        .expect("a triggered Card Effect is supported (ADR-0023)");
+    assert_eq!(catalog.cards()[0].effects().len(), 1);
 
     let continuous = sage_yaml("      - { while: true, modify: { field: power, amount: 1 } }\n");
     assert_eq!(
