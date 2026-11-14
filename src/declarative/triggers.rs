@@ -112,8 +112,9 @@ fn could_wake(event: &Event, instance: &CardInstance) -> bool {
     }
 }
 
-/// Whether `event` wakes a trigger with this matcher on `instance`. `enter` matches `CardMoved`
-/// only, in any zone, and `turn_start` matches only while the card is in the active zone.
+/// Whether `event` wakes a trigger with this matcher on `instance`. Without an Active Zone no
+/// trigger is eligible. `enter` matches `CardMoved` only, arriving in the matcher's own zone
+/// whichever zone that is; `turn_start` matches only while the card is in the Active Zone.
 fn matches(
     ruleset: &DeclarativeRuleset,
     execution: &Execution,
@@ -121,16 +122,15 @@ fn matches(
     instance: &CardInstance,
     matcher: &TriggerMatcher,
 ) -> bool {
+    let Some(active) = ruleset.definition().effects_active_zone() else {
+        return false;
+    };
     match (matcher, event) {
         (TriggerMatcher::Enter(zone), Event::CardMoved { card, to, .. }) => {
             *card == instance.id() && to == zone
         }
         (TriggerMatcher::TurnStart, Event::TurnBegan { player, .. }) => {
-            *player == instance.owner()
-                && ruleset
-                    .definition()
-                    .effects_active_zone()
-                    .is_some_and(|active| execution.state.zone_of(instance.id()) == Some(active))
+            *player == instance.owner() && execution.state.zone_of(instance.id()) == Some(active)
         }
         _ => false,
     }

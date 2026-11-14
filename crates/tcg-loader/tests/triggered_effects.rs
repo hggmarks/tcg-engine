@@ -718,3 +718,24 @@ fn triggered_card_effects_are_visible_on_their_card_definitions() {
         .expect("the catalog has the card");
     assert_eq!(lantern.effects().len(), 1);
 }
+
+#[test]
+fn without_an_effects_block_no_trigger_is_eligible() {
+    // The Effects Ruleset without its `effects` block has no Active Zone: not even `enter` fires,
+    // while the same Action on the real ruleset draws.
+    let yaml = EFFECTS_RULESET.replace("effects:\n  active_zone: field", "");
+    let without = load_ruleset_definition(&yaml).expect("the ruleset loads without the block");
+    assert_eq!(without.effects_active_zone(), None);
+    let catalog = load_card_catalog(&without, &catalog_yaml()).expect("the test catalog loads");
+    let ruleset = DeclarativeRuleset::new(without, catalog);
+
+    let (seed, lantern) = seed_with_in_hand(&ruleset, "lantern_bearer");
+    let state = opening(&ruleset, seed);
+    assert_eq!(
+        events_of(&ruleset, &state, &play(0, lantern)),
+        [
+            moved(0, lantern, "hand", "field"),
+            state_changed(lantern, "recently_played", true),
+        ]
+    );
+}

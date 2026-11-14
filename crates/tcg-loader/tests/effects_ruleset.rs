@@ -580,3 +580,106 @@ fn the_engine_accepts_a_loaded_triggered_card_effect_and_rejects_a_continuous_on
         other => panic!("expected EffectsNotAllowed, got {other:?}"),
     }
 }
+
+// ---- the triggered Card Effects of the catalog (ADR-0023)
+
+/// A deck of the shipped catalog that lists the five creatures with a Card Effect, which no
+/// shipped deck does.
+const EFFECT_CARDS_DECK: &str = "inputs:
+  - input: leader
+    cards:
+      - { card: captain_ardel, count: 1 }
+  - input: main_deck
+    cards:
+      - { card: lamp_keeper,     count: 4 }
+      - { card: dawn_scout,      count: 4 }
+      - { card: grave_jackal,    count: 4 }
+      - { card: eager_recruit,   count: 4 }
+      - { card: restless_shade,  count: 4 }
+      - { card: goblin_scout,    count: 4 }
+      - { card: moss_sprite,     count: 4 }
+      - { card: ember_hound,     count: 4 }
+      - { card: river_otter,     count: 4 }
+      - { card: stone_golem,     count: 4 }
+      - { card: shadow_cat,      count: 4 }
+      - { card: iron_guard,      count: 4 }
+      - { card: wind_hawk,       count: 2 }
+  - input: mana_deck
+    cards:
+      - { card: mana, count: 10 }
+";
+
+/// The transition of Player 0 playing their `id` card, arranged into the hand, in Main of Turn 1
+/// (the Start phase moved 2 mana cards, enough for every cost here).
+fn play_catalog_card(id: &str) -> Result<Vec<Event>, tcg_engine::declarative::Rejection> {
+    let ruleset = effects();
+    let deck = load_deck_list(ruleset.definition(), ruleset.catalog(), EFFECT_CARDS_DECK)
+        .expect("the deck is legal");
+    let mut state = ruleset
+        .create_game(&[deck.clone(), deck], Seed(1))
+        .expect("the decks create a game")
+        .opening
+        .state;
+    let card = state
+        .cards()
+        .iter()
+        .find(|card| card.owner() == PlayerId(0) && card.definition().as_str() == id)
+        .expect("the deck has the card")
+        .id();
+    let from = state.zone_of(card).expect("in a zone").clone();
+    if from.as_str() != "hand" {
+        state
+            .apply(&Event::CardMoved {
+                card,
+                player: PlayerId(0),
+                from,
+                to: tcg_engine::ruleset_definition::ZoneId::new("hand"),
+            })
+            .expect("the arrangement is legal");
+    }
+    ruleset
+        .transition(&state, &play(0, card))
+        .map(|transition| transition.trace.into_events())
+}
+
+#[test]
+fn the_catalog_creatures_with_a_card_effect_trigger_as_documented() {
+    let ruleset = effects();
+    let effects_of = |id: &str| {
+        ruleset
+            .catalog()
+            .cards()
+            .iter()
+            .find(|card| card.id().as_str() == id)
+            .map(|card| card.effects().len())
+    };
+    for (id, count) in [
+        ("lamp_keeper", 1),
+        ("dawn_scout", 1),
+        ("grave_jackal", 1),
+        ("eager_recruit", 1),
+        ("restless_shade", 2),
+        ("goblin_scout", 0),
+    ] {
+        assert_eq!(effects_of(id), Some(count), "{id}");
+    }
+
+    // Played, the two drawers draw a card for their controller: the last Event of the trace.
+    for id in ["lamp_keeper", "eager_recruit"] {
+        let events = play_catalog_card(id).expect("the play is accepted");
+        assert!(
+            matches!(
+                events.last(),
+                Some(Event::CardMoved { player, from, to, .. })
+                    if *player == PlayerId(0) && from.as_str() == "deck" && to.as_str() == "hand"
+            ),
+            "{id}: {events:?}"
+        );
+    }
+
+    // The Shade's two effects wake each other for ever: the cap rejects the play.
+    assert_eq!(
+        play_catalog_card("restless_shade"),
+        Err(tcg_engine::declarative::Rejection::TriggerCapExceeded { cap: 100 })
+    );
+}

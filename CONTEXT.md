@@ -159,7 +159,7 @@ A declared name (ruleset id, zone, card type, field name, instance-state name, D
 The validated, typed set of Card Definitions of one ruleset id and version, in file order. It is built only by `CardCatalog::validate` against an already loaded Ruleset Definition (stage 2 of loading).
 
 **Card Definition**:
-The immutable definition of a card: its Card Id, its Card Type and one FieldValue per field of that type, kept in the schema order of the type, and its Card Effects (none can load yet, ADR-0022). It is distinct from a card instance, which is runtime state.
+The immutable definition of a card: its Card Id, its Card Type and one FieldValue per field of that type, kept in the schema order of the type, and its Card Effects (only triggered ones load, ADR-0022, ADR-0023). It is distinct from a card instance, which is runtime state.
 
 **Card Id**:
 The Identifier of a Card Definition, unique within its Card Catalog.
@@ -313,19 +313,19 @@ What an action pays before its effects run. The only Cost is Tap. Paying is atom
 The Cost `tap: { zone, count }`. It needs `count` (a Value Ref to an int, so `tap.count` takes a Ref and no literal yet) untapped cards in that zone of the acting Player and taps the first `count` of them in zone list order, bottom first, even in an unordered zone. An untapped card is one whose card type declares `tapped` and whose value is false. A count of 0 taps nothing.
 
 **Action Effect**:
-What an action does once its costs are paid, built from engine primitives: End Turn, `move: { card, to }` (the card goes from the zone it is in onto the Top of `to`, a zone of its owner), `set_state: { card, state, value }` (an Event only if the value changes), Add State and If Effect. Distinct from a **Card Effect**: an ability a Card Definition carries. The `do` of a triggered Card Effect is a list of Action Effects, except End Turn.
+What an action does once its costs are paid, built from engine primitives: End Turn, `move: { card, to }` (the card goes from the zone it is in onto the Top of `to`, a zone of its owner), `set_state: { card, state, value }` (an Event only if the value changes), Add State, **Draw Effect** (only in a Card Effect) and If Effect. Distinct from a **Card Effect**: an ability a Card Definition carries. The `do` of a triggered Card Effect is a list of Action Effects, except End Turn.
 
 **Card Effect**:
-An ability carried by a Card Definition, one element of its `effects` list, allowed only on a card type declared `effects: true` (`EffectsNotAllowed` otherwise). It has one of two shapes, the **Card Effect envelope**: a **Triggered Card Effect** (`on`, optional `if`, `do`) or a **Continuous Card Effect** (`while`, `modify`). An element with keys of both is `MixedCardEffectShapes`, one with neither `on` nor `while` is `MissingCardEffectShape`. The envelope is validated by the engine against the Ruleset Definition, but no Card Effect executes yet: every loaded one is rejected as unsupported (ADR-0022). Distinct from an Action Effect, which an action performs.
+An ability carried by a Card Definition, one element of its `effects` list, allowed only on a card type declared `effects: true` (`EffectsNotAllowed` otherwise). It has one of two shapes, the **Card Effect envelope**: a **Triggered Card Effect** (`on`, optional `if`, `do`) or a **Continuous Card Effect** (`while`, `modify`). An element with keys of both is `MixedCardEffectShapes`, one with neither `on` nor `while` is `MissingCardEffectShape`. The envelope is validated by the engine against the Ruleset Definition. A Triggered Card Effect executes (ADR-0023); a Continuous one is still rejected as unsupported (ADR-0022). Distinct from an Action Effect, which an action performs.
 
 **Triggered Card Effect**:
-A Card Effect `on: <Trigger Matcher>`, optional `if: <Expression>` and `do: [<Action Effects>]` with at least one effect (`MissingDo`, `EmptyDo`). Meant to run its effects when an Event matches the matcher and the condition holds. `end_turn` anywhere in `do`, nested in an `if` effect included, is `EndTurnInCardEffect`. Its condition and effects are checked with `self` as the only name in scope (a Self Ref).
+A Card Effect `on: <Trigger Matcher>`, optional `if: <Expression>` and `do: [<Action Effects>]` with at least one effect (`MissingDo`, `EmptyDo`). When an Event matches the matcher it is enqueued, and when it fires its effects run if the condition holds (**Trigger Resolution**, below). `end_turn` anywhere in `do`, nested in an `if` effect included, is `EndTurnInCardEffect`. Its condition and effects are checked with `self` as the only name in scope (a Self Ref).
 
 **Continuous Card Effect**:
 A Card Effect `while: <Expression>` with `modify: { field, amount }` (`MissingModify`, at `modify`). Meant to apply its Field Modifier to the carrying card while the condition, a bool Expression checked in the scope of `self`, holds.
 
 **Trigger Matcher**:
-What a Triggered Card Effect matches among Events, the single key of `on`: `enter: <zone>` (the card enters a declared zone, `DanglingReference` if the zone does not exist) or `turn_start: {}` (the controller's Turn began; the semantics land in ticket [17], #50). Any other key is `UnknownTriggerMatcher`: the loader keeps it as `Other` and the engine rejects it.
+What a Triggered Card Effect matches among Events, the single key of `on`: `enter: <zone>` (the card enters a declared zone, `DanglingReference` if the zone does not exist) or `turn_start: {}` (the controller's Turn began). `enter` matches a `CardMoved` Event only, never `CardCreated`, so Game creation fires nothing. Any other key is `UnknownTriggerMatcher`: the loader keeps it as `Other` and the engine rejects it.
 
 **Self Ref**:
 `self`, the carrying card, the only name in the scope of a Card Effect's `if`, `while` and `do`, typed as the card's own card type (exactly one possible card type). `{ ref: self }` is a Card Ref and `{ ref: self.power }` a Value Ref, resolved by the machinery of Refs and Expressions (ADR-0015, ADR-0016); any other name is a dangling reference to a param.
@@ -334,10 +334,25 @@ What a Triggered Card Effect matches among Events, the single key of `on`: `ente
 `modify: { field, amount }` of a Continuous Card Effect: an additive integer on a field of the carrying card's Card Definition, not on its instance state. The field must be declared by the card's type (`UnknownModifyField`, an instance state included) and be an int (`ModifyFieldNotInt`); `amount` is an unquoted integer.
 
 **Effects Ruleset**:
-The ruleset of Phase C (`rulesets/effects-ruleset/`, id `effects`), derived from the Small Ruleset, which is frozen. It differs by `meta` and by `effects: true` on `creature`; its catalog carries no Card Effect yet.
+The ruleset of Phase C (`rulesets/effects-ruleset/`, id `effects`), derived from the Small Ruleset, which is frozen. It differs by `meta`, by `effects: true` on `creature` and by `effects.active_zone: field`; its catalog adds five creatures that carry a triggered Card Effect.
 
-**Unsupported Triggered Card Effect**, **Unsupported Continuous Card Effect**:
-The errors `UnsupportedTriggeredCardEffect` and `UnsupportedContinuousCardEffect`, at `cards[goblin].effects[0]`, that reject a well-formed Card Effect of that kind until the ticket that executes it lifts the rejection (ADR-0014's `UnsupportedWinCondition` is the precedent). They are independent, one per kind.
+**Unsupported Continuous Card Effect**:
+The error `UnsupportedContinuousCardEffect`, at `cards[goblin].effects[0]`, that rejects a well-formed Continuous Card Effect until the ticket that reads it lifts the rejection (ADR-0014's `UnsupportedWinCondition` is the precedent). `UnsupportedTriggeredCardEffect` is gone: ADR-0023 lifted it.
+
+**Active Zone**:
+The zone where Card Effects act, `effects.active_zone` of the ruleset file (the Effects Ruleset's is `field`). With the block, a `turn_start` trigger fires only while its card is there, and `enter: <zone>` fires on arrival in the matcher's own zone, whichever it is (the enter exception). A ruleset without the block has no Active Zone, and no trigger is then ever eligible, `enter` included (ADR-0023).
+
+**Trigger Resolution**:
+After an action's costs and effects, the Events of the transition are scanned in order from the first, costs included; an Event that matches a Trigger Matcher enqueues that trigger, first in first out, in the canonical order (cards of the Active Player first, then seat order, then `state.cards()` order, then the order of the card's `effects`). A trigger fires by reading its `if` and running its `do` to completion; the Events it emits are scanned in turn, so a **cascade** queues behind the triggers already waiting. Eligibility is decided when an Event is scanned: an enqueued trigger fires even if its card has moved. Resolution runs only in a transition, never in Game creation, and before the win check, which runs once on the final state (ADR-0023).
+
+**Trigger Cap**:
+The hard limit of trigger resolutions in one transition: 100. Every trigger taken from the queue counts, one whose `if` is false included. The 101st rejects the whole transition with `Rejection::TriggerCapExceeded { cap }`; the input GameState is untouched.
+
+**Controller**:
+The owner of `self`, the carrying card: the Player a Draw Effect in a Card Effect draws for (`player: controller`). Outside a Card Effect there is no `self`, so an action's `draw` with `controller` is `ControllerOutsideCardEffect`.
+
+**Draw Effect**:
+The Action Effect `draw: { player, from, to, count }`, only meaningful in a Card Effect: moves `count` cards one at a time from the Top of `from` (an ordered zone) onto the Top of `to`; an empty `from` emits `DrawFromEmptyZone` and stops, which is how a trigger reaches the `draw_from_empty` win conditions (ADR-0014).
 
 **End Turn**:
 The effect `end_turn: {}`. It runs every phase after the current one, then the next Player in seat order begins Turn n+1 and their phases run until the Action Phase, all in the same transition.
