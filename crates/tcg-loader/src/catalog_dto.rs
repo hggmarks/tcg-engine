@@ -69,7 +69,7 @@ impl<'de> Deserialize<'de> for FieldsDto {
 }
 
 /// A Card Effect, one element of `effects`: the keys of the triggered shape (`on`, `if`, `do`) and
-/// of the continuous shape (`while`, `modify`), all optional. Which shape it is, and whether the
+/// of the continuous shape (`while`, `modify`, `scope`), all optional. Which shape it is, and whether the
 /// keys mix, is the engine's to decide; only an unknown key is a syntax error. A key that is
 /// present must have a value, so `on:` with nothing after it is an error, not an absent key.
 #[derive(Deserialize)]

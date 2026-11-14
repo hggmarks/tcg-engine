@@ -13,8 +13,8 @@ use super::arguments::BoundCards;
 use super::creation::DeclarativeRuleset;
 use super::expression;
 use super::state::{CardInstanceId, GameState};
-use crate::card_catalog::{CardEffect, ScopeOwner};
-use crate::ruleset_definition::{FieldName, ParamName, ZoneId};
+use crate::card_catalog::{CardDefinition, CardEffect, ScopeOwner};
+use crate::ruleset_definition::{FieldName, ParamName};
 
 /// The sum the active Field Modifiers add to the int field `field` of `card`'s definition,
 /// computed at read time (ADR-0024, ADR-0025). A modifier is active while its carrying card is in
@@ -33,8 +33,8 @@ pub(super) fn modifier_sum(
         card,
         field: field.clone(),
     };
-    let mut sum = own_modifier_sum(ruleset, state, card, field, active_zone)?;
-    // The carriers of set-scoped modifiers are in the active zone, whichever zone `card` is in.
+    // The card being read is resolved once: its owner, its definition and its zone serve its own
+    // modifiers and every carrier's scope.
     let Some(target) = state.card(card) else {
         return Err(Rejection::CardDataMismatch { card });
     };
@@ -44,6 +44,12 @@ pub(super) fn modifier_sum(
         .card(target.definition())
         .ok_or(Rejection::CardDataMismatch { card })?;
     let target_zone = state.zone_of(card);
+    let mut sum = if target_zone == Some(active_zone) {
+        own_modifier_sum(ruleset, state, card, target_definition, field)?
+    } else {
+        0
+    };
+    // The carriers of set-scoped modifiers are in the active zone, whichever zone `card` is in.
     for &player in state.player_order().players() {
         let Some(carriers) = state.zone(player, active_zone) else {
             continue;
@@ -89,23 +95,15 @@ pub(super) fn modifier_sum(
     Ok(sum)
 }
 
-/// The part of the sum that comes from the Card Effects of `card` itself that have no scope.
+/// The part of the sum that comes from the Card Effects of `card` itself that have no scope; `card`
+/// is in the active zone and `definition` is its Card Definition.
 fn own_modifier_sum(
     ruleset: &DeclarativeRuleset,
     state: &GameState,
     card: CardInstanceId,
+    definition: &CardDefinition,
     field: &FieldName,
-    active_zone: &ZoneId,
 ) -> Result<i64, Rejection> {
-    if state.zone_of(card) != Some(active_zone) {
-        return Ok(0);
-    }
-    let Some(definition) = state
-        .card(card)
-        .and_then(|instance| ruleset.catalog().card(instance.definition()))
-    else {
-        return Err(Rejection::CardDataMismatch { card });
-    };
     let bound = BoundCards::of(ParamName::new("self"), card);
     let mut sum: i64 = 0;
     for effect in definition.effects() {

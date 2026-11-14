@@ -13,7 +13,8 @@
 //! its power is at least 3), `titan_aura` (an aura of `i64::MAX`), `drill_sergeant` (+1 power to the
 //! controller's other creatures while it is tapped), `tithe_collector` (-1 cost to the creatures in
 //! its controller's hand), `proud_aura` (power 2; an aura over itself and the other creatures, and a
-//! trigger that draws when it enters the field if its power is at least 3) and `frail_leader`
+//! trigger that draws when it enters the field if its power is at least 3), `exit_aura` (the same
+//! with a trigger on entering the trash, used in a deck that replaces `titan_aura`) and `frail_leader`
 //! (life 1).
 //!
 //! A combat is decided by `attacker.power >= target.power`, and a Leader has power 2 and loses 1 life
@@ -57,6 +58,7 @@ const TEST_CARDS: &str = "
   - { id: drill_sergeant, type: creature, fields: { name: \"Drill Sergeant\", cost: 1, power: 1 }, effects: [ { while: { eq: [ { ref: self.tapped }, true ] }, scope: { zone: field, card_type: creature }, modify: { field: power, amount: 1 } } ] }
   - { id: tithe_collector, type: creature, fields: { name: \"Tithe Collector\", cost: 1, power: 1 }, effects: [ { while: true, scope: { zone: hand, card_type: creature }, modify: { field: cost, amount: -1 } } ] }
   - { id: proud_aura, type: creature, fields: { name: \"Proud Aura\", cost: 1, power: 2 }, effects: [ { while: true, scope: { zone: field, card_type: creature, include_self: true }, modify: { field: power, amount: 1 } }, { on: { enter: field }, if: { gte: [ { ref: self.power }, 3 ] }, do: [ { draw: { player: controller, from: deck, to: hand, count: 1 } } ] } ] }
+  - { id: exit_aura, type: creature, fields: { name: \"Exit Aura\", cost: 1, power: 2 }, effects: [ { while: true, scope: { zone: field, card_type: creature, include_self: true }, modify: { field: power, amount: 1 } }, { on: { enter: trash }, if: { gte: [ { ref: self.power }, 3 ] }, do: [ { draw: { player: controller, from: deck, to: hand, count: 1 } } ] } ] }
   - { id: frail_leader, type: leader, fields: { name: \"Frail Leader\", power: 2, life: 1 } }
 ";
 
@@ -118,6 +120,10 @@ const CONDITION_SEED: u64 = 99;
 const DISCOUNT_SEED: u64 = 8;
 /// Seat 0: `proud_aura`.
 const PROUD_SEED: u64 = 2;
+/// Seat 0: `river_otter`. Seat 1: `exit_aura` (in a deck that replaces `titan_aura` with it).
+const EXIT_SEED: u64 = 20;
+/// Three Players. Seat 0: `dread_herald`. Seats 1 and 2: `moss_sprite`.
+const THREE_SEED: u64 = 6;
 
 // ---- helpers
 
@@ -1310,4 +1316,122 @@ fn a_set_field_modifier_is_inactive_without_an_active_zone() {
     assert_eq!(banner.played.events(9), [tap(banner.goblin)]);
     assert_eq!(banner.played.steps, plain.played.steps);
     assert_eq!(banner.played.final_state(), plain.played.final_state());
+}
+
+#[test]
+fn a_carrier_leaving_the_active_zone_changes_a_read_in_the_same_transition() {
+    // `exit_aura` is power 2 and carries two Card Effects: an aura over itself and the other
+    // creatures (+1 power, so power 3 in the field) and a trigger that draws when it enters the trash
+    // if its power is at least 3. It dies in combat: the Transition that holds its `CardMoved` out of
+    // `field` also fires the trigger, and the `if` reads after the move, when the aura is off, so it
+    // reads 2 and nothing is drawn. (A read before the move would see 3.)
+    let deck = deck_yaml("captain_ardel")
+        .replace("card: titan_aura, count: 3", "card: exit_aura, count: 3");
+    let run = |ruleset: &DeclarativeRuleset| {
+        let decks = [
+            load_deck_list(ruleset.definition(), ruleset.catalog(), &deck).expect("legal"),
+            load_deck_list(ruleset.definition(), ruleset.catalog(), &deck).expect("legal"),
+        ];
+        let creation = ruleset
+            .create_game(&decks, Seed(EXIT_SEED))
+            .expect("the decks create a game");
+        let opening = &creation.opening.state;
+        let otter = find(opening, 0, "hand", "river_otter");
+        let carrier = find(opening, 1, "hand", "exit_aura");
+        let leader_0 = find(opening, 0, "leader_zone", "captain_ardel");
+        let script = [
+            play(0, otter),
+            pass(0),
+            play(1, carrier),
+            pass(1),
+            pass(0),
+            attack(1, carrier, leader_0),
+            pass(1),
+            attack(0, otter, carrier),
+        ];
+        (play_all(ruleset, creation, &script), otter, carrier)
+    };
+    let draws = |events: &[Event]| {
+        events
+            .iter()
+            .filter(|event| {
+                matches!(event, Event::CardMoved { player, from, to, .. }
+                    if *player == p(1) && *from == zone("deck") && *to == zone("hand"))
+            })
+            .count()
+    };
+
+    // The aura is on while the card is in the field: the otter (power 3) is needed to kill it. After
+    // its death the card reads power 2, so the trigger does not fire.
+    let (played, otter, carrier) = run(&ruleset_from(&catalog_yaml()));
+    assert_eq!(
+        played.events(7),
+        [tap(otter), moved(carrier, 1, "field", "trash")]
+    );
+    assert_eq!(draws(played.events(7)), 0);
+
+    // A card of base power 3 with no aura reads 3 in the trash, and the same trigger fires in the
+    // same Transition as its move.
+    let base_three = catalog_yaml().replace(
+        "{ id: exit_aura, type: creature, fields: { name: \"Exit Aura\", cost: 1, power: 2 }, effects: [ { while: true, scope: { zone: field, card_type: creature, include_self: true }, modify: { field: power, amount: 1 } }, ",
+        "{ id: exit_aura, type: creature, fields: { name: \"Exit Aura\", cost: 1, power: 3 }, effects: [ ",
+    );
+    assert_ne!(base_three, catalog_yaml());
+    let (played, _, carrier) = run(&ruleset_from(&base_three));
+    assert!(played
+        .events(7)
+        .contains(&moved(carrier, 1, "field", "trash")));
+    assert_eq!(draws(played.events(7)), 1);
+}
+
+#[test]
+fn owner_opponent_reaches_every_player_other_than_the_carriers_owner() {
+    // Three Players: seat 0's `dread_herald` lowers the creatures of seat 1 and of seat 2, not only
+    // "the other" Player. Each opposing moss sprite (power 2) reads 1 and misses the Leader (power 2);
+    // without the aura both hit.
+    let three_players = RULESET.replace("players: 2", "players: 3");
+    assert_ne!(three_players, RULESET);
+    let run = |catalog_yaml: &str| {
+        let ruleset = ruleset_with(&three_players, catalog_yaml);
+        let deck = load_deck_list(
+            ruleset.definition(),
+            ruleset.catalog(),
+            &deck_yaml("captain_ardel"),
+        )
+        .expect("the test deck is legal");
+        let creation = ruleset
+            .create_game(&[deck.clone(), deck.clone(), deck], Seed(THREE_SEED))
+            .expect("the decks create a game");
+        let opening = &creation.opening.state;
+        let herald = find(opening, 0, "hand", "dread_herald");
+        let moss_1 = find(opening, 1, "hand", "moss_sprite");
+        let moss_2 = find(opening, 2, "hand", "moss_sprite");
+        let leader_0 = find(opening, 0, "leader_zone", "captain_ardel");
+        let script = [
+            pass(0),
+            play(1, moss_1),
+            pass(1),
+            play(2, moss_2),
+            pass(2),
+            play(0, herald),
+            pass(0),
+            attack(1, moss_1, leader_0),
+            pass(1),
+            attack(2, moss_2, leader_0),
+        ];
+        (
+            play_all(&ruleset, creation, &script),
+            moss_1,
+            moss_2,
+            leader_0,
+        )
+    };
+
+    let (played, moss_1, moss_2, _) = run(&catalog_yaml());
+    assert_eq!(played.events(7), [tap(moss_1)]);
+    assert_eq!(played.events(9), [tap(moss_2)]);
+
+    let (plain, moss_1, moss_2, leader_0) = run(&strip_effects_of(&catalog_yaml(), "dread_herald"));
+    assert_eq!(plain.events(7), [tap(moss_1), hit(leader_0, 4)]);
+    assert_eq!(plain.events(9), [tap(moss_2), hit(leader_0, 3)]);
 }
