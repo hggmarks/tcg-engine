@@ -113,6 +113,14 @@ pub(crate) fn strict_bool<'de, D: Deserializer<'de>>(deserializer: D) -> Result<
     deserializer.deserialize_any(BoolVisitor)
 }
 
+/// An optional bool key (`include_self`): an absent key is `None` (through `#[serde(default)]`),
+/// and a present key must be an unquoted `true` or `false`; `~` is an error, not `None`.
+pub(crate) fn strict_present_bool<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<bool>, D::Error> {
+    strict_bool(deserializer).map(Some)
+}
+
 /// An `i64` written as an unquoted integer; a quoted `"1"` is a text.
 pub(crate) fn strict_i64<'de, D: Deserializer<'de>>(deserializer: D) -> Result<i64, D::Error> {
     struct IntegerVisitor;

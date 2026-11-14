@@ -518,6 +518,28 @@ fn a_scope_is_read_into_its_draft() {
 }
 
 #[test]
+fn non_bool_include_self_is_a_syntax_error() {
+    // A bool key of the format takes an unquoted `true` or `false` only (ADR-0009), like `ordered`
+    // and `effects`: a quoted `"true"` is a text, and `yes`, `1` and `~` are not bools.
+    for flag in ["\"true\"", "yes", "1", "~"] {
+        let yaml = sage_yaml(&format!(
+            "      - {{ while: true, scope: {{ zone: field, card_type: creature, include_self: {flag} }}, modify: {{ field: power, amount: 1 }} }}\n"
+        ));
+        let error = yaml_error(&yaml);
+        assert!(
+            matches!(error.kind, YamlErrorKind::Malformed { .. }),
+            "include_self {flag}: got {:?}",
+            error.kind
+        );
+        assert_eq!(
+            error.path,
+            sage_syntax_path().key("scope").key("include_self"),
+            "include_self {flag}"
+        );
+    }
+}
+
+#[test]
 fn non_integer_modify_amount_is_a_syntax_error() {
     for amount in ["\"1\"", "1.5", "true", "~"] {
         let yaml = sage_yaml(&format!(
