@@ -139,10 +139,10 @@ win_conditions:
     when: { draw_from_empty: deck }
     loser: owner
 
-# Card Effects act only on cards in this zone (ADR-0023, ADR-0024): a `turn_start` trigger fires only
-# while its card is there, and a Continuous Card Effect modifies a field of its own card only while
-# that card is in this zone; a card anywhere else reads its base values. An `enter` trigger fires on
-# arrival in the zone it names, whichever zone that is. Without this block no Card Effect is ever
-# active.
+# Card Effects act only on cards in this zone (ADR-0023, ADR-0024, ADR-0025): a `turn_start` trigger
+# fires only while its card is there, and a Continuous Card Effect modifies a field only while its
+# carrying card is in this zone (a `scope` names the zone of the cards it reaches, which can be any
+# zone); a carrier anywhere else adds nothing. An `enter` trigger fires on arrival in the zone it
+# names, whichever zone that is. Without this block no Card Effect is ever active.
 effects:
   active_zone: field
