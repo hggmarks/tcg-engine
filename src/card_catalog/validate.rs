@@ -172,8 +172,9 @@ fn validate_fields(
 }
 
 /// The Card Effects of a card (ADR-0022): the list against the card type's `effects` flag, then each
-/// element in order. Every element is checked and built; the first triggered one is then rejected as
-/// unsupported, so the list that is returned holds continuous Card Effects only today (ADR-0024).
+/// element in order. Every element is checked, built and kept: triggered Card Effects are executed
+/// since ticket [17] (ADR-0023) and continuous ones read since ticket [18] (ADR-0024), so no
+/// well-formed element is rejected as unsupported any more.
 fn validate_effects(
     ruleset: &RulesetDefinition,
     card_type: &CardType,
@@ -191,22 +192,11 @@ fn validate_effects(
     let mut effects = Vec::with_capacity(card.effects.len());
     for (index, draft) in card.effects.iter().enumerate() {
         let at = list.clone().index(index);
-        let effect = validate_card_effect(ruleset, card_type, &scope, draft, &at)?;
-        if let Some(kind) = unsupported(&effect) {
-            return fail(at, kind);
-        }
-        effects.push(effect);
+        effects.push(validate_card_effect(
+            ruleset, card_type, &scope, draft, &at,
+        )?);
     }
     Ok(effects)
-}
-
-/// Why a well-formed Card Effect cannot be loaded yet. Ticket [17] lifts it for a triggered one by
-/// returning `None` here; a continuous one has been supported since ticket [18] (ADR-0024).
-fn unsupported(effect: &CardEffect) -> Option<CatalogErrorKind> {
-    match effect {
-        CardEffect::Triggered(_) => Some(CatalogErrorKind::UnsupportedTriggeredCardEffect),
-        CardEffect::Continuous(_) => None,
-    }
 }
 
 /// A Card Effect is triggered (`on`, `if`, `do`) or continuous (`while`, `modify`). An element with
@@ -357,7 +347,8 @@ fn find_end_turn(effects: &[EffectDraft], list: &DefinitionPath) -> Option<Defin
             }
             EffectDraft::Move { .. }
             | EffectDraft::SetState { .. }
-            | EffectDraft::AddState { .. } => {}
+            | EffectDraft::AddState { .. }
+            | EffectDraft::Draw { .. } => {}
         }
     }
     None

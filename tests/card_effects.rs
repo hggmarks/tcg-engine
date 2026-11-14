@@ -2,9 +2,9 @@
 //! an already loaded Ruleset Definition (ADR-0022).
 //!
 //! Drafts are built in Rust, the way a code frontend would build them. Every error test asserts the
-//! whole `CatalogError`: kind and path. A triggered Card Effect is not supported yet, so a
-//! well-formed one ends in an unsupported error naming its path; a continuous one is supported
-//! since ticket #51 (ADR-0024) and is kept by the Card Definition.
+//! whole `CatalogError`: kind and path. A well-formed Card Effect of either shape is accepted and
+//! kept by its Card Definition: triggered since ticket #50 (ADR-0023), continuous since ticket #51
+//! (ADR-0024).
 
 mod common;
 
@@ -12,14 +12,17 @@ use common::{
     card, catalog_meta, creature_id, path, small_catalog, small_catalog_draft, small_definition,
     small_draft,
 };
+use std::num::NonZeroU32;
+
 use tcg_engine::card_catalog::{
     CardCatalog, CardCatalogDraft, CardDraft, CardEffect, CardEffectDraft, CardId, CatalogError,
     CatalogErrorKind, ModifyDraft, TriggerMatcherDraft,
 };
 use tcg_engine::definition_path::DefinitionPath;
 use tcg_engine::ruleset_definition::{
-    DefinitionErrorKind, EffectDraft, Expression, ExpressionDraft, FieldName, FieldType,
-    FieldValue, RefDraft, ReferenceTarget, RulesetDefinition,
+    ActionDraft, DefinitionError, DefinitionErrorKind, Effect, EffectDraft, EffectPlayer,
+    EffectsDraft, Expression, ExpressionDraft, FieldName, FieldType, FieldValue, RefDraft,
+    ReferenceTarget, RulesetDefinition, ZoneId,
 };
 
 fn int(value: i64) -> FieldValue {
@@ -68,6 +71,16 @@ fn error_of(definition: &RulesetDefinition, effects: Vec<CardEffectDraft>) -> Ca
 /// The error for the effects of one goblin, validated against the effects ruleset.
 fn effects_error_of(effects: Vec<CardEffectDraft>) -> CatalogError {
     error_of(&effects_definition(), effects)
+}
+
+/// Validates one goblin with these effects against the effects ruleset: they must be accepted.
+fn assert_accepted(effects: Vec<CardEffectDraft>) {
+    if let Err(error) = CardCatalog::validate(
+        &effects_definition(),
+        catalog_of(vec![goblin_with(effects)]),
+    ) {
+        panic!("expected the Card Effects to be accepted, got {error:?}");
+    }
 }
 
 /// `cards[goblin].effects[0]`.
@@ -340,14 +353,11 @@ fn ill_typed_continuous_condition_is_rejected() {
 
 #[test]
 fn empty_and_condition_is_a_valid_bool() {
-    // `and: []` holds, so it passes expression checking; a triggered Card Effect then fails only
-    // as unsupported, and a continuous one is accepted.
+    // `and: []` holds, so it passes expression checking and a Card Effect of either shape is
+    // accepted.
     let mut trigger = triggered();
     trigger.condition = Some(ExpressionDraft::And(vec![]));
-    assert_eq!(
-        effects_error_of(vec![trigger]).kind,
-        CatalogErrorKind::UnsupportedTriggeredCardEffect
-    );
+    assert_accepted(vec![trigger]);
     let mut continuous = continuous();
     continuous.while_condition = Some(ExpressionDraft::And(vec![]));
     assert!(CardCatalog::validate(
@@ -361,20 +371,13 @@ fn empty_and_condition_is_a_valid_bool() {
 
 #[test]
 fn self_ref_resolves_against_the_carrying_card_type() {
-    // `self.power` in `if` and `{ ref: self }` in `do` resolve: the Card Effect fails only as
-    // unsupported.
+    // `self.power` in `if` and `{ ref: self }` in `do` resolve: the Card Effect is accepted.
     let mut using_self = triggered();
     using_self.condition = Some(ExpressionDraft::Gte(
         Box::new(ExpressionDraft::Ref(self_ref("self.power"))),
         Box::new(ExpressionDraft::Literal(int(1))),
     ));
-    assert_eq!(
-        effects_error_of(vec![using_self]),
-        CatalogError {
-            path: effect_path(),
-            kind: CatalogErrorKind::UnsupportedTriggeredCardEffect,
-        }
-    );
+    assert_accepted(vec![using_self]);
 
     // Self is typed as the card's own type: a field that creatures lack (a Leader's `life`) does
     // not resolve.
@@ -419,10 +422,7 @@ fn self_ref_resolves_against_the_carrying_card_type() {
         state: "tapped".to_string(),
         value: FieldValue::Bool(true),
     }]);
-    assert_eq!(
-        effects_error_of(vec![set_declared]).kind,
-        CatalogErrorKind::UnsupportedTriggeredCardEffect
-    );
+    assert_accepted(vec![set_declared]);
     let mut set_lacking = triggered();
     set_lacking.body = Some(vec![EffectDraft::SetState {
         card: self_ref("self"),
@@ -535,51 +535,19 @@ fn modify_of_non_int_field_is_rejected() {
     );
 }
 
-// ---- unsupported until implemented
+// ---- unsupported until implemented (continuous only; triggered was lifted by ADR-0023)
 
 #[test]
-fn loaded_triggered_card_effect_is_unsupported() {
-    // The first element, and a later one after a well-formed first.
-    assert_eq!(
-        effects_error_of(vec![triggered()]),
-        CatalogError {
-            path: effect_path(),
-            kind: CatalogErrorKind::UnsupportedTriggeredCardEffect,
-        }
-    );
+fn loaded_triggered_card_effect_is_accepted() {
+    // ADR-0023 lifted the rejection of triggered Card Effects (ADR-0022).
+    assert_accepted(vec![triggered()]);
     let mut with_condition = triggered();
     with_condition.condition = Some(ExpressionDraft::And(vec![]));
-    assert_eq!(
-        effects_error_of(vec![with_condition]).kind,
-        CatalogErrorKind::UnsupportedTriggeredCardEffect
-    );
+    assert_accepted(vec![with_condition]);
     // `on: { turn_start }` is a triggered Card Effect too.
     let mut turn_start = triggered();
     turn_start.on = Some(TriggerMatcherDraft::TurnStart);
-    assert_eq!(
-        effects_error_of(vec![turn_start]).kind,
-        CatalogErrorKind::UnsupportedTriggeredCardEffect
-    );
-}
-
-#[test]
-fn triggered_card_effects_still_reject_as_unsupported() {
-    // A triggered Card Effect is rejected as before, whatever comes before it: a continuous
-    // element in front of it is accepted and the triggered one is reported at its own index.
-    assert_eq!(
-        effects_error_of(vec![triggered()]),
-        CatalogError {
-            path: effect_path(),
-            kind: CatalogErrorKind::UnsupportedTriggeredCardEffect,
-        }
-    );
-    assert_eq!(
-        effects_error_of(vec![continuous(), triggered()]),
-        CatalogError {
-            path: path().key("cards").id("goblin").key("effects").index(1),
-            kind: CatalogErrorKind::UnsupportedTriggeredCardEffect,
-        }
-    );
+    assert_accepted(vec![turn_start]);
 }
 
 #[test]
@@ -616,31 +584,27 @@ fn continuous_card_effects_load_into_the_card_definition() {
 
 #[test]
 fn card_effects_are_checked_in_order_and_the_first_error_wins() {
-    // Element 0 is ill-formed, element 1 is unsupported: element 0 is reported. Swapped, the
-    // unsupported element 0 is reported, never the ill-formed element 1.
+    // Element 0 is ill-formed and element 1 is well-formed: element 0 is reported, at its own
+    // path.
     let mut empty_do = triggered();
     empty_do.body = Some(vec![]);
     assert_eq!(
         effects_error_of(vec![empty_do.clone(), triggered()]).path,
         effect_path().key("do")
     );
+    // A well-formed element of either shape is accepted, so the ill-formed one after it is the one
+    // reported, at its own index.
+    let second = path()
+        .key("cards")
+        .id("goblin")
+        .key("effects")
+        .index(1)
+        .key("do");
     assert_eq!(
-        effects_error_of(vec![triggered(), empty_do.clone()]),
-        CatalogError {
-            path: effect_path(),
-            kind: CatalogErrorKind::UnsupportedTriggeredCardEffect,
-        }
+        effects_error_of(vec![triggered(), empty_do.clone()]).path,
+        second
     );
-    // A continuous element is accepted, so the ill-formed one after it is reported.
-    assert_eq!(
-        effects_error_of(vec![continuous(), empty_do]).path,
-        path()
-            .key("cards")
-            .id("goblin")
-            .key("effects")
-            .index(1)
-            .key("do")
-    );
+    assert_eq!(effects_error_of(vec![continuous(), empty_do]).path, second);
 }
 
 // ---- in a full catalog
@@ -655,22 +619,215 @@ fn card_effect_of_a_card_in_a_full_catalog_is_addressed_by_its_card_id() {
         .all(|definition| definition.effects().is_empty()));
     assert!(CardCatalog::validate(&effects_definition(), small_catalog_draft()).is_ok());
 
-    // An effect on the third creature is addressed by that card's id, after the cards before it
-    // were accepted.
+    // An ill-formed effect on the third creature is addressed by that card's id, after the cards
+    // before it and the well-formed effect before it were accepted.
     let mut draft = small_catalog_draft();
     let id = creature_id(3);
     let Some(third) = draft.cards.iter_mut().find(|card| card.id == id) else {
         panic!("the catalog has {id}");
     };
-    third.effects = vec![triggered(), continuous()];
+    let mut empty_do = triggered();
+    empty_do.body = Some(vec![]);
+    third.effects = vec![continuous(), empty_do];
     let Err(error) = CardCatalog::validate(&effects_definition(), draft) else {
         panic!("expected a validation error");
     };
     assert_eq!(
         error,
         CatalogError {
-            path: path().key("cards").id(&id).key("effects").index(0),
-            kind: CatalogErrorKind::UnsupportedTriggeredCardEffect,
+            path: path()
+                .key("cards")
+                .id(&id)
+                .key("effects")
+                .index(1)
+                .key("do"),
+            kind: CatalogErrorKind::EmptyDo,
         }
+    );
+}
+
+// ---- ticket #50: triggered Card Effects are accepted, continuous ones still reject (ADR-0023)
+
+fn draw_for_controller(count: u32) -> EffectDraft {
+    EffectDraft::Draw {
+        player: "controller".to_string(),
+        from: "deck".to_string(),
+        to: "hand".to_string(),
+        count,
+    }
+}
+
+#[test]
+fn card_effects_of_both_shapes_are_accepted_and_kept_in_file_order() {
+    // Both unsupported rejections of ADR-0022 are lifted: triggered by ADR-0023, continuous by
+    // ADR-0024. A card may mix the shapes, and keeps every element in file order.
+    let catalog = CardCatalog::validate(
+        &effects_definition(),
+        catalog_of(vec![goblin_with(vec![
+            triggered(),
+            continuous(),
+            triggered(),
+        ])]),
+    )
+    .expect("Card Effects of either shape are supported");
+    let goblin = catalog
+        .card(&CardId::new("goblin"))
+        .expect("the catalog has the goblin");
+    let [CardEffect::Triggered(_), CardEffect::Continuous(_), CardEffect::Triggered(_)] =
+        goblin.effects()
+    else {
+        panic!(
+            "expected a triggered, a continuous and a triggered Card Effect, got {:?}",
+            goblin.effects()
+        );
+    };
+}
+
+#[test]
+fn draw_effect_for_the_controller_validates_in_a_card_effect() {
+    let mut trigger = triggered();
+    trigger.body = Some(vec![draw_for_controller(2)]);
+    let catalog = CardCatalog::validate(
+        &effects_definition(),
+        catalog_of(vec![goblin_with(vec![trigger])]),
+    )
+    .expect("a draw for the controller is a Card Effect");
+    let goblin = catalog
+        .card(&CardId::new("goblin"))
+        .expect("the catalog has the goblin");
+    let CardEffect::Triggered(effect) = &goblin.effects()[0] else {
+        panic!("expected a triggered Card Effect");
+    };
+    assert_eq!(
+        effect.body(),
+        [Effect::Draw {
+            player: EffectPlayer::Controller,
+            from: ZoneId::new("deck"),
+            to: ZoneId::new("hand"),
+            count: NonZeroU32::new(2).expect("2 is not 0"),
+        }]
+    );
+}
+
+#[test]
+fn draw_effect_in_a_card_effect_checks_its_zones_count_and_player() {
+    let draw_path = || effect_path().key("do").index(0).key("draw");
+    let with = |draw: EffectDraft| {
+        let mut trigger = triggered();
+        trigger.body = Some(vec![draw]);
+        effects_error_of(vec![trigger])
+    };
+    let draw_of = |player: &str, from: &str, count: u32| EffectDraft::Draw {
+        player: player.to_string(),
+        from: from.to_string(),
+        to: "hand".to_string(),
+        count,
+    };
+
+    assert_eq!(
+        with(draw_of("controller", "nowhere", 1)),
+        invalid_card_effect(
+            draw_path().key("from"),
+            DefinitionErrorKind::DanglingReference {
+                target: ReferenceTarget::Zone,
+                id: "nowhere".to_string(),
+            },
+        )
+    );
+    assert_eq!(
+        with(EffectDraft::Draw {
+            player: "controller".to_string(),
+            from: "deck".to_string(),
+            to: "nowhere".to_string(),
+            count: 1,
+        }),
+        invalid_card_effect(
+            draw_path().key("to"),
+            DefinitionErrorKind::DanglingReference {
+                target: ReferenceTarget::Zone,
+                id: "nowhere".to_string(),
+            },
+        )
+    );
+    // The source of a draw is an ordered zone, like the source of a draw step.
+    assert_eq!(
+        with(draw_of("controller", "hand", 1)),
+        invalid_card_effect(
+            draw_path().key("from"),
+            DefinitionErrorKind::ZoneNotOrdered {
+                zone: "hand".to_string(),
+            },
+        )
+    );
+    assert_eq!(
+        with(draw_of("controller", "deck", 0)),
+        invalid_card_effect(draw_path().key("count"), DefinitionErrorKind::InvalidCount)
+    );
+    // `controller` is the only player an effect acts for.
+    assert_eq!(
+        with(draw_of("active", "deck", 1)),
+        invalid_card_effect(
+            draw_path().key("player"),
+            DefinitionErrorKind::UnknownEffectPlayer {
+                player: "active".to_string(),
+            },
+        )
+    );
+}
+
+#[test]
+fn controller_outside_a_card_effect_is_rejected_in_an_action() {
+    let mut draft = small_draft();
+    draft.actions.push(ActionDraft {
+        id: "study".to_string(),
+        params: vec![],
+        cost: vec![],
+        effects: vec![draw_for_controller(1)],
+    });
+    assert_eq!(
+        RulesetDefinition::validate(draft),
+        Err(DefinitionError {
+            path: path()
+                .key("actions")
+                .id("study")
+                .key("effects")
+                .index(0)
+                .key("draw")
+                .key("player"),
+            kind: DefinitionErrorKind::ControllerOutsideCardEffect,
+        })
+    );
+}
+
+#[test]
+fn the_active_zone_of_card_effects_must_be_a_declared_zone() {
+    let mut draft = small_draft();
+    assert_eq!(
+        RulesetDefinition::validate(draft.clone())
+            .expect("valid")
+            .effects_active_zone(),
+        None
+    );
+    draft.effects = Some(EffectsDraft {
+        active_zone: "field".to_string(),
+    });
+    assert_eq!(
+        RulesetDefinition::validate(draft.clone())
+            .expect("valid")
+            .effects_active_zone(),
+        Some(&ZoneId::new("field"))
+    );
+    draft.effects = Some(EffectsDraft {
+        active_zone: "battlefield".to_string(),
+    });
+    assert_eq!(
+        RulesetDefinition::validate(draft),
+        Err(DefinitionError {
+            path: path().key("effects").key("active_zone"),
+            kind: DefinitionErrorKind::DanglingReference {
+                target: ReferenceTarget::Zone,
+                id: "battlefield".to_string(),
+            },
+        })
     );
 }

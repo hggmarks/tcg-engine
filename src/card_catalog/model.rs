@@ -91,8 +91,8 @@ impl CardDefinition {
             .map(|(_, value)| value)
     }
 
-    /// The Card Effects the card carries, in file order. A triggered Card Effect is still rejected
-    /// as unsupported when a catalog is validated, so these are continuous (ADR-0022, ADR-0024).
+    /// The Card Effects the card carries, in file order: triggered ones are resolved from Events
+    /// (ADR-0023) and continuous ones read as Field Modifiers (ADR-0022, ADR-0024).
     pub fn effects(&self) -> &[CardEffect] {
         &self.effects
     }
@@ -134,7 +134,7 @@ impl TriggeredCardEffect {
 pub enum TriggerMatcher {
     /// The card enters the zone.
     Enter(ZoneId),
-    /// The controller's Turn began (the semantics land in ticket [17]).
+    /// The controller's Turn began.
     TurnStart,
 }
 

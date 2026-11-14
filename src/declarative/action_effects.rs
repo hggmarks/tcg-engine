@@ -13,7 +13,9 @@ use super::expression;
 use super::state::CardInstanceId;
 use super::turn_cycle;
 use crate::player::PlayerId;
-use crate::ruleset_definition::{Cost, Effect, FieldValue, StateName, ValueRef, ZoneId};
+use crate::ruleset_definition::{
+    Cost, Effect, EffectPlayer, FieldValue, ParamName, StateName, ValueRef, ZoneId,
+};
 
 /// Pays one cost on behalf of `player`, the acting Player.
 pub(super) fn pay(
@@ -130,6 +132,24 @@ pub(super) fn run(
                 });
             };
             change_state(execution, card, state, FieldValue::Int(sum))
+        }
+        Effect::Draw {
+            player,
+            from,
+            to,
+            count,
+        } => {
+            let player = match player {
+                EffectPlayer::Controller => {
+                    let card = bound.card(&ParamName::new("self"))?;
+                    let Some(instance) = execution.state.card(card) else {
+                        return Err(Rejection::CardDataMismatch { card });
+                    };
+                    instance.owner()
+                }
+            };
+            turn_cycle::draw(execution, player, from, to, count.get())
+                .map_err(Rejection::EventRejected)
         }
         Effect::If {
             condition,

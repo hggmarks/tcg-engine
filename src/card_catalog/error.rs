@@ -70,9 +70,6 @@ pub enum CatalogErrorKind {
     /// An expression, ref or Action Effect of a Card Effect that Ruleset Definition checking
     /// rejects; the error keeps its own path, such as `cards[goblin].effects[0].if.and[0].eq[1]`.
     InvalidCardEffect { error: Box<DefinitionErrorKind> },
-    /// `cards[goblin].effects[0]`: a well-formed triggered Card Effect, which no ticket executes
-    /// yet.
-    UnsupportedTriggeredCardEffect,
 }
 
 impl fmt::Display for CatalogErrorKind {
@@ -147,9 +144,6 @@ impl fmt::Display for CatalogErrorKind {
                 write!(f, "a Card Effect cannot end the Turn")
             }
             Self::InvalidCardEffect { error } => write!(f, "{error}"),
-            Self::UnsupportedTriggeredCardEffect => {
-                write!(f, "triggered Card Effects are not supported yet")
-            }
         }
     }
 }

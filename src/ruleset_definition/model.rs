@@ -129,8 +129,10 @@ impl RulesetDefinition {
         &self.win_conditions
     }
 
-    /// The zone where Card Effects act: a Card Effect is active only on a card in it (ADR-0024).
-    /// `None` when the ruleset declares none, and no Card Effect is then ever active.
+    /// The Active Zone, where Card Effects act (`effects.active_zone`): a Field Modifier applies
+    /// only to a card in it (ADR-0024) and a `turn_start` trigger is eligible only there
+    /// (ADR-0023). `None` when the ruleset declares none, and no Card Effect is then ever active:
+    /// no modifier applies and no trigger is eligible, `enter` included.
     pub fn effects_active_zone(&self) -> Option<&ZoneId> {
         self.effects_active_zone.as_ref()
     }
@@ -563,12 +565,27 @@ pub enum Effect {
         state: StateName,
         amount: i64,
     },
+    /// Draws for `player`: moves `count` cards one at a time from the Top of `from` onto the Top
+    /// of `to` of that player; an empty `from` emits DrawFromEmptyZone and stops.
+    Draw {
+        player: EffectPlayer,
+        from: ZoneId,
+        to: ZoneId,
+        count: NonZeroU32,
+    },
     /// Runs `then` if the condition holds when the effect runs, `otherwise` if not.
     If {
         condition: Expression,
         then: Vec<Effect>,
         otherwise: Vec<Effect>,
     },
+}
+
+/// The player an effect acts for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EffectPlayer {
+    /// The owner of `self`, the carrying card.
+    Controller,
 }
 
 /// The phases of every Turn, in order. Exactly one has actions: the Game waits there for the

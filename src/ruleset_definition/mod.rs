@@ -58,9 +58,10 @@ pub use draft::{
 pub use error::{DefinitionError, DefinitionErrorKind, RefType, ReferenceTarget};
 pub use model::{
     ActionDefinition, ActionId, AutomaticStep, CardRef, CardType, CardTypeId, CardValue, Condition,
-    Cost, DeckInput, DeckInputId, Effect, Expression, FieldName, FieldSchema, FieldType,
-    FieldValue, Initializer, InstanceStateSchema, Loser, Meta, Param, ParamAlternative, ParamName,
-    ParamOwner, Parameters, Phase, PhaseId, PhaseKind, PlayerCount, PlayerPosition, PlayerSelector,
-    Position, RulesetDefinition, RulesetId, RulesetVersion, SetupStep, StateName, TurnStructure,
-    ValueRef, Visibility, WinCondition, WinConditionId, WinConditionWhen, Zone, ZoneId,
+    Cost, DeckInput, DeckInputId, Effect, EffectPlayer, Expression, FieldName, FieldSchema,
+    FieldType, FieldValue, Initializer, InstanceStateSchema, Loser, Meta, Param, ParamAlternative,
+    ParamName, ParamOwner, Parameters, Phase, PhaseId, PhaseKind, PlayerCount, PlayerPosition,
+    PlayerSelector, Position, RulesetDefinition, RulesetId, RulesetVersion, SetupStep, StateName,
+    TurnStructure, ValueRef, Visibility, WinCondition, WinConditionId, WinConditionWhen, Zone,
+    ZoneId,
 };

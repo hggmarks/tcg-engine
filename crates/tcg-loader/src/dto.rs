@@ -35,6 +35,7 @@ pub(crate) struct RulesetDto {
     turn: Option<TurnDto>,
     #[serde(default)]
     win_conditions: Vec<WinConditionDto>,
+    // An absent key is `None`; a present key must be a block.
     #[serde(default, deserialize_with = "some")]
     effects: Option<EffectsDto>,
 }
@@ -324,7 +325,7 @@ struct ShuffleDto {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct DrawDto {
+pub(crate) struct DrawDto {
     player: String,
     from: String,
     to: String,
@@ -454,6 +455,7 @@ pub(crate) enum EffectDto {
     Move(MoveEffectDto),
     SetState(SetStateEffectDto),
     AddState(AddStateEffectDto),
+    Draw(DrawDto),
     If {
         condition: ExpressionDto,
         then: Vec<EffectDto>,
@@ -491,6 +493,7 @@ const EFFECT_KEYS: &[&str] = &[
     "move",
     "set_state",
     "add_state",
+    "draw",
     "if",
     "then",
     "else",
@@ -524,6 +527,7 @@ impl<'de> Deserialize<'de> for EffectDto {
                         "move" => Some(EffectDto::Move(map.next_value()?)),
                         "set_state" => Some(EffectDto::SetState(map.next_value()?)),
                         "add_state" => Some(EffectDto::AddState(map.next_value()?)),
+                        "draw" => Some(EffectDto::Draw(map.next_value()?)),
                         "if" => {
                             condition = Some(map.next_value()?);
                             None
@@ -961,6 +965,12 @@ impl EffectDto {
                 card: RefDraft(step.card.reference),
                 state: step.state,
                 amount: step.amount,
+            },
+            Self::Draw(step) => EffectDraft::Draw {
+                player: step.player,
+                from: step.from,
+                to: step.to,
+                count: step.count,
             },
             Self::If {
                 condition,

@@ -20,4 +20,4 @@ This conflicts with no earlier ADR. It refines ADR-0004's "no implicit typing" a
 
 **Status**: accepted
 
-Amended by ADR-0022: the **Effects** paragraph above no longer holds. A card's `effects` is a list of Card Effects, each a triggered (`on`, `if`, `do`) or a continuous (`while`, `modify`) element, and every well-formed one is rejected as `UnsupportedTriggeredCardEffect` or `UnsupportedContinuousCardEffect`; `UnsupportedEffect` is gone. `EffectsNotAllowed` is unchanged.
+Amended by ADR-0022: the **Effects** paragraph above no longer holds. A card's `effects` is a list of Card Effects, each a triggered (`on`, `if`, `do`) or a continuous (`while`, `modify`) element, and every well-formed one is rejected as `UnsupportedTriggeredCardEffect` or `UnsupportedContinuousCardEffect`; `UnsupportedEffect` is gone. `EffectsNotAllowed` is unchanged. ADR-0023 then lifted the triggered rejection: `UnsupportedTriggeredCardEffect` no longer exists.

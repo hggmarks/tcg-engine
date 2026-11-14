@@ -18,6 +18,7 @@ mod legal_actions;
 mod modifiers;
 mod record;
 mod state;
+mod triggers;
 mod turn_cycle;
 
 pub use action::{Action, Argument, Rejection};
