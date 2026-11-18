@@ -166,11 +166,9 @@ fn the_effects_sample_decks_hold_triggered_continuous_and_aura_cards() {
             "seat {seat}: at most 4 copies of a card"
         );
         let carries = |wanted: fn(&CardEffect) -> bool| {
-            entries.iter().any(|entry| {
-                effects_of(&ruleset, entry.card())
-                    .iter()
-                    .any(|effect| wanted(effect))
-            })
+            entries
+                .iter()
+                .any(|entry| effects_of(&ruleset, entry.card()).iter().any(wanted))
         };
         assert!(carries(is_triggered), "seat {seat}: a triggered card");
         assert!(
@@ -530,7 +528,6 @@ fn a_trigger_cap_rejection_leaves_the_game_state_intact_and_emits_nothing() {
 /// A shade never rests in the field (entering it exceeds the cap and refuses the play), so no
 /// `attack` target and no other candidate can start the chain. The candidates the listing refuses
 /// with the cap are therefore exactly these hand cards.
-
 fn trigger_cap_rejections_by_playing_every_card_in_hand(
     ruleset: &DeclarativeRuleset,
     game: &SelfPlayGame,

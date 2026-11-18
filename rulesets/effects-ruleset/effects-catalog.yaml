@@ -1,7 +1,7 @@
 # Starter card catalog for the Effects Ruleset (rulesets/effects-ruleset/effects-ruleset.yaml): the
-# cards of the Small Ruleset catalog, then five creatures that carry a triggered Card Effect, one for
-# each family of effects-ruleset.md, two that carry a continuous one and three auras, which carry a
-# continuous one over a matched set (no shipped deck lists them).
+# cards of the Small Ruleset catalog, then six creatures that carry a triggered Card Effect, two that
+# carry a continuous one and three auras, which carry a continuous one over a matched set. The sample
+# decks list all of them but restless_shade, which exists only to reach the Trigger Cap.
 # Format: rulesets/formats.md.
 
 meta: { ruleset: effects, ruleset_version: 1 }
@@ -63,7 +63,7 @@ cards:
         if: { eq: [ { ref: self.recently_played }, true ] }
         do: [ { draw: { player: controller, from: deck, to: hand, count: 1 } } ]
   # A mutually-triggering pair of effects on one card: each wakes the other, so playing it exceeds the
-  # Trigger Cap and the play is rejected. It exists to show the cap; keep it out of decks.
+  # Trigger Cap and the play is rejected. It exists to show the cap; keep it out of the sample decks.
   - id: restless_shade
     type: creature
     fields: { name: "Restless Shade", cost: 2, power: 2 }

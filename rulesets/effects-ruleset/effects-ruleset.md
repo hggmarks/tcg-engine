@@ -2,7 +2,7 @@
 
 The ruleset of Phase C. It is **derived from the Small Ruleset** (`../small-ruleset/small-ruleset.md`), which is frozen as the canonical ruleset of Phase B: from now on a rule decision is made here, and the Small Ruleset files do not change (ADR-0022).
 
-Every rule not stated on this page is the Small Ruleset's, word for word: parameters, zones, decks, setup, the turn, combat and win conditions. A Game of the Effects Ruleset with the same Seed, decks and Actions plays identically to a Game of the Small Ruleset, Event for Event (its golden game, `crates/tcg-loader/tests/golden/effects-leader-kill.trace`, is the Small Ruleset's Leader-kill game).
+Every rule not stated on this page is the Small Ruleset's, word for word: parameters, zones, decks, setup, the turn, combat and win conditions. A Game of the Effects Ruleset with the same Seed, Deck Lists of Small cards and Actions plays identically to a Game of the Small Ruleset, Event for Event (a test plays the Small Ruleset's Leader-kill script with the Small sample decks under both). Its sample decks play the effect cards (see Sample decks), so its own golden game, `crates/tcg-loader/tests/golden/effects-leader-kill.trace`, is not the Small Ruleset's: it is a Leader-kill with a trigger resolution in it.
 
 ## What differs
 
@@ -13,7 +13,7 @@ Every rule not stated on this page is the Small Ruleset's, word for word: parame
 | `effects.active_zone` | none (no `effects` block) | `field`: the Active Zone, where Card Effects act (see Triggered Card Effects) |
 | **Leader** and **Mana** `effects` | `false` | `false`: Card Effects act only while the card is on the Field (roadmap #48); a Leader never reaches the Field, and a mana card never does either and has no int field to modify |
 
-The files are `effects-ruleset.yaml` (the encoding), `effects-catalog.yaml` (the cards of the Small catalog, with `meta: { ruleset: effects, ruleset_version: 1 }`, the five creatures of the triggered Card Effect section, the two of the continuous one and the three auras below) and `decks/deck-a.yaml` and `decks/deck-b.yaml` (the Small sample decks, which list none of the ten new creatures: that keeps the golden game equal to the Small Ruleset's).
+The files are `effects-ruleset.yaml` (the encoding), `effects-catalog.yaml` (the cards of the Small catalog, with `meta: { ruleset: effects, ruleset_version: 1 }`, the six creatures of the triggered Card Effect section, the two of the continuous one and the three auras below) and `decks/deck-a.yaml` and `decks/deck-b.yaml` (the sample decks, see Sample decks).
 
 ## Card Effects
 
@@ -98,7 +98,7 @@ A Card Effect acts only on cards in the **Active Zone**, `effects.active_zone`, 
 
 ### Catalog cards
 
-One creature per family, in `effects-catalog.yaml`; none is in a shipped deck.
+One creature per family, in `effects-catalog.yaml`, and `pyre_imp`, the bounded cascade. Every one is in a sample deck except `restless_shade`.
 
 | Card | Effect | Shows |
 |---|---|---|
@@ -106,7 +106,21 @@ One creature per family, in `effects-catalog.yaml`; none is in a shipped deck.
 | `dawn_scout` | `turn_start` → draw 1 | firing on its controller's Turn only, only in the Field |
 | `grave_jackal` | `enter: trash` → draw 1 | the `enter` exception to the Active Zone: it fires on dying in combat |
 | `eager_recruit` | `enter: field`, `if` `self.recently_played` → draw 1 | an `if` read at fire time: true when played, false when `recently_played` is false, for example on an arrival after the Turn it was played (a false `if` at fire time is exercised by the engine tests; no shipped card or deck reaches it) |
-| `restless_shade` | `enter: field` → move self to trash; `enter: trash` → move self to field | a cascade that exceeds the Trigger Cap: playing it is rejected |
+| `restless_shade` | `enter: field` → move self to trash; `enter: trash` → move self to field | a cascade that exceeds the Trigger Cap: playing it is rejected. It is not in a sample deck |
+| `pyre_imp` | `enter: field` → move self to trash; `enter: trash` → draw 1 | a bounded cascade: the first trigger's own Event (the move) wakes the second, which draws and stops. Playing it moves the card to the field, then the trash, then draws one card, in one transition |
+
+Self-play never reaches the cap with the sample decks, because `restless_shade` is in none. Over Seeds 0..1000 every effect card of the sample decks is played, and the cards that act only after another Event (the `grave_jackal` that dies, the `dawn_scout` that stays for a Turn) do act: no card turned out dead or unreachable, so the catalog needed no fix.
+
+## Sample decks
+
+Both are 1 Leader, 50 creatures (at most 4 of each) and 10 mana. They hold all three families of Card Effects, so a self-played Game plays them.
+
+| Deck | Main deck (count each) |
+|---|---|
+| A (`captain_ardel`) | `goblin_scout` 4, `moss_sprite` 4, `ember_hound` 4, `river_otter` 4, `stone_golem` 4, `shadow_cat` 4, `iron_guard` 2, `wind_hawk` 2, `lamp_keeper` 4, `dawn_scout` 4, `grave_jackal` 2, `eager_recruit` 2, `battle_veteran` 2, `weary_ox` 2, `pyre_imp` 2, `banner_bearer` 2, `rally_captain` 2 |
+| B (`warden_ilse`) | `moss_sprite` 4, `ember_hound` 4, `river_otter` 4, `stone_golem` 4, `shadow_cat` 4, `iron_guard` 2, `wind_hawk` 2, `thorn_boar` 4, `lamp_keeper` 4, `dawn_scout` 4, `grave_jackal` 2, `eager_recruit` 2, `battle_veteran` 2, `weary_ox` 2, `pyre_imp` 2, `dread_herald` 4 |
+
+The leaders and the mana decks are the Small Ruleset's. The sample decks are the Effects Ruleset's own: the Small Ruleset's are frozen and still load here, since the catalog holds the Small cards.
 
 ## Glossary: Effects Ruleset
 
