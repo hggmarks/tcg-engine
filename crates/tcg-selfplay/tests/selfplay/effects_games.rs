@@ -5,6 +5,8 @@
 //! Everything runs on the real Effects Ruleset, the real catalog and the real sample decks, except
 //! where a test says that it edits one on purpose.
 
+use std::collections::BTreeSet;
+
 use tcg_engine::card_catalog::{CardEffect, CardId};
 use tcg_engine::deck_list::DeckList;
 use tcg_engine::declarative::{
@@ -21,9 +23,9 @@ use tcg_selfplay::{
 
 use crate::common::{
     digest_line, effects, effects_deck, effects_decks, effects_with_ruleset, fnv1a, pin_difference,
-    steps, EFFECTS_DECK_A, EFFECTS_DECK_B, FNV_START, MAX_STEPS, SMALL_CATALOG, SMALL_RULESET,
+    steps, DECK_A, DECK_B, EFFECTS_DECK_A, EFFECTS_DECK_B, FNV_START, MAX_STEPS, SMALL_CATALOG,
+    SMALL_RULESET,
 };
-use crate::common::{DECK_A, DECK_B};
 
 /// The Seeds of the Effects self-play pin: `0..PINNED_SEEDS`.
 const PINNED_SEEDS: u64 = 1000;
@@ -37,10 +39,47 @@ const DIGESTS_PATH: &str = concat!(
     "/tests/selfplay/golden/effects-self-play-seeds-0-1000.digest"
 );
 
-/// The FNV-1a digest of the text of the four files that make up the frozen Small Ruleset
-/// (ADR-0022): `small-ruleset.yaml`, `small-catalog.yaml`, `decks/deck-a.yaml` and
-/// `decks/deck-b.yaml`, each as its name, a newline, its text and a newline, in that order.
-const SMALL_RULESET_FREEZE: u64 = 0x7a9e_2f8c_c298_b7f3;
+/// The frozen Small Ruleset (ADR-0022): the files that make it up, then the files that pin its
+/// Games, each with the FNV-1a digest of its bytes. The pinned files are the Golden Snapshots of
+/// `tcg-loader` and the self-play pin, so regenerating one of them by accident (which would
+/// leave it matching itself) changes a digest here.
+const SMALL_RULESET_FREEZE: [(&str, &str, u64); 7] = [
+    (
+        "rulesets/small-ruleset/small-ruleset.yaml",
+        SMALL_RULESET,
+        0xce2a_cebc_67e5_3385,
+    ),
+    (
+        "rulesets/small-ruleset/small-catalog.yaml",
+        SMALL_CATALOG,
+        0x7ccc_e965_cd34_7cb9,
+    ),
+    (
+        "rulesets/small-ruleset/decks/deck-a.yaml",
+        DECK_A,
+        0x09f5_643b_28cb_3cbb,
+    ),
+    (
+        "rulesets/small-ruleset/decks/deck-b.yaml",
+        DECK_B,
+        0xa6f8_3a9e_6a00_42b9,
+    ),
+    (
+        "crates/tcg-loader/tests/golden/small-deck-out.trace",
+        include_str!("../../../tcg-loader/tests/golden/small-deck-out.trace"),
+        0xfab5_3951_d756_e90c,
+    ),
+    (
+        "crates/tcg-loader/tests/golden/small-leader-kill.trace",
+        include_str!("../../../tcg-loader/tests/golden/small-leader-kill.trace"),
+        0xc230_4dd1_64b2_2a91,
+    ),
+    (
+        "crates/tcg-selfplay/tests/selfplay/golden/self-play-seeds-0-1000.digest",
+        include_str!("golden/self-play-seeds-0-1000.digest"),
+        0x433c_3493_2a7e_fbb6,
+    ),
+];
 
 /// The Trigger Cap Rejections seen over the listings of the Game of two shade decks and Seed 3: a
 /// non-zero count, which the test also checks against an independent walk.
@@ -147,6 +186,59 @@ fn the_effects_sample_decks_hold_triggered_continuous_and_aura_cards() {
         .expect("the sample decks create a Game");
 }
 
+/// Which effect cards a Game actually used, read from its Game Record and Event Traces only.
+#[derive(Default)]
+struct EffectUse {
+    /// A card that carries a triggered effect was played (`play_creature`).
+    triggered_card_played: bool,
+    /// A card that carries an aura was in the field after some Action.
+    aura_in_field: bool,
+    /// A card that carries a self-continuous effect was in the field after some Action.
+    self_continuous_in_field: bool,
+}
+
+fn effect_use(ruleset: &DeclarativeRuleset, game: &SelfPlayGame) -> EffectUse {
+    let carries = |card: CardInstanceId, wanted: fn(&CardEffect) -> bool| {
+        game.state.card(card).is_some_and(|instance| {
+            effects_of(ruleset, instance.definition())
+                .iter()
+                .any(wanted)
+        })
+    };
+    let mut used = EffectUse::default();
+    let mut field = BTreeSet::new();
+    for (action, trace) in game.record.actions().iter().zip(&game.traces) {
+        if let (true, [Argument::Card(card)]) = (
+            action.action.as_str() == "play_creature",
+            action.arguments.as_slice(),
+        ) {
+            used.triggered_card_played |= carries(*card, is_triggered);
+        }
+        for event in trace.events() {
+            if let Event::CardMoved { card, from, to, .. } = event {
+                if from.as_str() == "field" {
+                    field.remove(card);
+                }
+                if to.as_str() == "field" {
+                    field.insert(*card);
+                }
+            }
+        }
+        used.aura_in_field |= field.iter().any(|card| carries(*card, is_aura));
+        used.self_continuous_in_field |=
+            field.iter().any(|card| carries(*card, is_self_continuous));
+    }
+    used
+}
+
+/// The least number of the 1,000 pinned Games in which each kind of effect card was used. A drop
+/// under a minimum means the sample decks stopped exercising that family. Measured when the
+/// minimums were set: 988 Games played a triggered card, 759 had an aura in the field and 795 had a
+/// self-continuous card in the field.
+const MIN_GAMES_PLAYING_A_TRIGGERED_CARD: usize = 900;
+const MIN_GAMES_WITH_AN_AURA_IN_THE_FIELD: usize = 650;
+const MIN_GAMES_WITH_A_SELF_CONTINUOUS_CARD_IN_THE_FIELD: usize = 700;
+
 #[test]
 fn effects_self_play_ends_every_game_over_1000_seeds_with_every_invariant_holding() {
     let ruleset = effects();
@@ -154,9 +246,14 @@ fn effects_self_play_ends_every_game_over_1000_seeds_with_every_invariant_holdin
     let mut failures = Vec::new();
     let mut longest = 0;
     let mut digests = Vec::new();
+    let (mut triggered, mut auras, mut self_continuous) = (0_usize, 0_usize, 0_usize);
     for seed in 0..PINNED_SEEDS {
         match self_play(&ruleset, &decks, Seed(seed), MAX_STEPS, Checks::On) {
             Ok(game) => {
+                let used = effect_use(&ruleset, &game);
+                triggered += usize::from(used.triggered_card_played);
+                auras += usize::from(used.aura_in_field);
+                self_continuous += usize::from(used.self_continuous_in_field);
                 if game.state.outcome().is_none() {
                     failures.push(format!("seed {seed}: the Game has no Terminal Outcome"));
                 }
@@ -179,6 +276,20 @@ fn effects_self_play_ends_every_game_over_1000_seeds_with_every_invariant_holdin
     assert!(
         longest * 2 < MAX_STEPS,
         "the Step Cap of {MAX_STEPS} has no headroom over the longest Game ({longest} Actions)"
+    );
+
+    // The decks play the effect cards, not only list them.
+    assert!(
+        triggered >= MIN_GAMES_PLAYING_A_TRIGGERED_CARD,
+        "only {triggered} Games played a card with a triggered effect"
+    );
+    assert!(
+        auras >= MIN_GAMES_WITH_AN_AURA_IN_THE_FIELD,
+        "only {auras} Games had an aura in the field"
+    );
+    assert!(
+        self_continuous >= MIN_GAMES_WITH_A_SELF_CONTINUOUS_CARD_IN_THE_FIELD,
+        "only {self_continuous} Games had a self-continuous card in the field"
     );
 
     // The same Games, one pass: their Game Records and Event Traces are the pinned ones.
@@ -412,6 +523,14 @@ fn a_trigger_cap_rejection_leaves_the_game_state_intact_and_emits_nothing() {
 /// The Trigger Cap Rejections of `game`, counted by an oracle that does not use the listing: in
 /// each GameState an Action was chosen from, the cards of the Active Player's hand that
 /// `play_creature` would play and that `transition` refuses with the Trigger Cap.
+///
+/// Looking only at the hand is complete for the shade decks: the Trigger Cap is reached only by a
+/// Restless Shade entering the field, and `play_creature`, whose one parameter is
+/// `{ name: card, zone: hand, card_type: creature }`, binds only cards of the Active Player's hand.
+/// A shade never rests in the field (entering it exceeds the cap and refuses the play), so no
+/// `attack` target and no other candidate can start the chain. The candidates the listing refuses
+/// with the cap are therefore exactly these hand cards.
+
 fn trigger_cap_rejections_by_playing_every_card_in_hand(
     ruleset: &DeclarativeRuleset,
     game: &SelfPlayGame,
@@ -564,12 +683,13 @@ fn listing_with_rejections_accepts_exactly_the_legal_actions_in_listing_order() 
 fn replaying_an_effects_record_reproduces_the_traces_and_the_final_state() {
     let ruleset = effects();
     let decks = effects_decks(&ruleset);
+    // A second, separately loaded Ruleset, loaded once: replay must not depend on the first value.
+    let replaying = effects();
     for seed in 0..PINNED_SEEDS {
         let game = self_play(&ruleset, &decks, Seed(seed), MAX_STEPS, Checks::Off)
             .expect("the Game is played");
 
-        // A second, separately loaded Ruleset: replay must not depend on the first value.
-        let replay = effects().replay(&game.record).expect("the record replays");
+        let replay = replaying.replay(&game.record).expect("the record replays");
 
         assert!(replay.creation == game.creation, "seed {seed}: creation");
         assert_eq!(replay.traces.len(), game.record.actions().len());
@@ -623,11 +743,16 @@ fn a_cascade_of_triggers_replays_identically() {
             if card == imp && from.as_str() == "field" && to.as_str() == "trash")
     })
     .expect("its first trigger moves it to the trash");
-    let drew = position(&|event| {
-        matches!(event, Event::CardMoved { player, from, to, .. }
-            if *player == action.player && from.as_str() == "deck" && to.as_str() == "hand")
-    })
-    .expect("its second trigger draws a card");
+    let drew = events
+        .iter()
+        .enumerate()
+        .skip(to_trash.saturating_add(1))
+        .find_map(|(index, event)| {
+            matches!(event, Event::CardMoved { player, from, to, .. }
+                if *player == action.player && from.as_str() == "deck" && to.as_str() == "hand")
+            .then_some(index)
+        })
+        .expect("its second trigger draws a card after the imp reaches the trash");
     assert!(
         to_field < to_trash && to_trash < drew,
         "the Events cascade in order: {events:?}"
@@ -670,20 +795,18 @@ fn effects_self_play_with_the_same_seed_is_deterministic() {
 
 #[test]
 fn the_small_ruleset_is_frozen_since_phase_c() {
-    let mut hash = FNV_START;
-    for (name, text) in [
-        ("small-ruleset.yaml", SMALL_RULESET),
-        ("small-catalog.yaml", SMALL_CATALOG),
-        ("decks/deck-a.yaml", DECK_A),
-        ("decks/deck-b.yaml", DECK_B),
-    ] {
-        for part in [name.as_bytes(), b"\n", text.as_bytes(), b"\n"] {
-            hash = fnv1a(hash, part);
-        }
-    }
+    let changed: Vec<String> = SMALL_RULESET_FREEZE
+        .iter()
+        .filter_map(|(name, text, pinned)| {
+            let digest = fnv1a(FNV_START, text.as_bytes());
+            (digest != *pinned)
+                .then(|| format!("{name}: digest {digest:016x}, pinned {pinned:016x}"))
+        })
+        .collect();
     assert!(
-        hash == SMALL_RULESET_FREEZE,
-        "the Small Ruleset, its catalog or its sample decks changed (digest {hash:016x}, pinned {SMALL_RULESET_FREEZE:016x}); it is frozen since Phase C (ADR-0022)"
+        changed.is_empty(),
+        "the Small Ruleset is frozen since Phase C (ADR-0022), and its Games with it, but these changed:\n{}",
+        changed.join("\n")
     );
 
     // The Effects sample decks are not the Small ones.
