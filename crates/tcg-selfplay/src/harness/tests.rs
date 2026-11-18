@@ -66,6 +66,8 @@ fn with_violation_at<R>(
     let checker = Checker {
         opening: &|_, _, _| Vec::new(),
         transition: &transition,
+        recomputation: &|_, _| Vec::new(),
+        rejection: &|_, _, _, _| Vec::new(),
     };
     body(&checker, &flagged)
 }
@@ -136,6 +138,8 @@ fn an_opening_invariant_violation_has_no_action_index_and_an_empty_record() {
     let checks = Checker {
         opening: &|_, _, _| vec![injected()],
         transition: &|_, _, _, _| Vec::new(),
+        recomputation: &|_, _| Vec::new(),
+        rejection: &|_, _, _, _| Vec::new(),
     };
     let failure =
         play(&ruleset, &decks, SEED, MAX_STEPS, Some(&checks)).expect_err("the opening violates");

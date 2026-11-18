@@ -7,14 +7,20 @@
 //! [`check_transition`] and [`check_opening`] return every violated [`Invariant`], at most once
 //! each and in the order of the enum (the ticket's order). The `detail` of a violation names the
 //! first offender found for that Invariant.
+//!
+//! The two Invariants added for the Effects Ruleset (ADR-0026) are checked by functions of their
+//! own, because they need what those two do not have: [`check_recomputation`] needs the fold of
+//! every Event of the Game, and [`check_rejection`] needs an Action that was refused.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use tcg_engine::card_catalog::CardId;
 use tcg_engine::deck_list::DeckList;
-use tcg_engine::declarative::{CardInstanceId, DeclarativeRuleset, Event, GameCreation, GameState};
+use tcg_engine::declarative::{
+    Action, CardInstanceId, DeclarativeRuleset, Event, GameCreation, GameState, Rejection,
+};
 use tcg_engine::player::PlayerId;
-use tcg_engine::ruleset::{EventTrace, LegalActions};
+use tcg_engine::ruleset::{EventTrace, LegalActions, Ruleset};
 use tcg_engine::ruleset_definition::{CardType, ZoneId};
 
 /// A property that holds in every GameState and across every transition of a correct engine, in
@@ -41,6 +47,15 @@ pub enum Invariant {
     /// The Turn Number and the Active Player agree with the Player Order and the starting Player,
     /// and the Turn Number never decreases.
     TurnAndActivePlayerConsistent,
+    /// Derived reads never leak into stored state: the GameState the engine carries equals the
+    /// GameState obtained by folding every Event of the Game, in order, onto the Empty GameState,
+    /// with nothing the engine carried forward. It differs from `EventSourcedConsistency`, which
+    /// folds from the engine's own prior state and so cannot see a value the engine carries
+    /// forward outside an Event, such as a cached Field Modifier.
+    DerivedReadsDoNotLeak,
+    /// A rejected Action leaves the GameState it was offered untouched, emits no Event, and is
+    /// rejected the same way when it is run again.
+    RejectionLeavesStateIntact,
 }
 
 /// One violated [`Invariant`], with a human-readable account of the first offender.
@@ -126,6 +141,126 @@ pub fn check_transition(
             turn_inconsistent(ruleset, next).or_else(|| turn_went_back(prior, next)),
         ),
     ])
+}
+
+/// Checks that the Recomputed GameState equals the GameState the engine produced. `recomputed` is
+/// the fold of every Event of the Game so far, in order, onto the Empty GameState
+/// (`GameCreation::empty`): it must never start from a GameState the engine carried, or this would
+/// repeat `EventSourcedConsistency`. A violation names the first part that differs.
+pub fn check_recomputation(recomputed: &GameState, next: &GameState) -> Vec<InvariantViolation> {
+    state_difference(recomputed, next)
+        .map(|detail| InvariantViolation {
+            invariant: Invariant::DerivedReadsDoNotLeak,
+            detail,
+        })
+        .into_iter()
+        .collect()
+}
+
+/// Checks that a rejected Action leaves its GameState intact: `action` is run against `prior`
+/// again, the Rejection must be `rejection` once more, and `prior` must equal the clone taken
+/// before the call. A rejection has no Event Trace and no GameState, so nothing is emitted.
+pub fn check_rejection(
+    ruleset: &DeclarativeRuleset,
+    prior: &GameState,
+    action: &Action,
+    rejection: &Rejection,
+) -> Vec<InvariantViolation> {
+    let before = prior.clone();
+    let rerun = ruleset.transition(prior, action);
+    let detail = match rerun {
+        Err(again) if again == *rejection => None,
+        Err(again) => Some(format!(
+            "{action:?} was rejected with {rejection:?} and then with {again:?}"
+        )),
+        Ok(_) => Some(format!(
+            "{action:?} was rejected with {rejection:?} and then accepted"
+        )),
+    }
+    .or_else(|| (*prior != before).then(|| "a rejected Action changed its GameState".to_string()));
+    detail
+        .map(|detail| InvariantViolation {
+            invariant: Invariant::RejectionLeavesStateIntact,
+            detail,
+        })
+        .into_iter()
+        .collect()
+}
+
+/// The first part in which `recomputed` and `next` differ, or `None` when they are equal.
+fn state_difference(recomputed: &GameState, next: &GameState) -> Option<String> {
+    if recomputed == next {
+        return None;
+    }
+    if recomputed.turn_number() != next.turn_number() {
+        return Some(format!(
+            "the Turn Number is {:?} in the Recomputed GameState and {:?} in the engine's",
+            recomputed.turn_number().map(|turn| turn.get()),
+            next.turn_number().map(|turn| turn.get())
+        ));
+    }
+    if recomputed.active_player() != next.active_player() {
+        return Some(format!(
+            "the Active Player is Player {} in the Recomputed GameState and Player {} in the engine's",
+            recomputed.active_player().0,
+            next.active_player().0
+        ));
+    }
+    if recomputed.outcome() != next.outcome() {
+        return Some("the Terminal Outcome differs".to_string());
+    }
+    let (left, right) = (recomputed.cards(), next.cards());
+    if left.len() != right.len() {
+        return Some(format!(
+            "the Recomputed GameState has {} card instances and the engine's has {}",
+            left.len(),
+            right.len()
+        ));
+    }
+    for (folded, carried) in left.iter().zip(right) {
+        if folded == carried {
+            continue;
+        }
+        let id = carried.id().0;
+        let entry = folded
+            .state()
+            .iter()
+            .zip(carried.state())
+            .find(|(one, other)| one != other);
+        return Some(match entry {
+            Some(((name, folded_value), (_, carried_value))) => format!(
+                "card instance {id}: its state `{}` is {folded_value:?} in the Recomputed GameState and {carried_value:?} in the engine's",
+                name.as_str()
+            ),
+            None => format!(
+                "card instance {id} is {:?} of Player {} in the Recomputed GameState and {:?} of Player {} in the engine's",
+                folded.definition().as_str(),
+                folded.owner().0,
+                carried.definition().as_str(),
+                carried.owner().0
+            ),
+        });
+    }
+    for &player in next.player_order().players() {
+        if recomputed.zones(player) != next.zones(player) {
+            let zone = next
+                .zones(player)
+                .unwrap_or_default()
+                .iter()
+                .find(|held| recomputed.zone(player, held.zone()) != Some(held.cards()));
+            return Some(match zone {
+                Some(held) => format!(
+                    "zone `{}` of Player {} holds {:?} in the Recomputed GameState and {:?} in the engine's",
+                    held.zone().as_str(),
+                    player.0,
+                    recomputed.zone(player, held.zone()).map(ids),
+                    ids(held.cards())
+                ),
+                None => format!("the zones of Player {} differ", player.0),
+            });
+        }
+    }
+    Some("the Random State or another part of the GameState differs".to_string())
 }
 
 /// The violations among `results`, which are given in ticket order.
