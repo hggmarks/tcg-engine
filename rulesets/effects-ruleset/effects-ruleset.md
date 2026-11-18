@@ -2,7 +2,7 @@
 
 The ruleset of Phase C. It is **derived from the Small Ruleset** (`../small-ruleset/small-ruleset.md`), which is frozen as the canonical ruleset of Phase B: from now on a rule decision is made here, and the Small Ruleset files do not change (ADR-0022).
 
-Every rule not stated on this page is the Small Ruleset's, word for word: parameters, zones, decks, setup, the turn, combat and win conditions. A Game of the Effects Ruleset with the same Seed, Deck Lists of Small cards and Actions plays identically to a Game of the Small Ruleset, Event for Event (a test plays the Small Ruleset's Leader-kill script with the Small sample decks under both). Its sample decks play the effect cards (see Sample decks), so its own golden game, `crates/tcg-loader/tests/golden/effects-leader-kill.trace`, is not the Small Ruleset's: it is a Leader-kill with a trigger resolution in it.
+Every rule not stated on this page is the Small Ruleset's, word for word: parameters, zones, deck inputs, setup, the turn, combat and win conditions. A Game of the Effects Ruleset with the same Seed, Deck Lists of Small cards and Actions plays identically to a Game of the Small Ruleset, Event for Event (a test plays the Small Ruleset's Leader-kill script with the Small sample decks under both). Its sample decks play the effect cards (see Sample decks), so its own golden game, `crates/tcg-loader/tests/golden/effects-leader-kill.trace`, is not the Small Ruleset's: it is a Leader-kill with a trigger resolution in it.
 
 ## What differs
 
@@ -109,7 +109,7 @@ One creature per family, in `effects-catalog.yaml`, and `pyre_imp`, the bounded 
 | `restless_shade` | `enter: field` → move self to trash; `enter: trash` → move self to field | a cascade that exceeds the Trigger Cap: playing it is rejected. It is not in a sample deck |
 | `pyre_imp` | `enter: field` → move self to trash; `enter: trash` → draw 1 | a bounded cascade: the first trigger's own Event (the move) wakes the second, which draws and stops. Playing it moves the card to the field, then the trash, then draws one card, in one transition |
 
-Self-play never reaches the cap with the sample decks, because `restless_shade` is in none. Over Seeds 0..1000 every effect card of the sample decks is played, and the cards that act only after another Event (the `grave_jackal` that dies, the `dawn_scout` that stays for a Turn) do act: no card turned out dead or unreachable, so the catalog needed no fix.
+Self-play never reaches the cap with the sample decks, because `restless_shade` is in none. A one-off count over Seeds 0..1000, made when the sample decks were written and not pinned by a test per card, found every effect card of the sample decks played and the cards that act only after another Event (the `grave_jackal` that dies, the `dawn_scout` that stays for a Turn) acting: no card turned out dead or unreachable, so the catalog needed no fix. The tests pin only per-family minimums (see ADR-0026).
 
 ## Sample decks
 

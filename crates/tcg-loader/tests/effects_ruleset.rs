@@ -351,7 +351,8 @@ fn effects_ruleset_loads_and_creates_a_game() {
     assert_eq!(ruleset.catalog().meta().ruleset().as_str(), "effects");
 
     // The one difference from the Small Ruleset: creatures may carry Card Effects. The catalog
-    // carries five triggered (ticket #50) and two continuous ones (ticket #51).
+    // carries six triggered (tickets #50 and #53), two continuous (ticket #51) and three aura ones
+    // (ticket #52): eleven carriers.
     let allows: Vec<(&str, bool)> = definition
         .card_types()
         .iter()
