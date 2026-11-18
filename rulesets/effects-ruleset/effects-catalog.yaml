@@ -72,6 +72,18 @@ cards:
         do: [ { move: { card: { ref: self }, to: trash } } ]
       - on: { enter: trash }
         do: [ { move: { card: { ref: self }, to: field } } ]
+  # The bounded version of that pattern, a cascade: a trigger whose own Events wake another trigger.
+  # Entering the field moves it to the trash, and entering the trash draws a card for its controller.
+  # The second effect does not move the card back, so the chain stops after two steps. Shipped in
+  # the sample decks.
+  - id: pyre_imp
+    type: creature
+    fields: { name: "Pyre Imp", cost: 1, power: 1 }
+    effects:
+      - on: { enter: field }
+        do: [ { move: { card: { ref: self }, to: trash } } ]
+      - on: { enter: trash }
+        do: [ { draw: { player: controller, from: deck, to: hand, count: 1 } } ]
 
   # Creatures with a continuous Card Effect (ADR-0024). A creature taps when it attacks, before the
   # combat compares powers, so while it is tapped it fights with the modified power.
