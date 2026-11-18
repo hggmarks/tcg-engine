@@ -5,11 +5,12 @@ use std::num::NonZeroU64;
 use tcg_engine::declarative::{GameRecord, Rejection, ReplayError};
 use tcg_engine::random::{RandomState, Seed};
 use tcg_engine::ruleset::{LegalActions, Ruleset};
-use tcg_selfplay::{
-    self_play, verify_record, Checks, FailureKind, SelfPlayFailure, SelfPlayGame, POLICY_STREAM,
-};
+use tcg_selfplay::{self_play, verify_record, Checks, FailureKind, SelfPlayFailure, POLICY_STREAM};
 
-use crate::common::{decks, p, pass, small, small_version_2, small_with_ruleset, MAX_STEPS};
+use crate::common::{
+    decks, digest_line, p, pass, pin_difference, small, small_version_2, small_with_ruleset,
+    MAX_STEPS,
+};
 
 /// The Seeds of the self-play pin: `0..PINNED_SEEDS`.
 const PINNED_SEEDS: u64 = 1000;
@@ -22,58 +23,6 @@ const DIGESTS_PATH: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/tests/selfplay/golden/self-play-seeds-0-1000.digest"
 );
-
-/// 64-bit FNV-1a: a fixed, dependency-free hash, so the digests never depend on a library version.
-fn fnv1a(hash: u64, bytes: &[u8]) -> u64 {
-    bytes.iter().fold(hash, |hash, byte| {
-        (hash ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3)
-    })
-}
-
-/// The pin line of one Game: `seed actions digest`, with `actions` the number of accepted Actions
-/// and `digest` the FNV-1a, in hex, of one `Debug` line per Event of the creation trace, then, for
-/// every accepted Action, its `Debug` line followed by one `Debug` line per Event of its trace,
-/// then the `Debug` line of the Terminal Outcome. It is the `Debug`-line convention of the Golden
-/// Snapshots (ADR-0017), so it covers both the Game Record and the whole Event Trace.
-fn digest_line(seed: u64, game: &SelfPlayGame) -> String {
-    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
-    let mut line = |text: String| {
-        hash = fnv1a(hash, text.as_bytes());
-        hash = fnv1a(hash, b"\n");
-    };
-    for event in game.creation.opening.trace.events() {
-        line(format!("{event:?}"));
-    }
-    for (action, trace) in game.record.actions().iter().zip(&game.traces) {
-        line(format!("{action:?}"));
-        for event in trace.events() {
-            line(format!("{event:?}"));
-        }
-    }
-    line(format!("{:?}", game.state.outcome()));
-    format!("{seed} {} {hash:016x}\n", game.record.actions().len())
-}
-
-/// Compares `lines` (one per Seed, in order) with the committed pin, byte for byte; the answer
-/// names the first Seed that differs.
-fn pin_difference(lines: &[String]) -> Option<String> {
-    let committed: Vec<&str> = DIGESTS.split_inclusive('\n').collect();
-    for (index, line) in lines.iter().enumerate() {
-        if committed.get(index) != Some(&line.as_str()) {
-            return Some(format!(
-                "seed {index}: the Game Record or its Event Trace changed\n  pinned: {:?}\n  played: {line:?}",
-                committed.get(index)
-            ));
-        }
-    }
-    (committed.len() != lines.len()).then(|| {
-        format!(
-            "the pin has {} lines, {} Seeds were played",
-            committed.len(),
-            lines.len()
-        )
-    })
-}
 
 #[test]
 fn self_play_ends_every_game_over_1000_seeds_with_every_invariant_holding() {
@@ -104,7 +53,7 @@ fn self_play_ends_every_game_over_1000_seeds_with_every_invariant_holding() {
     );
 
     // The same Games, one pass: their Game Records and Event Traces are the pinned ones.
-    if let Some(difference) = pin_difference(&digests) {
+    if let Some(difference) = pin_difference(DIGESTS, &digests) {
         panic!(
             "{difference}\nIf the change is deliberate, run: cargo test -p tcg-selfplay --test selfplay -- --ignored regenerate_self_play_digests"
         );

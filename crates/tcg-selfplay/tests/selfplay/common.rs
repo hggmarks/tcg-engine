@@ -15,6 +15,15 @@ pub const SMALL_CATALOG: &str =
 pub const DECK_A: &str = include_str!("../../../../rulesets/small-ruleset/decks/deck-a.yaml");
 pub const DECK_B: &str = include_str!("../../../../rulesets/small-ruleset/decks/deck-b.yaml");
 
+pub const EFFECTS_RULESET: &str =
+    include_str!("../../../../rulesets/effects-ruleset/effects-ruleset.yaml");
+pub const EFFECTS_CATALOG: &str =
+    include_str!("../../../../rulesets/effects-ruleset/effects-catalog.yaml");
+pub const EFFECTS_DECK_A: &str =
+    include_str!("../../../../rulesets/effects-ruleset/decks/deck-a.yaml");
+pub const EFFECTS_DECK_B: &str =
+    include_str!("../../../../rulesets/effects-ruleset/decks/deck-b.yaml");
+
 /// The Step Cap of the full Games of these tests. It is far above the longest Game of seeds
 /// 0..1000 (see the test `self_play_ends_every_game_over_1000_seeds_with_every_invariant_holding`).
 pub const MAX_STEPS: usize = 1_000;
@@ -38,6 +47,16 @@ pub fn ruleset_from(ruleset_yaml: &str, catalog_yaml: &str) -> DeclarativeRulese
 /// The real Small Ruleset and the real catalog.
 pub fn small() -> DeclarativeRuleset {
     ruleset_from(SMALL_RULESET, SMALL_CATALOG)
+}
+
+/// The real Effects Ruleset and the real Effects catalog.
+pub fn effects() -> DeclarativeRuleset {
+    ruleset_from(EFFECTS_RULESET, EFFECTS_CATALOG)
+}
+
+/// The real Effects Ruleset with its text edited, and the real Effects catalog.
+pub fn effects_with_ruleset(from: &str, to: &str) -> DeclarativeRuleset {
+    ruleset_from(&edit(EFFECTS_RULESET, from, to), EFFECTS_CATALOG)
 }
 
 /// The real Small Ruleset with its text edited, and the real catalog.
@@ -69,6 +88,16 @@ fn deck(ruleset: &DeclarativeRuleset, yaml: &str) -> DeckList {
 /// Deck A for seat 0 and deck B for seat 1.
 pub fn decks(ruleset: &DeclarativeRuleset) -> Vec<DeckList> {
     vec![deck(ruleset, DECK_A), deck(ruleset, DECK_B)]
+}
+
+/// The Effects Deck List `yaml` loaded under `ruleset`.
+pub fn effects_deck(ruleset: &DeclarativeRuleset, yaml: &str) -> DeckList {
+    deck(ruleset, yaml)
+}
+
+/// The Effects sample Deck A for seat 0 and Deck B for seat 1.
+pub fn effects_decks(ruleset: &DeclarativeRuleset) -> Vec<DeckList> {
+    vec![deck(ruleset, EFFECTS_DECK_A), deck(ruleset, EFFECTS_DECK_B)]
 }
 
 /// Deck B for seat 0 and deck A for seat 1.
@@ -112,4 +141,59 @@ pub fn steps(ruleset: &DeclarativeRuleset, game: &SelfPlayGame) -> Vec<Step> {
         state = transition.state;
     }
     steps
+}
+
+/// 64-bit FNV-1a: a fixed, dependency-free hash, so the digests never depend on a library version.
+pub fn fnv1a(hash: u64, bytes: &[u8]) -> u64 {
+    bytes.iter().fold(hash, |hash, byte| {
+        (hash ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3)
+    })
+}
+
+/// The FNV-1a offset basis, the start of every digest.
+pub const FNV_START: u64 = 0xcbf2_9ce4_8422_2325;
+
+/// The pin line of one Game: `seed actions digest`, with `actions` the number of accepted Actions
+/// and `digest` the FNV-1a, in hex, of one `Debug` line per Event of the creation trace, then, for
+/// every accepted Action, its `Debug` line followed by one `Debug` line per Event of its trace,
+/// then the `Debug` line of the Terminal Outcome. It is the `Debug`-line convention of the Golden
+/// Snapshots (ADR-0017), so it covers both the Game Record and the whole Event Trace.
+pub fn digest_line(seed: u64, game: &SelfPlayGame) -> String {
+    let mut hash = FNV_START;
+    let mut line = |text: String| {
+        hash = fnv1a(hash, text.as_bytes());
+        hash = fnv1a(hash, b"\n");
+    };
+    for event in game.creation.opening.trace.events() {
+        line(format!("{event:?}"));
+    }
+    for (action, trace) in game.record.actions().iter().zip(&game.traces) {
+        line(format!("{action:?}"));
+        for event in trace.events() {
+            line(format!("{event:?}"));
+        }
+    }
+    line(format!("{:?}", game.state.outcome()));
+    format!("{seed} {} {hash:016x}\n", game.record.actions().len())
+}
+
+/// Compares `lines` (one per Seed, in order) with the `committed` pin, byte for byte; the answer
+/// names the first Seed that differs.
+pub fn pin_difference(committed: &str, lines: &[String]) -> Option<String> {
+    let committed: Vec<&str> = committed.split_inclusive('\n').collect();
+    for (index, line) in lines.iter().enumerate() {
+        if committed.get(index) != Some(&line.as_str()) {
+            return Some(format!(
+                "seed {index}: the Game Record or its Event Trace changed\n  pinned: {:?}\n  played: {line:?}",
+                committed.get(index)
+            ));
+        }
+    }
+    (committed.len() != lines.len()).then(|| {
+        format!(
+            "the pin has {} lines, {} Seeds were played",
+            committed.len(),
+            lines.len()
+        )
+    })
 }
