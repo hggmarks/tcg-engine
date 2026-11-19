@@ -16,6 +16,7 @@ mod expression;
 mod game_end;
 mod legal_actions;
 mod modifiers;
+mod observation;
 mod record;
 mod state;
 mod triggers;
@@ -24,6 +25,9 @@ mod turn_cycle;
 pub use action::{Action, Argument, Rejection};
 pub use creation::{DeclarativeRuleset, GameCreation, GameCreationError};
 pub use event::Event;
+pub use observation::{
+    ObservationError, ObservedCard, ObservedGameState, ObservedZone, Observer, Viewer, VisibleCard,
+};
 pub use record::{GameRecord, Replay, ReplayError};
 pub use state::{
     ApplyError, CardInstance, CardInstanceId, GameState, Loss, TerminalOutcome, ZoneCards,
