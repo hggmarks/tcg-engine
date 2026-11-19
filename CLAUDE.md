@@ -88,6 +88,7 @@ A ticket is done when all of this holds:
 - Every acceptance criterion is covered by a test named in `CONTEXT.md` vocabulary.
 - New or changed domain terms are in `CONTEXT.md`.
 - Decisions are recorded as short ADRs in `docs/adr/`, and any conflict with an existing ADR is flagged.
+- When a new ADR changes a statement of an older ADR, the same PR edits the older ADR's body with an `Amended by ADR-NNNN:` line and marks each affected clause where it stands (flagging the conflict alone is not enough).
 - Rule decisions are mirrored in `rulesets/effects-ruleset/effects-ruleset.md` and `.yaml`. The Small Ruleset (`rulesets/small-ruleset/`) is frozen since Phase C: it does not change (ADR-0022).
 - Nothing under the ticket's *Out of scope* is introduced.
 
@@ -119,7 +120,7 @@ cargo build -p tcg-engine --target wasm32-unknown-unknown
 
 ## Working on roadmap tickets
 
-- The Roadmap is issue #14. Tickets are its sub-issues, taken in `[nn]` order once unblocked.
+- The current roadmap is the single open issue labelled `roadmap`, one per phase; tickets are its sub-issues, taken in `[nn]` order once unblocked.
 - One branch `ticket/<n>-<slug>` and one PR containing `Closes #<n>` per ticket.
 - Stop and ask: when an ambiguity the ticket does not cover would change game rules or a public contract, do not invent a rule. Comment the question, the options and a recommendation on the ticket, add the `needs-info` label, and stop.
 

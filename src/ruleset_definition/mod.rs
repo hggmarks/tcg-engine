@@ -12,9 +12,11 @@
 //! duplicates against earlier elements, before its content, in key order. An input's content is
 //! its card types (non-empty, known, without repeats), then `size`, then `max_copies`, then its
 //! zone. Setup steps follow, in declaration order, then the actions (each: id grammar, duplicate,
-//! then its params, its cost and its effects, in that order, ADR-0015), then the turn: per phase,
+//! then its params, its cost and its effects, in that order, ADR-0015, and then where its `end_turn`
+//! may be, ADR-0027), then the turn: per phase,
 //! in declaration order, its id (grammar, duplicate), its kind (exactly one of `automatic` and
-//! `actions`) and its content, and after all the phases that exactly one has actions. Phases are
+//! `actions`) and its content (an action phase also needs an action that ends the Turn), and after
+//! all the phases that exactly one has actions, then that every action is listed by a phase. Phases are
 //! addressed by id (`turn.phases[main].actions[0]`) and steps by position, with
 //! `then` and `else` as the keys of nested steps (`turn.phases[start].automatic[2].else[0]`).
 //! Within a step: `player`, then its zones in key order (a source that cards are taken from is

@@ -250,7 +250,7 @@ One segment of a Turn, addressed by a Phase Id unique among the phases. It is ei
 A phase with an `automatic` list of Automatic Steps, run in order when the phase begins.
 
 **Action Phase**:
-The phase with `actions` where the Game waits for the Active Player. A turn has exactly one (ADR-0012). The Game leaves it only through End Turn.
+The phase with `actions` where the Game waits for the Active Player. A turn has exactly one (ADR-0012). The Game leaves it only through End Turn, so it lists at least one action that ends the Turn, and every declared action is listed by it (ADR-0027: `NoTurnEndingAction`, `UnlistedAction`).
 
 **Automatic Step**:
 One entry of an Automatic Phase: a single-key map naming a primitive (Untap, Set State, Draw, Move) or an If Step.
@@ -358,7 +358,7 @@ The owner of `self`, the carrying card: the Player a Draw Effect in a Card Effec
 The Action Effect `draw: { player, from, to, count }`, only meaningful in a Card Effect: moves `count` cards one at a time from the Top of `from` (an ordered zone) onto the Top of `to`; an empty `from` emits `DrawFromEmptyZone` and stops, which is how a trigger reaches the `draw_from_empty` win conditions (ADR-0014).
 
 **End Turn**:
-The effect `end_turn: {}`. It runs every phase after the current one, then the next Player in seat order begins Turn n+1 and their phases run until the Action Phase, all in the same transition.
+The effect `end_turn: {}`. It runs every phase after the current one, then the next Player in seat order begins Turn n+1 and their phases run until the Action Phase, all in the same transition. In an action it is only the last top-level effect, never inside an If Effect (ADR-0027); an action whose effects end with it is an action that ends the Turn. A Card Effect has no End Turn at all (ADR-0022).
 
 **Action** (declarative):
 A Player, the id of an Action Definition they take and one Argument per Action Parameter, in parameter order. It is distinct from the Action Definition it names.
@@ -379,7 +379,19 @@ The Event that a draw found its source zone empty. It changes nothing and is emi
 A Rejection: the Action names an action the ruleset does not declare.
 
 **Action Not In Current Phase**:
-A Rejection: the action is declared but the current phase does not list it, because there is no current phase, the phase is not an Action Phase, or it does not list the action.
+A Rejection: the action is declared but the current phase does not list it, because there is no current phase or the phase is not an Action Phase (the Action Phase lists every declared action, ADR-0027).
+
+**End Turn In If Effect**:
+A Definition Error at the `end_turn` of an action that is inside an `if` effect, `then` or `else`, at any depth, even when the `if` is the last effect (ADR-0027). Distinct from End Turn In Card Effect.
+
+**End Turn Not Last**:
+A Definition Error at a top-level `end_turn` of an action that another effect follows; for `[end_turn, end_turn]` the first one (ADR-0027).
+
+**No Turn Ending Action**:
+A Definition Error at the Action Phase when none of the actions it lists ends the Turn (including an empty list), so the Game could wait there forever (ADR-0027).
+
+**Unlisted Action**:
+A Definition Error at an action that no phase lists; without a `turn` every action is one (ADR-0027). Where the Rejection Action Not In Current Phase is about the Game, this is about the ruleset.
 
 **Argument Count Mismatch**:
 A Rejection: the Action has a different number of Arguments than the action has Action Parameters.
