@@ -1,5 +1,7 @@
 # Observing a GameState
 
+Amended by ADR-0031: the Known limit paragraph is answered (a non-public Active Zone is not exercised).
+
 Amended by ADR-0029: `ObserverOutOfStep` also covers an Event of a trace that does not apply to the GameState it is followed from, or a transition whose GameState is not the one its trace leads to.
 
 Amended by ADR-0030: two `ObservationError` variants are appended (`ActionOfAnotherPlayer`, `LegalActionNamesUnseenCard`), and `observed_legal_actions` also raises `ObserverOutOfStep`.
@@ -24,7 +26,7 @@ The first half of hidden information (ticket [23], #63, of the Observations road
 
 **Honest limits.** The Observer trusts the Events: it does not check them against the Empty GameState (that is `apply`'s job), only against its own mapping and the declared zones. *Amended by ADR-0029: `follow_events` and `follow_transition` apply each Event to the previous GameState, so an Event that does not apply is `ObserverOutOfStep`.* A count is always visible, so a Viewer sees that a hidden zone changed size; and a seen zone keeps its stored order, which for an `owner` zone (the hand) is shown to its owner. Both are the rules, not leaks.
 
-**Known limit for [26]'s leak check.** A Derived Read adds the Field Modifiers of every carrier in the Active Zone, whatever that zone's Visibility. The Effects Ruleset's Active Zone is the public `field`, and the Small Ruleset has none, so nothing hidden contributes. A ruleset with a non-public Active Zone would let a visible card's Derived Read reveal that hidden carriers exist. This ticket does not change it; the self-play leak check of [26] must account for it.
+**Known limit for [26]'s leak check.** *(Answered by ADR-0031: the leak check compares Derived Reads with plain equality, so on a ruleset with a non-public Active Zone it would report the hidden carriers' contribution as a leak, which is the right verdict; no shipped ruleset has one, so it is not exercised.)* A Derived Read adds the Field Modifiers of every carrier in the Active Zone, whatever that zone's Visibility. The Effects Ruleset's Active Zone is the public `field`, and the Small Ruleset has none, so nothing hidden contributes. A ruleset with a non-public Active Zone would let a visible card's Derived Read reveal that hidden carriers exist. This ticket does not change it; the self-play leak check of [26] must account for it.
 
 **Conflicts.** ADR-0004's recorded open item "hidden information is not yet decided" is decided here and marked as amended there. ADR-0010's rule for future observations is met, not changed. ADR-0018's capability pattern is reused unchanged.
 

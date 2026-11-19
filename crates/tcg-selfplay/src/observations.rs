@@ -120,10 +120,8 @@ pub(crate) fn hidden_cards(
                 player,
                 from,
                 to,
-            } => {
-                if sees(ruleset, viewer, *player, from) || sees(ruleset, viewer, *player, to) {
-                    seen.insert(*card);
-                }
+            } if sees(ruleset, viewer, *player, from) || sees(ruleset, viewer, *player, to) => {
+                seen.insert(*card);
             }
             _ => {}
         }
