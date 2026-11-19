@@ -469,6 +469,21 @@ One zone as a Viewer sees it: its count always, and its Observed Cards, bottom f
 **Unknown Viewer**:
 The `ObservationError` for a Viewer that is not a Player of the Game, never a panic.
 
+**Observed Action**:
+An Action as a Viewer expresses it (ADR-0030): the engine Action with an Observed Card for each card argument. `ObservedAction { player, action, arguments }`, each argument an `ObservedArgument::Card`.
+
+**Observed Legal Actions**:
+The Legal Actions (ADR-0018) whose Player is the Viewer, each card argument as its Observed Card, in the engine's Listing Order: `DeclarativeRuleset::observed_legal_actions(observer, state)`. A Viewer that is not the Active Player gets an empty list.
+
+**Translating an Observed Action**:
+Turning an Observed Action back into the engine Action through the Observer's mapping: `DeclarativeRuleset::translate_action(observer, action)`. It checks only the Player and the handles; the action id, the arity and the legality stay with `transition`.
+
+**Action Of Another Player**:
+The `ObservationError` for an Observed Action whose Player is not the Viewer, checked before any handle.
+
+**Legal Action Names Unseen Card**:
+The `ObservationError` for a Legal Action of the Viewer that names a card in a zone the Viewer cannot see; listing it would expose the card. It names the action, never the card. No shipped ruleset produces one.
+
 **Unknown Observed Card**:
 The `ObservationError` for an Observed Card the Viewer does not hold now: never given, or retired.
 
