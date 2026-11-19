@@ -4,6 +4,7 @@
 //! Card Instance Id, no Random State and no order of a zone the Viewer cannot see.
 
 use super::error::ObservationError;
+use super::observed_event::{ObservedApplyError, ObservedEvent};
 use super::observer::{sees, Observer};
 use super::viewer::{ObservedCard, Viewer};
 use crate::card_catalog::CardId;
@@ -82,6 +83,308 @@ impl ObservedGameState {
             .binary_search_by_key(&card, |visible| visible.card)
             .ok()
             .and_then(|position| self.cards.get(position))
+    }
+}
+
+/// Where a zone is held: the position of its Player, then of the zone, in `zones`.
+type ZoneAt = (usize, usize);
+
+impl ObservedGameState {
+    /// Applies one Observed Event: the facts of one Event of a transition, as this Viewer observes
+    /// it (ADR-0029). It mirrors `GameState::apply`: a move takes the card out of `from` and puts
+    /// it on the end of `to`; `TurnBegan` resets the phase; `GameEnded` records the Terminal
+    /// Outcome, and nothing applies after it.
+    ///
+    /// Atomic: every check comes before the first change, so on `Err` the state is unchanged. After
+    /// `GameEnded` the error is `GameAlreadyEnded`; every other misfit is `EventDoesNotFit`: an
+    /// unknown Player, zone, card or state; a zone seen or unseen the other way from what the
+    /// variant needs; a card not in `from`, or one that is visible already; a count that would go
+    /// below zero or overflow; an order that is not a permutation; a value of the wrong type; a draw
+    /// from a zone that is not empty; a phase before any Turn; or bad losses.
+    pub fn apply(&mut self, event: &ObservedEvent) -> Result<(), ObservedApplyError> {
+        if self.outcome.is_some() {
+            return Err(ObservedApplyError::GameAlreadyEnded);
+        }
+        let misfit = ObservedApplyError::EventDoesNotFit;
+        match event {
+            ObservedEvent::CardCreated {
+                card,
+                owner,
+                definition,
+                zone,
+                state,
+            } => {
+                let at = self.locate(*owner, zone).ok_or(misfit)?;
+                self.seen_at(at).ok_or(misfit)?;
+                let position = self.insertion_point(*card).ok_or(misfit)?;
+                self.push_seen(at, *card);
+                self.cards.insert(
+                    position,
+                    VisibleCard {
+                        card: *card,
+                        owner: *owner,
+                        definition: definition.clone(),
+                        state: state.clone(),
+                    },
+                );
+                Ok(())
+            }
+            ObservedEvent::UnseenCardCreated { owner, zone } => {
+                let at = self.locate(*owner, zone).ok_or(misfit)?;
+                let count = self.unseen_count(at).ok_or(misfit)?;
+                let count = count.checked_add(1).ok_or(misfit)?;
+                self.set_unseen_count(at, count);
+                Ok(())
+            }
+            ObservedEvent::CardMoved {
+                card,
+                player,
+                from,
+                to,
+            } => {
+                let from = self.locate(*player, from).ok_or(misfit)?;
+                let to = self.locate(*player, to).ok_or(misfit)?;
+                if !self.seen_at(from).ok_or(misfit)?.contains(card) {
+                    return Err(misfit);
+                }
+                self.seen_at(to).ok_or(misfit)?;
+                self.card(*card).ok_or(misfit)?;
+                self.remove_seen(from, *card);
+                self.push_seen(to, *card);
+                Ok(())
+            }
+            ObservedEvent::CardMovedIntoSight {
+                card,
+                player,
+                from,
+                to,
+                definition,
+                state,
+            } => {
+                let from = self.locate(*player, from).ok_or(misfit)?;
+                let to = self.locate(*player, to).ok_or(misfit)?;
+                let remaining = self
+                    .unseen_count(from)
+                    .ok_or(misfit)?
+                    .checked_sub(1)
+                    .ok_or(misfit)?;
+                self.seen_at(to).ok_or(misfit)?;
+                let position = self.insertion_point(*card).ok_or(misfit)?;
+                self.set_unseen_count(from, remaining);
+                self.push_seen(to, *card);
+                self.cards.insert(
+                    position,
+                    VisibleCard {
+                        card: *card,
+                        owner: *player,
+                        definition: definition.clone(),
+                        state: state.clone(),
+                    },
+                );
+                Ok(())
+            }
+            ObservedEvent::CardMovedOutOfSight {
+                card,
+                player,
+                from,
+                to,
+            } => {
+                let from = self.locate(*player, from).ok_or(misfit)?;
+                let to = self.locate(*player, to).ok_or(misfit)?;
+                if !self.seen_at(from).ok_or(misfit)?.contains(card) {
+                    return Err(misfit);
+                }
+                let grown = self
+                    .unseen_count(to)
+                    .ok_or(misfit)?
+                    .checked_add(1)
+                    .ok_or(misfit)?;
+                let position = self
+                    .cards
+                    .binary_search_by_key(card, |visible| visible.card)
+                    .map_err(|_| misfit)?;
+                self.remove_seen(from, *card);
+                self.set_unseen_count(to, grown);
+                self.cards.remove(position);
+                Ok(())
+            }
+            ObservedEvent::UnseenCardMoved { player, from, to } => {
+                let from = self.locate(*player, from).ok_or(misfit)?;
+                let to = self.locate(*player, to).ok_or(misfit)?;
+                let remaining = self
+                    .unseen_count(from)
+                    .ok_or(misfit)?
+                    .checked_sub(1)
+                    .ok_or(misfit)?;
+                let held = self.unseen_count(to).ok_or(misfit)?;
+                if from == to {
+                    return Ok(());
+                }
+                let grown = held.checked_add(1).ok_or(misfit)?;
+                self.set_unseen_count(from, remaining);
+                self.set_unseen_count(to, grown);
+                Ok(())
+            }
+            ObservedEvent::ZoneShuffled {
+                player,
+                zone,
+                order,
+            } => {
+                let at = self.locate(*player, zone).ok_or(misfit)?;
+                let mut before = self.seen_at(at).ok_or(misfit)?.clone();
+                let mut after = order.clone();
+                before.sort();
+                after.sort();
+                if before != after {
+                    return Err(misfit);
+                }
+                if let Some(ZoneView::Seen(cards)) = self.view_mut_at(at) {
+                    cards.clone_from(order);
+                }
+                Ok(())
+            }
+            ObservedEvent::UnseenZoneShuffled { player, zone } => {
+                let at = self.locate(*player, zone).ok_or(misfit)?;
+                self.unseen_count(at).ok_or(misfit)?;
+                Ok(())
+            }
+            ObservedEvent::CardStateChanged { card, state, value } => {
+                let position = self
+                    .cards
+                    .binary_search_by_key(card, |visible| visible.card)
+                    .map_err(|_| misfit)?;
+                let visible = self.cards.get_mut(position).ok_or(misfit)?;
+                let entry = visible
+                    .state
+                    .iter_mut()
+                    .find(|(entry, _)| entry == state)
+                    .map(|(_, current)| current)
+                    .ok_or(misfit)?;
+                if entry.field_type() != value.field_type() {
+                    return Err(misfit);
+                }
+                entry.clone_from(value);
+                Ok(())
+            }
+            ObservedEvent::TurnBegan { player, turn } => {
+                if !self.player_order.contains(*player) {
+                    return Err(misfit);
+                }
+                self.active_player = *player;
+                self.turn_number = Some(*turn);
+                self.phase = None;
+                Ok(())
+            }
+            ObservedEvent::PhaseBegan { phase } => {
+                if self.turn_number.is_none() {
+                    return Err(misfit);
+                }
+                self.phase = Some(phase.clone());
+                Ok(())
+            }
+            ObservedEvent::DrawFromEmptyZone { player, zone } => {
+                let at = self.locate(*player, zone).ok_or(misfit)?;
+                let count = self
+                    .view_at(at)
+                    .map(|view| match view {
+                        ZoneView::Seen(cards) => cards.len(),
+                        ZoneView::Unseen { count } => *count,
+                    })
+                    .ok_or(misfit)?;
+                if count != 0 {
+                    return Err(misfit);
+                }
+                Ok(())
+            }
+            ObservedEvent::GameEnded { losses } => {
+                let outcome =
+                    TerminalOutcome::of(&self.player_order, losses).map_err(|_| misfit)?;
+                self.outcome = Some(outcome);
+                Ok(())
+            }
+        }
+    }
+
+    /// Applies `events` in order to a clone of this state and returns the result; this state is
+    /// untouched. Stops at the first Observed Event that does not apply.
+    pub fn apply_events(
+        &self,
+        events: &[ObservedEvent],
+    ) -> Result<ObservedGameState, ObservedApplyError> {
+        let mut next = self.clone();
+        for event in events {
+            next.apply(event)?;
+        }
+        Ok(next)
+    }
+
+    fn locate(&self, player: PlayerId, zone: &ZoneId) -> Option<ZoneAt> {
+        let player_at = self.zones.iter().position(|(owner, _)| *owner == player)?;
+        let zone_at = self
+            .zones
+            .get(player_at)?
+            .1
+            .iter()
+            .position(|held| &held.zone == zone)?;
+        Some((player_at, zone_at))
+    }
+
+    fn view_at(&self, at: ZoneAt) -> Option<&ZoneView> {
+        self.zones
+            .get(at.0)?
+            .1
+            .get(at.1)
+            .map(|observed| &observed.view)
+    }
+
+    fn view_mut_at(&mut self, at: ZoneAt) -> Option<&mut ZoneView> {
+        self.zones
+            .get_mut(at.0)?
+            .1
+            .get_mut(at.1)
+            .map(|observed| &mut observed.view)
+    }
+
+    /// The Observed Cards of a zone the Viewer sees.
+    fn seen_at(&self, at: ZoneAt) -> Option<&Vec<ObservedCard>> {
+        match self.view_at(at)? {
+            ZoneView::Seen(cards) => Some(cards),
+            ZoneView::Unseen { .. } => None,
+        }
+    }
+
+    /// The count of a zone the Viewer cannot see.
+    fn unseen_count(&self, at: ZoneAt) -> Option<usize> {
+        match self.view_at(at)? {
+            ZoneView::Seen(_) => None,
+            ZoneView::Unseen { count } => Some(*count),
+        }
+    }
+
+    fn push_seen(&mut self, at: ZoneAt, card: ObservedCard) {
+        if let Some(ZoneView::Seen(cards)) = self.view_mut_at(at) {
+            cards.push(card);
+        }
+    }
+
+    fn remove_seen(&mut self, at: ZoneAt, card: ObservedCard) {
+        if let Some(ZoneView::Seen(cards)) = self.view_mut_at(at) {
+            cards.retain(|member| *member != card);
+        }
+    }
+
+    fn set_unseen_count(&mut self, at: ZoneAt, count: usize) {
+        if let Some(ZoneView::Unseen { count: held }) = self.view_mut_at(at) {
+            *held = count;
+        }
+    }
+
+    /// Where a card the Viewer does not see yet goes in `cards`, which stays sorted by handle;
+    /// `None` when the Viewer sees it already.
+    fn insertion_point(&self, card: ObservedCard) -> Option<usize> {
+        self.cards
+            .binary_search_by_key(&card, |visible| visible.card)
+            .err()
     }
 }
 

@@ -31,7 +31,8 @@ pub enum ObservationError {
     /// Observer has no handle for, or out of an unseen zone of a card it holds one for; a zone the
     /// Ruleset does not declare; a GameState that shows a card the Observer has no handle for, or
     /// that lacks a card the Observer holds a handle for; a card missing from the GameState or its
-    /// catalog. An internal inconsistency, never expected from a Game followed from its Empty
+    /// catalog; an Event of a trace that does not apply to the GameState it is followed from, or a
+    /// transition whose GameState is not the one its trace leads to (ADR-0029). An internal inconsistency, never expected from a Game followed from its Empty
     /// GameState.
     ObserverOutOfStep,
     /// There are more Observed Cards than a handle can number.
