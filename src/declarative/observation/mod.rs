@@ -8,6 +8,7 @@
 //! [`ObservedTransition`] (ADR-0029), and an Observed GameState has an apply of its own. Each
 //! concern has its own file.
 
+mod acting;
 mod derived_read;
 mod error;
 mod follow;
@@ -16,6 +17,7 @@ mod observed_state;
 mod observer;
 mod viewer;
 
+pub use acting::{ObservedAction, ObservedArgument};
 pub use error::ObservationError;
 pub use observed_event::{
     ObservedApplyError, ObservedEvent, ObservedTransition, TakenAction, TakenArgument,
