@@ -39,6 +39,7 @@ fn small() -> (DeclarativeRuleset, Vec<DeckList>) {
 fn injected() -> InvariantViolation {
     InvariantViolation {
         invariant: Invariant::EndedGameHasNoLegalActions,
+        viewer: None,
         detail: "injected".to_string(),
     }
 }
@@ -68,6 +69,9 @@ fn with_violation_at<R>(
         transition: &transition,
         recomputation: &|_, _| Vec::new(),
         rejection: &|_, _, _, _| Vec::new(),
+        consistency: None,
+        hidden_cards: None,
+        observed_actions: None,
     };
     body(&checker, &flagged)
 }
@@ -140,6 +144,9 @@ fn an_opening_invariant_violation_has_no_action_index_and_an_empty_record() {
         transition: &|_, _, _, _| Vec::new(),
         recomputation: &|_, _| Vec::new(),
         rejection: &|_, _, _, _| Vec::new(),
+        consistency: None,
+        hidden_cards: None,
+        observed_actions: None,
     };
     let failure =
         play(&ruleset, &decks, SEED, MAX_STEPS, Some(&checks)).expect_err("the opening violates");
@@ -172,6 +179,9 @@ fn recording_sharing<R>(body: impl FnOnce(&Checker<'_>) -> R) -> (R, Vec<bool>) 
         transition: &|_, _, _, _| Vec::new(),
         recomputation: &recomputation,
         rejection: &|_, _, _, _| Vec::new(),
+        consistency: None,
+        hidden_cards: None,
+        observed_actions: None,
     };
     let result = body(&checker);
     (result, seen.into_inner())

@@ -856,3 +856,122 @@ fn the_catalog_creatures_with_a_card_effect_trigger_as_documented() {
         Err(tcg_engine::declarative::Rejection::TriggerCapExceeded { cap: 100 })
     );
 }
+
+// ---- the Effects Leader-kill Golden Game, as each Player observed it (ticket #66)
+
+/// The Golden Game as seat 0 and as seat 1 observed it. Each snapshot is in the format of
+/// ADR-0017 with Observed Events in place of Events: a header, then `== creation` and one `Debug`
+/// line per Observed Event of the creation trace, then for each accepted Action `== action N`, the
+/// `Debug` line of its Taken Action and one `Debug` line per Observed Event of its transition,
+/// then `== outcome` and the Terminal Outcome as the Viewer sees it. They change only by the ignored
+/// test `regenerate_observed_golden_snapshots`, never by a normal run.
+const OBSERVED_SNAPSHOTS: [&str; 2] = [
+    include_str!("golden/effects-leader-kill.observed-by-player-0.trace"),
+    include_str!("golden/effects-leader-kill.observed-by-player-1.trace"),
+];
+const OBSERVED_PATHS: [&str; 2] = [
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/golden/effects-leader-kill.observed-by-player-0.trace"
+    ),
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/golden/effects-leader-kill.observed-by-player-1.trace"
+    ),
+];
+const REGENERATE_OBSERVED_COMMAND: &str =
+    "cargo test -p tcg-loader --test effects_ruleset -- --ignored regenerate_observed_golden_snapshots";
+
+/// The text of the snapshot of the Effects Leader-kill Golden Game as seat `seat` observed it:
+/// the Observer follows the creation trace and then each accepted Action of the script.
+fn render_observed(seat: u32) -> String {
+    use tcg_engine::declarative::Viewer;
+    use tcg_engine::ruleset::Observations;
+
+    let ruleset = effects();
+    let decks = decks(&ruleset, [EFFECTS_DECK_A, EFFECTS_DECK_B]);
+    let created = ruleset
+        .create_game(&decks, Seed(LEADER_KILL_SEED))
+        .expect("the sample decks create a game");
+    let mut observer = ruleset
+        .observer(Viewer::Player(PlayerId(seat)), &created.empty, &[])
+        .expect("the Observer is built");
+    let creation = ruleset
+        .follow_events(
+            &mut observer,
+            &created.empty,
+            created.opening.trace.events(),
+        )
+        .expect("the creation trace is followed");
+    let mut text = format!(
+        "# effects-leader-kill observed by player {seat} | seed {LEADER_KILL_SEED} | seat 0 deck-a, seat 1 deck-b\n== creation\n"
+    );
+    for event in &creation {
+        text.push_str(&format!("{event:?}\n"));
+    }
+    let mut state = created.opening.state;
+    let mut last = ruleset
+        .observe(&observer, &state)
+        .expect("the Opening Position is observed");
+    for (index, action) in effects_leader_kill_script().iter().enumerate() {
+        let transition = ruleset
+            .transition(&state, action)
+            .expect("the script's Action is accepted");
+        let observed = ruleset
+            .follow_transition(&mut observer, &state, action, &transition)
+            .expect("the transition is followed");
+        text.push_str(&format!("== action {}\n{:?}\n", index + 1, observed.action));
+        for event in &observed.events {
+            text.push_str(&format!("{event:?}\n"));
+        }
+        state = transition.state;
+        last = observed.state;
+    }
+    let outcome = last
+        .outcome()
+        .expect("a Golden Game ends the Game for every Viewer");
+    text.push_str(&format!("== outcome\n{outcome:?}\n"));
+    text
+}
+
+#[test]
+fn the_effects_leader_kill_golden_game_as_observed_by_each_player_matches_its_snapshot() {
+    let observed: Vec<String> = (0..2).map(render_observed).collect();
+    for (seat, (actual, snapshot)) in observed.iter().zip(OBSERVED_SNAPSHOTS).enumerate() {
+        if actual != snapshot {
+            let mut expected_lines = snapshot.lines();
+            let mut actual_lines = actual.lines();
+            for line_number in 1.. {
+                let (expected, found) = (expected_lines.next(), actual_lines.next());
+                assert!(
+                    expected == found,
+                    "the Golden Game effects-leader-kill as observed by player {seat} differs from \
+                     its snapshot at line {line_number}\n  expected: {}\n  actual:   {}\nIf the \
+                     change is deliberate, rewrite the snapshots with:\n  {REGENERATE_OBSERVED_COMMAND}",
+                    expected.unwrap_or("<end of the snapshot>"),
+                    found.unwrap_or("<end of the trace>"),
+                );
+                if expected.is_none() {
+                    break;
+                }
+            }
+            panic!(
+                "the snapshot of player {seat} differs in its line endings; rewrite it with:\n  {REGENERATE_OBSERVED_COMMAND}"
+            );
+        }
+        assert!(snapshot.ends_with('\n') && !snapshot.ends_with("\n\n"));
+    }
+    // The two Players do not see the
+    assert_ne!(OBSERVED_SNAPSHOTS[0], OBSERVED_SNAPSHOTS[1]);
+}
+
+/// Rewrites the observed Golden Snapshots. Run it on purpose, and read the diff before committing
+/// it. It does not touch `regenerate_golden_snapshot`'s files.
+#[test]
+#[ignore = "deliberate update: rewrites the observed golden snapshots"]
+fn regenerate_observed_golden_snapshots() {
+    for (seat, path) in OBSERVED_PATHS.iter().enumerate() {
+        std::fs::write(path, render_observed(u32::try_from(seat).expect("a seat")))
+            .expect("the observed snapshot is written");
+    }
+}

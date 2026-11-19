@@ -283,3 +283,19 @@ fn verify_record_reports_the_last_accepted_action_of_a_rejected_record() {
     );
     assert_eq!(failure.action_index, None);
 }
+
+#[test]
+fn observing_never_changes_a_game() {
+    // The same Seed gives the same Game with every check on, with the engine's checks only, and
+    // with none: observing only reads.
+    let ruleset = small();
+    let decks = decks(&ruleset);
+    for seed in [7, 8, 9] {
+        let on = self_play(&ruleset, &decks, Seed(seed), MAX_STEPS, Checks::On).expect("played");
+        let engine_only =
+            self_play(&ruleset, &decks, Seed(seed), MAX_STEPS, Checks::EngineOnly).expect("played");
+        let off = self_play(&ruleset, &decks, Seed(seed), MAX_STEPS, Checks::Off).expect("played");
+        assert!(on == engine_only, "seed {seed}: On and EngineOnly");
+        assert!(on == off, "seed {seed}: On and Off");
+    }
+}
