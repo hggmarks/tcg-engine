@@ -15,7 +15,10 @@ use tcg_engine::declarative::{
 use tcg_engine::random::{RandomState, Seed};
 use tcg_engine::ruleset::{EventTrace, LegalActions, Ruleset};
 
-use crate::invariants::{check_opening, check_transition, InvariantViolation};
+use crate::invariants::{
+    check_opening, check_recomputation, check_rejection, check_transition, Invariant,
+    InvariantViolation,
+};
 
 /// The constant the policy's generator is derived with: the policy draws from
 /// `RandomState::from_seed(Seed(seed.0 ^ POLICY_STREAM))`, a stream separate from the Random
@@ -42,6 +45,11 @@ pub struct SelfPlayGame {
     pub traces: Vec<EventTrace<Event>>,
     /// The final GameState, which has a Terminal Outcome.
     pub state: GameState,
+    /// How many Trigger Cap Rejections the listings of this Game saw: candidates that the Trigger
+    /// Cap refused (ADR-0023), counted over every listing the policy drew from. It is a count of
+    /// an outcome, never a failure. It is `0` with [`Checks::Off`], which lists through
+    /// `legal_actions` and does not see the refused candidates.
+    pub trigger_cap_rejections: usize,
 }
 
 /// Why a Game did not end well.
@@ -76,7 +84,9 @@ pub struct SelfPlayFailure {
     /// A record that reproduces the failure. What reproduces it depends on the kind:
     ///
     /// - `InvariantViolated`: [`verify_record`] on it fails with the same violation at the same
-    ///   `action_index`.
+    ///   `action_index`. The one exception is `RejectionLeavesStateIntact`, which is found while
+    ///   listing: the record replays to the GameState in which the Action was rejected, and
+    ///   `check_rejection` on that Action reports it.
     /// - `StepCapReached` and `NoLegalAction`: it verifies as `Ok` and replays to the GameState
     ///   the failure stopped in, which has not ended (for `NoLegalAction`, with an empty Legal
     ///   Action listing).
@@ -126,6 +136,8 @@ pub fn self_play(
 pub(crate) struct Checker<'a> {
     pub(crate) opening: &'a OpeningCheck<'a>,
     pub(crate) transition: &'a TransitionCheck<'a>,
+    pub(crate) recomputation: &'a RecomputationCheck<'a>,
+    pub(crate) rejection: &'a RejectionCheck<'a>,
 }
 
 /// The shape of [`check_opening`].
@@ -136,10 +148,114 @@ pub(crate) type OpeningCheck<'a> =
 pub(crate) type TransitionCheck<'a> = dyn Fn(&DeclarativeRuleset, &GameState, &EventTrace<Event>, &GameState) -> Vec<InvariantViolation>
     + 'a;
 
+/// The shape of [`check_recomputation`].
+pub(crate) type RecomputationCheck<'a> =
+    dyn Fn(&GameState, &GameState) -> Vec<InvariantViolation> + 'a;
+
+/// The shape of [`check_rejection`].
+pub(crate) type RejectionCheck<'a> =
+    dyn Fn(&DeclarativeRuleset, &GameState, &Action, &Rejection) -> Vec<InvariantViolation> + 'a;
+
 pub(crate) const REAL_CHECKS: Checker<'static> = Checker {
     opening: &check_opening,
     transition: &check_transition,
+    recomputation: &check_recomputation,
+    rejection: &check_rejection,
 };
+
+/// The Recomputed GameState: the Empty GameState with every Event of the Game so far applied, in
+/// order. It is never started from a GameState the engine carried. A fold that cannot be applied
+/// is itself a violation of `DerivedReadsDoNotLeak`, not a panic.
+fn fold(recomputed: &GameState, events: &[Event]) -> Result<GameState, Vec<InvariantViolation>> {
+    recomputed.apply_trace(events).map_err(|error| {
+        vec![InvariantViolation {
+            invariant: Invariant::DerivedReadsDoNotLeak,
+            detail: format!("the Events of the Game do not apply to the Empty GameState: {error}"),
+        }]
+    })
+}
+
+/// The Opening Position's Recomputed GameState, and the violations of the Opening Position: the
+/// opening check's, then the recomputation's.
+fn open(
+    checker: &Checker<'_>,
+    ruleset: &DeclarativeRuleset,
+    decks: &[DeckList],
+    creation: &GameCreation,
+) -> (GameState, Vec<InvariantViolation>) {
+    let mut violations = (checker.opening)(ruleset, decks, creation);
+    match fold(&creation.empty, creation.opening.trace.events()) {
+        Ok(recomputed) => {
+            violations.extend((checker.recomputation)(
+                &recomputed,
+                &creation.opening.state,
+            ));
+            (recomputed, violations)
+        }
+        Err(found) => {
+            violations.extend(found);
+            (creation.empty.clone(), violations)
+        }
+    }
+}
+
+/// The violations of one accepted transition, and the Recomputed GameState after it: the
+/// transition check's, then the recomputation's.
+fn step_checks(
+    checker: &Checker<'_>,
+    ruleset: &DeclarativeRuleset,
+    prior: &GameState,
+    trace: &EventTrace<Event>,
+    next: &GameState,
+    recomputed: &GameState,
+) -> (GameState, Vec<InvariantViolation>) {
+    let mut violations = (checker.transition)(ruleset, prior, trace, next);
+    match fold(recomputed, trace.events()) {
+        Ok(folded) => {
+            violations.extend((checker.recomputation)(&folded, next));
+            (folded, violations)
+        }
+        Err(found) => {
+            violations.extend(found);
+            (recomputed.clone(), violations)
+        }
+    }
+}
+
+/// What the policy draws from in one GameState, and what the listing refused.
+struct Listing {
+    /// The Legal Actions, in Listing Order.
+    legal: Vec<Action>,
+    /// The candidates the Trigger Cap refused, in Listing Order, with their Rejection.
+    cap_rejections: Vec<(Action, Rejection)>,
+}
+
+/// Lists `state`. With `keep_rejections` (checks on) it uses `listing_with_rejections`, whose
+/// accepted subsequence is exactly `legal_actions`, so the Game played is the same with or without
+/// it; without, it is `legal_actions` itself and refused candidates are not seen.
+fn list(ruleset: &DeclarativeRuleset, state: &GameState, keep_rejections: bool) -> Listing {
+    if !keep_rejections {
+        return Listing {
+            legal: ruleset.legal_actions(state),
+            cap_rejections: Vec::new(),
+        };
+    }
+    let mut legal = Vec::new();
+    let mut cap_rejections = Vec::new();
+    for (action, rejection) in ruleset.listing_with_rejections(state) {
+        match rejection {
+            None => legal.push(action),
+            Some(rejection @ Rejection::TriggerCapExceeded { .. }) => {
+                cap_rejections.push((action, rejection));
+            }
+            Some(_) => {}
+        }
+    }
+    Listing {
+        legal,
+        cap_rejections,
+    }
+}
 
 /// Self-play with `checker`, or without invariant checks for `None`.
 fn play(
@@ -154,21 +270,36 @@ fn play(
         Ok(creation) => creation,
         Err(error) => return Err(failure(record, FailureKind::Creation(error))),
     };
+    let mut recomputed = None;
     if let Some(checker) = checker {
-        let violations = (checker.opening)(ruleset, decks, &creation);
+        let (folded, violations) = open(checker, ruleset, decks, &creation);
         if !violations.is_empty() {
             return Err(failure(record, FailureKind::InvariantViolated(violations)));
         }
+        recomputed = Some(folded);
     }
 
     let mut policy = RandomState::from_seed(Seed(seed.0 ^ POLICY_STREAM));
     let mut state = creation.opening.state.clone();
     let mut traces = Vec::new();
+    let mut trigger_cap_rejections = 0_usize;
     while state.outcome().is_none() {
         if record.actions().len() >= max_steps {
             return Err(failure(record, FailureKind::StepCapReached { max_steps }));
         }
-        let legal = ruleset.legal_actions(&state);
+        let Listing {
+            legal,
+            cap_rejections,
+        } = list(ruleset, &state, checker.is_some());
+        if let Some(checker) = checker {
+            for (action, rejection) in &cap_rejections {
+                trigger_cap_rejections = trigger_cap_rejections.saturating_add(1);
+                let violations = (checker.rejection)(ruleset, &state, action, rejection);
+                if !violations.is_empty() {
+                    return Err(failure(record, FailureKind::InvariantViolated(violations)));
+                }
+            }
+        }
         let chosen = u64::try_from(legal.len())
             .ok()
             .and_then(NonZeroU64::new)
@@ -187,12 +318,19 @@ fn play(
             }
         };
         record.push_accepted(action);
-        if let Some(checker) = checker {
-            let violations =
-                (checker.transition)(ruleset, &state, &transition.trace, &transition.state);
+        if let (Some(checker), Some(folded)) = (checker, recomputed.as_ref()) {
+            let (next, violations) = step_checks(
+                checker,
+                ruleset,
+                &state,
+                &transition.trace,
+                &transition.state,
+                folded,
+            );
             if !violations.is_empty() {
                 return Err(failure(record, FailureKind::InvariantViolated(violations)));
             }
+            recomputed = Some(next);
         }
         traces.push(transition.trace);
         state = transition.state;
@@ -202,6 +340,7 @@ fn play(
         creation,
         traces,
         state,
+        trigger_cap_rejections,
     })
 }
 
@@ -242,7 +381,7 @@ fn verify(
         .create_game(record.decks(), record.seed())
         .map_err(|error| replay_failure(0, ReplayError::Creation(error)))?;
 
-    let violations = (checker.opening)(ruleset, record.decks(), &creation);
+    let (mut recomputed, violations) = open(checker, ruleset, record.decks(), &creation);
     if !violations.is_empty() {
         return Err(cut(ruleset, record, 0, violations));
     }
@@ -252,11 +391,18 @@ fn verify(
         let transition = ruleset.transition(&state, action).map_err(|rejection| {
             replay_failure(index, ReplayError::ActionRejected { index, rejection })
         })?;
-        let violations =
-            (checker.transition)(ruleset, &state, &transition.trace, &transition.state);
+        let (folded, violations) = step_checks(
+            checker,
+            ruleset,
+            &state,
+            &transition.trace,
+            &transition.state,
+            &recomputed,
+        );
         if !violations.is_empty() {
             return Err(cut(ruleset, record, index.saturating_add(1), violations));
         }
+        recomputed = folded;
         state = transition.state;
         traces.push(transition.trace);
     }

@@ -8,7 +8,7 @@ use std::cell::{Cell, RefCell};
 use tcg_engine::deck_list::DeckList;
 use tcg_engine::declarative::{DeclarativeRuleset, Event, GameRecord, GameState};
 use tcg_engine::random::Seed;
-use tcg_engine::ruleset::EventTrace;
+use tcg_engine::ruleset::{EventTrace, Ruleset};
 use tcg_loader::{load_card_catalog, load_deck_list, load_ruleset_definition};
 
 use super::{play, verify, Checker, FailureKind, SelfPlayFailure, REAL_CHECKS};
@@ -66,6 +66,8 @@ fn with_violation_at<R>(
     let checker = Checker {
         opening: &|_, _, _| Vec::new(),
         transition: &transition,
+        recomputation: &|_, _| Vec::new(),
+        rejection: &|_, _, _, _| Vec::new(),
     };
     body(&checker, &flagged)
 }
@@ -136,6 +138,8 @@ fn an_opening_invariant_violation_has_no_action_index_and_an_empty_record() {
     let checks = Checker {
         opening: &|_, _, _| vec![injected()],
         transition: &|_, _, _, _| Vec::new(),
+        recomputation: &|_, _| Vec::new(),
+        rejection: &|_, _, _, _| Vec::new(),
     };
     let failure =
         play(&ruleset, &decks, SEED, MAX_STEPS, Some(&checks)).expect_err("the opening violates");
@@ -144,4 +148,80 @@ fn an_opening_invariant_violation_has_no_action_index_and_an_empty_record() {
 
     let verified = verify(&ruleset, &failure.record, &checks).expect_err("the record fails");
     assert_eq!(verified, failure);
+}
+
+/// Whether a card of `a` and the same card of `b` share one allocation of instance state. A
+/// GameState and its clones share what an Event did not change (ADR-0021), so two GameStates
+/// built from one another share, and two built apart from the Empty GameState share nothing.
+fn shares_card_state(a: &GameState, b: &GameState) -> bool {
+    a.cards().iter().zip(b.cards()).any(|(one, other)| {
+        !one.state().is_empty() && std::ptr::eq(one.state().as_ptr(), other.state().as_ptr())
+    })
+}
+
+/// Runs `body` with checks that record, for each call of the recomputation check, whether the
+/// Recomputed GameState it was given shares memory with the engine's.
+fn recording_sharing<R>(body: impl FnOnce(&Checker<'_>) -> R) -> (R, Vec<bool>) {
+    let seen = RefCell::new(Vec::new());
+    let recomputation = |recomputed: &GameState, next: &GameState| {
+        seen.borrow_mut().push(shares_card_state(recomputed, next));
+        Vec::new()
+    };
+    let checker = Checker {
+        opening: &|_, _, _| Vec::new(),
+        transition: &|_, _, _, _| Vec::new(),
+        recomputation: &recomputation,
+        rejection: &|_, _, _, _| Vec::new(),
+    };
+    let result = body(&checker);
+    (result, seen.into_inner())
+}
+
+#[test]
+fn the_recomputed_game_state_is_folded_from_the_empty_game_state_and_never_from_the_engines() {
+    let (ruleset, decks) = small();
+    let (game, during_play) = recording_sharing(|checker| {
+        play(&ruleset, &decks, SEED, MAX_STEPS, Some(checker)).expect("played")
+    });
+    let actions = game.record.actions().len();
+    assert!(actions > 1);
+
+    // The probe has teeth: a GameState folded from the engine's prior one shares card states with
+    // the engine's next one, which is exactly what a Recomputed GameState must not do.
+    let prior = &game.creation.opening.state;
+    let engine_next = ruleset
+        .transition(prior, &game.record.actions()[0])
+        .expect("accepted")
+        .state;
+    let folded_from_the_engine = prior
+        .apply_trace(game.traces[0].events())
+        .expect("the trace applies");
+    assert!(folded_from_the_engine == engine_next);
+    assert!(shares_card_state(&folded_from_the_engine, &engine_next));
+
+    // At the Opening Position and after every Action the harness gave the check a GameState that
+    // it built apart, carrying the fold on from the Empty GameState, so it shares nothing with the
+    // engine's GameState.
+    assert_eq!(during_play.len(), actions + 1);
+    assert!(
+        during_play.iter().all(|shared| !shared),
+        "the Recomputed GameState shares card states with the engine's at checks {:?}",
+        during_play
+            .iter()
+            .enumerate()
+            .filter(|(_, shared)| **shared)
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>()
+    );
+
+    // Verification folds the same way.
+    let (verified, during_verify) = recording_sharing(|checker| {
+        verify(&ruleset, &game.record, checker).expect("the record verifies")
+    });
+    assert!(verified.state == game.state);
+    assert_eq!(during_verify.len(), actions + 1);
+    assert!(
+        during_verify.iter().all(|shared| !shared),
+        "verification folds from the engine's GameState"
+    );
 }

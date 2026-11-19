@@ -10,4 +10,7 @@ mod invariants;
 pub use harness::{
     self_play, verify_record, Checks, FailureKind, SelfPlayFailure, SelfPlayGame, POLICY_STREAM,
 };
-pub use invariants::{check_opening, check_transition, Invariant, InvariantViolation};
+pub use invariants::{
+    check_opening, check_recomputation, check_rejection, check_transition, Invariant,
+    InvariantViolation,
+};

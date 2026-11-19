@@ -1,11 +1,12 @@
 //! Acceptance tests for ticket #49: the Effects Ruleset (derived from the Small Ruleset, which
 //! freezes) and the loading of the Card Effect envelope (ADR-0022).
 //!
-//! The Effects Ruleset, its catalog and its two sample decks are loaded from the real files. Its
-//! Golden Game is the Small Ruleset's Leader-kill Golden Game (same Seed, same decks, same Actions)
-//! and must play identically in rules: the Event Traces are equal, and the Golden Snapshot is the
-//! only thing that differs, by its name. The snapshot changes only by the ignored test
-//! `regenerate_golden_snapshot`, never by a normal run (ADR-0017).
+//! The Effects Ruleset, its catalog and its two sample decks are loaded from the real files. Since
+//! ticket #53 the sample decks play the effect cards, so the Effects Ruleset's Golden Game is its
+//! own script, played with those decks (it includes a trigger resolution). The equivalence of the
+//! two rulesets is kept on the Small Ruleset's cards: the Effects Ruleset plays the Small Ruleset's
+//! Leader-kill script with the Small sample decks into the same Event Traces. The Effects snapshot
+//! changes only by the ignored test `regenerate_golden_snapshot`, never by a normal run (ADR-0017).
 
 use tcg_engine::card_catalog::{
     CardEffectDraft, CatalogError, CatalogErrorKind, ModifyDraft, ScopeDraft, TriggerMatcherDraft,
@@ -46,9 +47,10 @@ const LEADER_KILL_PATH: &str = concat!(
 const REGENERATE_COMMAND: &str =
     "cargo test -p tcg-loader --test effects_ruleset -- --ignored regenerate_golden_snapshot";
 
-/// The Seed and the cards of the Small Ruleset's Leader-kill Golden Game (see
-/// `small_ruleset_end_to_end.rs`): the decks and the instance ids are the same here.
+/// The Seed of both Leader-kill Golden Games.
 const LEADER_KILL_SEED: u64 = 9;
+
+/// The cards of the Small Ruleset's Leader-kill script, which the Small sample decks number.
 const LEADER_1: CardInstanceId = CardInstanceId(61);
 const LEADER_0: CardInstanceId = CardInstanceId(0);
 const GOBLIN_0: CardInstanceId = CardInstanceId(1);
@@ -61,6 +63,18 @@ const OTTER_1: CardInstanceId = CardInstanceId(72);
 const GOLEM_1: CardInstanceId = CardInstanceId(75);
 const CAT_1: CardInstanceId = CardInstanceId(80);
 const GUARD_1: CardInstanceId = CardInstanceId(85);
+
+/// The cards of the Effects Ruleset's own Leader-kill script, in the Opening Position of Seed 9
+/// with the Effects sample decks (Deck A numbers its main deck from 1 in file order, Deck B from
+/// 62: seat 1's Leader is 61).
+const EFFECTS_LEADER_1: CardInstanceId = CardInstanceId(61);
+const EFFECTS_GOBLIN_0: CardInstanceId = CardInstanceId(1);
+const EFFECTS_MOSS_0: CardInstanceId = CardInstanceId(7);
+const EFFECTS_OTTER_0: CardInstanceId = CardInstanceId(13);
+const EFFECTS_CAT_0: CardInstanceId = CardInstanceId(22);
+const EFFECTS_LAMP_0: CardInstanceId = CardInstanceId(31);
+const EFFECTS_DAWN_0: CardInstanceId = CardInstanceId(34);
+const EFFECTS_BANNER_0: CardInstanceId = CardInstanceId(48);
 
 // ---- helpers
 
@@ -116,7 +130,7 @@ fn attack(player: u32, attacker: CardInstanceId, target: CardInstanceId) -> Acti
 
 /// Seat 0 races seat 1's Leader (life 6) and seat 1 answers: the Small Ruleset's Leader-kill
 /// script, literally.
-fn leader_kill_script() -> Vec<Action> {
+fn small_leader_kill_script() -> Vec<Action> {
     vec![
         play(0, MOSS_0),
         play(0, GOBLIN_0),
@@ -145,6 +159,31 @@ fn leader_kill_script() -> Vec<Action> {
         attack(0, GOBLIN_0, LEADER_1),
         attack(0, BOAR_0, LEADER_1),
         attack(0, HAWK_0, LEADER_1),
+    ]
+}
+
+/// Seat 0 races seat 1's Leader (life 6) with the Effects sample decks while seat 1 only passes.
+/// Playing the Lamp Keeper is a trigger resolution (its `enter` trigger draws a card), and the
+/// Banner Bearer, an aura, is in the field when the last four attacks land.
+fn effects_leader_kill_script() -> Vec<Action> {
+    vec![
+        play(0, EFFECTS_GOBLIN_0),
+        play(0, EFFECTS_MOSS_0),
+        pass(0),
+        pass(1),
+        play(0, EFFECTS_OTTER_0),
+        play(0, EFFECTS_DAWN_0),
+        attack(0, EFFECTS_GOBLIN_0, EFFECTS_LEADER_1),
+        attack(0, EFFECTS_MOSS_0, EFFECTS_LEADER_1),
+        pass(0),
+        pass(1),
+        play(0, EFFECTS_LAMP_0),
+        play(0, EFFECTS_BANNER_0),
+        play(0, EFFECTS_CAT_0),
+        attack(0, EFFECTS_GOBLIN_0, EFFECTS_LEADER_1),
+        attack(0, EFFECTS_MOSS_0, EFFECTS_LEADER_1),
+        attack(0, EFFECTS_OTTER_0, EFFECTS_LEADER_1),
+        attack(0, EFFECTS_DAWN_0, EFFECTS_LEADER_1),
     ]
 }
 
@@ -198,14 +237,31 @@ fn play_effects_leader_kill() -> Played {
         &ruleset,
         &decks,
         "effects-leader-kill",
-        &leader_kill_script(),
+        &effects_leader_kill_script(),
+    )
+}
+
+/// The Effects Ruleset playing the Small Ruleset's Leader-kill script with the Small sample decks.
+fn play_effects_ruleset_small_leader_kill() -> Played {
+    let ruleset = effects();
+    let decks = decks(&ruleset, [SMALL_DECK_A, SMALL_DECK_B]);
+    play_game(
+        &ruleset,
+        &decks,
+        "small-leader-kill",
+        &small_leader_kill_script(),
     )
 }
 
 fn play_small_leader_kill() -> Played {
     let ruleset = small();
     let decks = decks(&ruleset, [SMALL_DECK_A, SMALL_DECK_B]);
-    play_game(&ruleset, &decks, "small-leader-kill", &leader_kill_script())
+    play_game(
+        &ruleset,
+        &decks,
+        "small-leader-kill",
+        &small_leader_kill_script(),
+    )
 }
 
 /// The text of a Golden Snapshot (ADR-0017), in the format of the Small Ruleset's snapshots.
@@ -295,7 +351,8 @@ fn effects_ruleset_loads_and_creates_a_game() {
     assert_eq!(ruleset.catalog().meta().ruleset().as_str(), "effects");
 
     // The one difference from the Small Ruleset: creatures may carry Card Effects. The catalog
-    // carries five triggered (ticket #50) and two continuous ones (ticket #51).
+    // carries six triggered (tickets #50 and #53), two continuous (ticket #51) and three aura ones
+    // (ticket #52): eleven carriers.
     let allows: Vec<(&str, bool)> = definition
         .card_types()
         .iter()
@@ -322,6 +379,7 @@ fn effects_ruleset_loads_and_creates_a_game() {
             "grave_jackal",
             "eager_recruit",
             "restless_shade",
+            "pyre_imp",
             "battle_veteran",
             "weary_ox",
             "banner_bearer",
@@ -345,9 +403,32 @@ fn effects_ruleset_loads_and_creates_a_game() {
 }
 
 #[test]
-fn golden_effects_leader_kill() {
+fn the_effects_leader_kill_golden_game_matches_its_snapshot() {
     let played = play_effects_leader_kill();
-    assert_eq!(played.steps.len(), leader_kill_script().len());
+    assert_eq!(played.steps.len(), effects_leader_kill_script().len());
+
+    // A trigger resolution is in the snapshot: the Action that plays the Lamp Keeper moves the
+    // card to the field, and the draw its `enter` trigger resolves follows in the same trace.
+    let (_, events) = played
+        .steps
+        .iter()
+        .find(|(action, _)| *action == play(0, EFFECTS_LAMP_0))
+        .expect("the script plays the Lamp Keeper");
+    let drawn_after_the_play = events
+        .iter()
+        .skip_while(|event| !matches!(event, Event::CardMoved { to, .. } if to.as_str() == "field"))
+        .any(|event| {
+            matches!(
+                event,
+                Event::CardMoved { player, from, to, .. }
+                    if *player == PlayerId(0) && from.as_str() == "deck" && to.as_str() == "hand"
+            )
+        });
+    assert!(
+        drawn_after_the_play,
+        "the Lamp Keeper's draw follows its play: {events:?}"
+    );
+
     let actual = render(&played);
     if actual != LEADER_KILL_SNAPSHOT {
         let mut expected_lines = LEADER_KILL_SNAPSHOT.lines();
@@ -374,9 +455,9 @@ fn golden_effects_leader_kill() {
 }
 
 #[test]
-fn effects_ruleset_golden_game_equals_small_ruleset() {
+fn the_effects_ruleset_plays_the_small_rulesets_cards_identically() {
     let small = play_small_leader_kill();
-    let effects = play_effects_leader_kill();
+    let effects = play_effects_ruleset_small_leader_kill();
     assert!(!small.creation.is_empty());
     assert_eq!(effects.creation, small.creation, "creation traces");
     assert_eq!(effects.steps.len(), small.steps.len());
@@ -750,6 +831,7 @@ fn the_catalog_creatures_with_a_card_effect_trigger_as_documented() {
         ("grave_jackal", 1),
         ("eager_recruit", 1),
         ("restless_shade", 2),
+        ("pyre_imp", 2),
         ("goblin_scout", 0),
     ] {
         assert_eq!(effects_of(id), Some(count), "{id}");
