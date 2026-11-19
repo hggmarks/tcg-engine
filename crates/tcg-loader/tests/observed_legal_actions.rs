@@ -600,38 +600,44 @@ fn an_observer_that_has_not_followed_the_game_state_is_out_of_step_when_listing(
 
 #[test]
 fn an_observer_holding_a_handle_for_a_card_now_unseen_still_gets_the_unseen_card_error() {
-    // The Observer folds the creation trace and then one more Event, a `CardMoved` of a card of
-    // seat 0's deck into its hand, that the GameState does not show: it holds a handle for a card
-    // the GameState keeps in the hidden `deck`. The unseen zone, read from the GameState, decides:
-    // the handle neither leaks the card nor turns the error into `ObserverOutOfStep`.
+    // The Observer folds the creation trace and then one crafted `CardMoved` (deck to hand) per card
+    // any `peek` names, none of which the GameState shows: it holds a handle for every card a
+    // `peek` names, all of them in the hidden `deck`. The unseen zone, read from the GameState,
+    // decides: a held handle neither leaks the card nor turns the error into `ObserverOutOfStep`.
     let ruleset = small_with_peek("{ name: card, zone: deck, card_type: creature }");
     let creation = create(&ruleset, [SMALL_DECK_A, SMALL_DECK_B], SMALL_SEED);
     let position = Position::opening(&creation);
     let state = &position.state;
-    let Some(Argument::Card(peeked)) = ruleset
+    let peeked: Vec<CardInstanceId> = ruleset
         .legal_actions(state)
         .iter()
-        .find(|legal_action| legal_action.action.as_str() == "peek")
-        .and_then(|legal_action| legal_action.arguments.first().copied())
-    else {
-        panic!("the engine lists a `peek`");
-    };
-    assert_eq!(state.zone_of(peeked), Some(&zone("deck")));
+        .filter(|legal_action| legal_action.action.as_str() == "peek")
+        .flat_map(|legal_action| legal_action.arguments.iter().copied())
+        .map(|Argument::Card(id)| id)
+        .collect();
+    assert!(!peeked.is_empty(), "the engine lists a `peek`");
+    for &card in &peeked {
+        assert_eq!(state.zone_of(card), Some(&zone("deck")));
+    }
 
     let mut events = position.events.clone();
-    events.push(Event::CardMoved {
-        card: peeked,
-        player: p(0),
-        from: zone("deck"),
-        to: zone("hand"),
-    });
+    for &card in &peeked {
+        events.push(Event::CardMoved {
+            card,
+            player: p(0),
+            from: zone("deck"),
+            to: zone("hand"),
+        });
+    }
     let observer = ruleset
         .observer(viewer(0), &creation.empty, &events)
         .expect("the Observer is built");
-    assert!(
-        observer.observed_card(peeked).is_some(),
-        "the Observer holds a handle for the card"
-    );
+    for &card in &peeked {
+        assert!(
+            observer.observed_card(card).is_some(),
+            "the Observer holds a handle for every card a `peek` names"
+        );
+    }
     assert_eq!(
         ruleset.observed_legal_actions(&observer, state),
         Err(ObservationError::LegalActionNamesUnseenCard {
