@@ -350,7 +350,7 @@ fn round_trip_calls(run: impl FnOnce(&Checker<'_>)) -> Vec<RoundTripCall> {
 }
 
 #[test]
-fn the_round_trip_check_receives_the_listing_of_the_checkpoint_game_state() {
+fn the_round_trip_check_receives_the_listing_of_each_steps_game_state() {
     let (ruleset, decks) = small();
     let game = played(&ruleset, &decks);
     let actions = game.record.actions().len();
@@ -520,4 +520,40 @@ fn engine_only_checks_observe_nothing_and_the_real_checks_run_all_three_observat
     assert!(ENGINE_ONLY_CHECKS.consistency.is_none());
     assert!(ENGINE_ONLY_CHECKS.hidden_cards.is_none());
     assert!(ENGINE_ONLY_CHECKS.observed_actions.is_none());
+}
+
+#[test]
+fn a_violation_of_a_later_seat_comes_before_a_leak_violation_of_an_earlier_seat() {
+    let (ruleset, decks) = small();
+    // At the Opening Position seat 1's consistency check reports, and so does seat 0's leak check:
+    // by Invariant first, so seat 1's consistency violation comes first.
+    let consistency =
+        |who: Viewer, _: &ObservedGameState, _: &[ObservedEvent], _: &ObservedGameState| {
+            if who == viewer(1) {
+                vec![violation(Invariant::ObservationsStayConsistent, 1)]
+            } else {
+                Vec::new()
+            }
+        };
+    let hidden = |observed: &ObservedStep, _: &ReplayedStep| {
+        if observed.viewer == viewer(0) {
+            vec![violation(Invariant::ObservationsIgnoreHiddenCards, 0)]
+        } else {
+            Vec::new()
+        }
+    };
+    let checker = Checker {
+        consistency: Some(&consistency),
+        hidden_cards: Some(&hidden),
+        ..quiet()
+    };
+    let failure = play(&ruleset, &decks, SEED, MAX_STEPS, Some(&checker))
+        .expect_err("the Opening Position violates");
+    assert_eq!(
+        failure.kind,
+        FailureKind::InvariantViolated(vec![
+            violation(Invariant::ObservationsStayConsistent, 1),
+            violation(Invariant::ObservationsIgnoreHiddenCards, 0),
+        ])
+    );
 }

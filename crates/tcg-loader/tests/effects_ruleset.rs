@@ -961,7 +961,7 @@ fn the_effects_leader_kill_golden_game_as_observed_by_each_player_matches_its_sn
         }
         assert!(snapshot.ends_with('\n') && !snapshot.ends_with("\n\n"));
     }
-    // The two Players do not see the
+    // The two Players do not see the same Game: what each observed differs.
     assert_ne!(OBSERVED_SNAPSHOTS[0], OBSERVED_SNAPSHOTS[1]);
 }
 

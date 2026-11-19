@@ -348,3 +348,62 @@ fn the_relabelling_of_one_stream_is_the_same_every_time_and_keeps_the_action_and
     // Another stream gives another Relabelling.
     assert_ne!(relabel_with(1), relabel_with(2));
 }
+
+#[test]
+fn the_relabelling_shuffles_only_the_hidden_positions_of_an_unseen_zones_shuffle() {
+    let (ruleset, decks) = effects();
+    let empty = ruleset
+        .create_game(&decks, Seed(1))
+        .expect("the sample decks create a game")
+        .empty;
+
+    // Seen from seat 0: seat 1's `deck` and `mana_deck` are hidden, its `field` is public. Cards 0
+    // and 1 are hidden, created in two different zones, so each is alone in its class (the same
+    // owner, the same creation zone) and the ids cannot move; both have one definition, so the
+    // definitions cannot change either. Only the order of the shuffle of the unseen `deck`, whose
+    // middle position holds the seen card 2, can change.
+    let shuffle = |order: &[u32]| Event::ZoneShuffled {
+        player: PlayerId(1),
+        zone: ZoneId::new("deck"),
+        order: order.iter().copied().map(id).collect(),
+        random_state: RandomState::from_seed(Seed(1)),
+    };
+    let events = GameEvents {
+        creation: vec![
+            created(0, 1, "deck"),
+            created(1, 1, "mana_deck"),
+            created(2, 1, "field"),
+            moved(1, 1, "mana_deck", "deck"),
+            moved(2, 1, "field", "deck"),
+            shuffle(&[0, 2, 1]),
+        ],
+        traces: Vec::new(),
+    };
+    let hidden = hidden_cards(&ruleset, viewer(0), &events);
+    assert_eq!(hidden, set(&[0, 1]));
+    assert!(empty.apply_trace(&events.creation).is_ok());
+
+    let mut reordered = false;
+    for stream in 0..32 {
+        let mut rng = RandomState::from_seed(Seed(stream));
+        let relabelled = relabel(&ruleset, viewer(0), &hidden, &events, None, &mut rng);
+        // Nothing but the order of the shuffle changed.
+        assert_eq!(relabelled.events.creation[..5], events.creation[..5]);
+        let Event::ZoneShuffled { order, .. } = &relabelled.events.creation[5] else {
+            panic!("the last Event is still the shuffle");
+        };
+        // The seen card keeps its position; the Hidden Cards swap or keep theirs.
+        assert_eq!(order[1], id(2), "stream {stream}: a seen position moved");
+        assert!(
+            *order == [id(0), id(2), id(1)] || *order == [id(1), id(2), id(0)],
+            "stream {stream}: {order:?}"
+        );
+        reordered |= *order == [id(1), id(2), id(0)];
+        // The relabelled Events still apply, to the same cards in the zone.
+        let folded = empty
+            .apply_trace(&relabelled.events.creation)
+            .expect("the relabelled Events apply");
+        assert_eq!(folded.cards().len(), 3);
+    }
+    assert!(reordered, "no stream changed the order of the shuffle");
+}

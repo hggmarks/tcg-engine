@@ -168,26 +168,45 @@ impl Observing {
     ) -> Vec<InvariantViolation> {
         let mut violations = Vec::new();
 
-        // Observations stay consistent, Viewer by Viewer.
+        // Observations stay consistent, Viewer by Viewer. Everything that can fail to build a
+        // Viewer's Observed Step is built here, so that a failure is reported with this Invariant
+        // and in seat order, before any violation of the leak check.
         let mut followed_now = Vec::new();
-        for (index, outcome) in outcomes.into_iter().enumerate() {
+        for (followed, outcome) in self.viewers.iter_mut().zip(outcomes) {
             let Some(outcome) = outcome else { continue };
-            let viewer = self.viewers[index].viewer;
-            match outcome {
-                Ok(observed) => {
-                    if let Some(check) = checker.consistency {
-                        violations.extend(check(
-                            viewer,
-                            &observed.previous,
-                            &observed.events,
-                            &observed.next,
-                        ));
-                    }
-                    followed_now.push((index, observed));
-                }
+            let viewer = followed.viewer;
+            let observed = match outcome {
+                Ok(observed) => observed,
                 Err(error) => {
                     violations.push(failed_to_observe(viewer, &error));
-                    self.viewers[index].live = None;
+                    followed.live = None;
+                    continue;
+                }
+            };
+            if let Some(check) = checker.consistency {
+                violations.extend(check(
+                    viewer,
+                    &observed.previous,
+                    &observed.events,
+                    &observed.next,
+                ));
+            }
+            if checker.hidden_cards.is_none() {
+                continue;
+            }
+            let Some(live) = &followed.live else { continue };
+            match observed_step(
+                ruleset,
+                &live.observer,
+                state,
+                observed.events,
+                observed.taken,
+                observed.next,
+            ) {
+                Ok(step) => followed_now.push((viewer, step)),
+                Err(error) => {
+                    violations.push(failed_to_observe(viewer, &error));
+                    followed.live = None;
                 }
             }
         }
@@ -197,26 +216,7 @@ impl Observing {
         let Some(check) = checker.hidden_cards else {
             return violations;
         };
-        for (index, observed) in followed_now {
-            let viewer = self.viewers[index].viewer;
-            let Some(live) = &self.viewers[index].live else {
-                continue;
-            };
-            let step = match observed_step(
-                ruleset,
-                &live.observer,
-                state,
-                observed.events,
-                observed.taken,
-                observed.next,
-            ) {
-                Ok(step) => step,
-                Err(error) => {
-                    violations.push(failed_to_observe(viewer, &error));
-                    self.viewers[index].live = None;
-                    continue;
-                }
-            };
+        for (viewer, step) in followed_now {
             let hidden = hidden_cards(ruleset, viewer, &self.events);
             let relabelled = relabel(
                 ruleset,
