@@ -379,7 +379,7 @@ The Event that a draw found its source zone empty. It changes nothing and is emi
 A Rejection: the Action names an action the ruleset does not declare.
 
 **Action Not In Current Phase**:
-A Rejection: the action is declared but the current phase does not list it, because there is no current phase or the phase is not an Action Phase (the Action Phase lists every declared action, ADR-0027).
+A Rejection: the action is declared but the current phase does not list it, because the current phase is absent, unknown to the ruleset or not an Action Phase (the Action Phase lists every declared action, ADR-0027).
 
 **End Turn In If Effect**:
 A Definition Error at the `end_turn` of an action that is inside an `if` effect, `then` or `else`, at any depth, even when the `if` is the last effect (ADR-0027). Distinct from End Turn In Card Effect.

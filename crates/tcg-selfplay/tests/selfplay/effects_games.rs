@@ -325,7 +325,7 @@ fn an_effects_self_play_failure_reproduces_itself_from_its_record() {
     );
     let decks = effects_decks(&ruleset);
     let failure = self_play(&ruleset, &decks, Seed(0), MAX_STEPS, Checks::On)
-        .expect_err("a Game with no pass_turn runs out of Legal Actions");
+        .expect_err("a Game whose pass_turn cannot be taken runs out of Legal Actions");
     assert_eq!(failure.seed, Seed(0));
     assert_eq!(failure.action_index, Some(1));
     assert_eq!(failure.kind, FailureKind::NoLegalAction);
@@ -348,7 +348,7 @@ fn an_effects_self_play_failure_reproduces_itself_from_its_record() {
 
     // Another Seed, another index.
     let other = self_play(&ruleset, &decks, Seed(1), MAX_STEPS, Checks::On)
-        .expect_err("a Game with no pass_turn runs out of Legal Actions");
+        .expect_err("a Game whose pass_turn cannot be taken runs out of Legal Actions");
     assert_eq!(other.seed, Seed(1));
     assert_eq!(other.action_index, Some(0));
     assert_eq!(other.kind, FailureKind::NoLegalAction);

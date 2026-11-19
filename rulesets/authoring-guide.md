@@ -122,6 +122,5 @@ The files are a restricted subset of YAML (ADR-0004).
 - `tap` costs take a ref (`{ ref: card.cost }`), not a literal.
 - Expressions have `eq`, `gte`, `lte`, `and` and `is_card_type` only: no `not`, `or` or arithmetic.
 - `owner` takes only `opponent`; the only step condition is `first_turn`; `position` is only `top`.
-- The engine does not check that the action phase can be left, or that an action ends one turn at most (the gap first recorded in ADR-0012 and kept open by ADR-0015 and ADR-0016).
 
 See [small-ruleset/small-ruleset.yaml](small-ruleset/small-ruleset.yaml) for a complete ruleset with creatures, mana, combat and two win conditions.

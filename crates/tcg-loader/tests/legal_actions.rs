@@ -766,7 +766,7 @@ fn an_action_the_ruleset_does_not_declare_is_not_listed() {
     );
     let state = mid_game(&ruleset);
 
-    // Attackers exist: `attack` is declared, and the real ruleset lists it for this state.
+    // Attackers exist: the real ruleset (`small()`) declares `attack` and lists it for this state.
     assert!(small()
         .legal_actions(&state)
         .contains(&attack(0, GOBLIN_0, LEADER_1)));
