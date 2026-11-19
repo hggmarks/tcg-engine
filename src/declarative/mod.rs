@@ -26,7 +26,8 @@ pub use action::{Action, Argument, Rejection};
 pub use creation::{DeclarativeRuleset, GameCreation, GameCreationError};
 pub use event::Event;
 pub use observation::{
-    ObservationError, ObservedCard, ObservedGameState, ObservedZone, Observer, Viewer, VisibleCard,
+    ObservationError, ObservedAction, ObservedArgument, ObservedCard, ObservedGameState,
+    ObservedZone, Observer, Viewer, VisibleCard,
 };
 pub use record::{GameRecord, Replay, ReplayError};
 pub use state::{

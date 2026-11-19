@@ -5,7 +5,7 @@ use std::fmt;
 
 use super::viewer::{ObservedCard, Viewer};
 use crate::player::PlayerId;
-use crate::ruleset_definition::FieldName;
+use crate::ruleset_definition::{ActionId, FieldName};
 
 /// Why an Observer, an Observed GameState or a Derived Read cannot be produced.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,6 +35,11 @@ pub enum ObservationError {
     ObserverOutOfStep,
     /// There are more Observed Cards than a handle can number.
     ObservedCardOverflow,
+    /// An Observed Action names a Player other than the Viewer.
+    ActionOfAnotherPlayer { player: PlayerId },
+    /// A Legal Action of the Viewer names a card in a zone the Viewer cannot see; listing it would
+    /// expose the card.
+    LegalActionNamesUnseenCard { action: ActionId },
 }
 
 impl fmt::Display for ObservationError {
@@ -63,6 +68,18 @@ impl fmt::Display for ObservationError {
                 write!(f, "the Observer does not fit the Events or the GameState")
             }
             Self::ObservedCardOverflow => write!(f, "there are too many Observed Cards to number"),
+            Self::ActionOfAnotherPlayer { player } => {
+                write!(
+                    f,
+                    "the Observed Action is of Player {}, not the Viewer",
+                    player.0
+                )
+            }
+            Self::LegalActionNamesUnseenCard { action } => write!(
+                f,
+                "the Legal Action `{}` names a card the Viewer cannot see",
+                action.as_str()
+            ),
         }
     }
 }
