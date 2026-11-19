@@ -6,19 +6,20 @@
 
 use std::cell::{Cell, RefCell};
 
+use tcg_engine::deck_list::DeckList;
 use tcg_engine::declarative::{
-    Action, CardInstanceId, DeclarativeRuleset, GameState, ObservedEvent, ObservedGameState,
-    Observer, Viewer,
+    Action, CardInstanceId, DeclarativeRuleset, GameState, ObservedCard, ObservedEvent,
+    ObservedGameState, Observer, Viewer,
 };
 use tcg_engine::player::PlayerId;
 use tcg_engine::random::Seed;
 use tcg_engine::ruleset::{LegalActions, Observations};
-use tcg_engine::ruleset_definition::{Visibility, ZoneId};
+use tcg_engine::ruleset_definition::{FieldName, FieldValue, Visibility, ZoneId};
 
 use super::{play, verify, Checker, FailureKind, ENGINE_ONLY_CHECKS, REAL_CHECKS};
 use crate::invariants::{Invariant, InvariantViolation};
 use crate::observations::{ObservedStep, ReplayedStep};
-use crate::test_support::{expected_derived_reads, independent_fold, small, viewer};
+use crate::test_support::{effects, expected_derived_reads, independent_fold, small, viewer};
 use crate::SelfPlayGame;
 
 const SEED: Seed = Seed(4);
@@ -37,8 +38,13 @@ fn quiet() -> Checker<'static> {
     }
 }
 
-fn played(ruleset: &DeclarativeRuleset, decks: &[tcg_engine::deck_list::DeckList]) -> SelfPlayGame {
-    play(ruleset, decks, SEED, MAX_STEPS, Some(&REAL_CHECKS)).expect("the Game is played")
+fn played(ruleset: &DeclarativeRuleset, decks: &[DeckList]) -> SelfPlayGame {
+    played_with(ruleset, decks, SEED)
+}
+
+/// A Game played without any check: the checks are what these tests exercise.
+fn played_with(ruleset: &DeclarativeRuleset, decks: &[DeckList], seed: Seed) -> SelfPlayGame {
+    play(ruleset, decks, seed, MAX_STEPS, None).expect("the Game is played")
 }
 
 /// What the consistency check was handed, in call order.
@@ -126,25 +132,102 @@ fn hidden_cards_calls(
 
 #[test]
 fn the_hidden_cards_check_compares_the_real_observed_step_with_a_relabelled_game() {
-    let (ruleset, decks) = small();
-    let game = played(&ruleset, &decks);
+    // On the Small Ruleset, which has no Active Zone, and on the Effects Ruleset, whose `field`
+    // is its Active Zone: on a Game of the Effects Ruleset where a continuous card modifies a
+    // visible card, so that the Derived Reads the check compares carry a Field Modifier.
+    let (small_ruleset, small_decks) = small();
+    let modified = assert_hidden_cards_wiring(&small_ruleset, &small_decks, SEED);
+    assert!(!modified, "the Small Ruleset has no Field Modifier");
+
+    let (ruleset, decks) = effects();
+    let seed = (0..200)
+        .map(Seed)
+        .find(|seed| {
+            let game = played_with(&ruleset, &decks, *seed);
+            (0..2).any(|seat| {
+                independent_fold(&ruleset, &game, viewer(seat))
+                    .iter()
+                    .any(|step| {
+                        has_a_modified_read(
+                            &ruleset,
+                            &expected_derived_reads(
+                                &ruleset,
+                                &step.observer,
+                                &step.state,
+                                &step.next,
+                            ),
+                            &step.next,
+                        )
+                    })
+            })
+        })
+        .expect("some Seed puts a continuous card in the field next to a card it modifies");
+    assert!(
+        assert_hidden_cards_wiring(&ruleset, &decks, seed),
+        "seed {seed:?}: a Derived Read the check compared carries a Field Modifier"
+    );
+}
+
+/// Whether one of `reads` of the Visible Cards of `observed` differs from the base value in the
+/// catalog: a Field Modifier is active on it.
+fn has_a_modified_read(
+    ruleset: &DeclarativeRuleset,
+    reads: &[(ObservedCard, FieldName, i64)],
+    observed: &ObservedGameState,
+) -> bool {
+    reads.iter().any(|(card, field, read)| {
+        observed
+            .card(*card)
+            .and_then(|visible| ruleset.catalog().card(visible.definition()))
+            .and_then(|definition| {
+                definition
+                    .fields()
+                    .iter()
+                    .find(|(name, _)| name == field)
+                    .map(|(_, value)| value.clone())
+            })
+            .is_some_and(|base| base != FieldValue::Int(*read))
+    })
+}
+
+/// Plays `seed` while recording the calls of the leak check and compares them with an independent
+/// fold of the Game, for both Viewers at every step; verifying the record gives the very same
+/// calls (the Relabelling is seeded from the Game's Seed and drawn in the same order). Returns
+/// whether a Derived Read the harness handed to the check differs from its base value.
+fn assert_hidden_cards_wiring(
+    ruleset: &DeclarativeRuleset,
+    decks: &[DeckList],
+    seed: Seed,
+) -> bool {
+    let game = played_with(ruleset, decks, seed);
     let actions = game.record.actions().len();
     let calls = hidden_cards_calls(|checker| {
-        play(&ruleset, &decks, SEED, MAX_STEPS, Some(checker)).expect("played");
+        play(ruleset, decks, seed, MAX_STEPS, Some(checker)).expect("played");
     });
     assert_eq!(calls.len(), 2 * (actions + 1));
 
+    // Verification reproduces the same Relabelling: the same real Observed Step, the same
+    // relabelled GameState and the same relabelled Observed Step at every call.
+    let during_verify = hidden_cards_calls(|checker| {
+        verify(ruleset, &game.record, checker).expect("the record verifies");
+    });
+    assert!(
+        during_verify == calls,
+        "verification did not reproduce the Relabelling of self-play"
+    );
+
     let mut definition_changed = false;
     let mut unseen_zone_changed = false;
+    let mut modified_read = false;
     for seat in 0..2_usize {
         let who = viewer(seat as u32);
-        let folded = independent_fold(&ruleset, &game, who);
+        let folded = independent_fold(ruleset, &game, who);
 
         // The cards this Viewer has seen at a step boundary: the ones in a zone it sees, then or
         // before. A card in none of them is hidden, or was seen in the middle of a trace only.
         let mut ever_seen: Vec<CardInstanceId> = Vec::new();
         for (step, expected) in folded.iter().enumerate() {
-            ever_seen.extend(seen_cards(&ruleset, who, &expected.state));
+            ever_seen.extend(seen_cards(ruleset, who, &expected.state));
             let (observed, relabelled_state, relabelled_step) = &calls[2 * step + seat];
 
             // The observed side is the harness's real incremental Observed Step, as the
@@ -153,16 +236,14 @@ fn the_hidden_cards_check_compares_the_real_observed_step_with_a_relabelled_game
             assert_eq!(observed.events, expected.events, "seat {seat}, step {step}");
             assert_eq!(observed.taken, expected.taken, "seat {seat}, step {step}");
             assert_eq!(observed.state, expected.next, "seat {seat}, step {step}");
-            assert_eq!(
-                observed.derived_reads,
-                expected_derived_reads(
-                    &ruleset,
-                    &expected.observer,
-                    &expected.state,
-                    &expected.next
-                ),
-                "seat {seat}, step {step}"
+            let reads = expected_derived_reads(
+                ruleset,
+                &expected.observer,
+                &expected.state,
+                &expected.next,
             );
+            assert_eq!(observed.derived_reads, reads, "seat {seat}, step {step}");
+            modified_read |= has_a_modified_read(ruleset, &observed.derived_reads, &observed.state);
             // The real check found nothing, so the relabelled Observed Step is the same one.
             assert_eq!(relabelled_step, observed, "seat {seat}, step {step}");
 
@@ -183,7 +264,7 @@ fn the_hidden_cards_check_compares_the_real_observed_step_with_a_relabelled_game
                         .is_some_and(|other| other.definition() != card.definition());
                 }
             }
-            for (other, own) in unseen_zones(&ruleset, who, &expected.state) {
+            for (other, own) in unseen_zones(ruleset, who, &expected.state) {
                 unseen_zone_changed |=
                     relabelled_state.zone(other, &own) != expected.state.zone(other, &own);
             }
@@ -200,6 +281,7 @@ fn the_hidden_cards_check_compares_the_real_observed_step_with_a_relabelled_game
         unseen_zone_changed,
         "no unseen zone was reordered or given other ids"
     );
+    modified_read
 }
 
 /// Whether `who` sees the cards of `owner`'s zone `zone` (ADR-0004): `public` everyone, `owner`

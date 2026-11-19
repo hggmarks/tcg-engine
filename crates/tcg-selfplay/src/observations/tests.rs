@@ -86,7 +86,7 @@ fn hidden_cards_are_the_cards_never_in_a_zone_the_viewer_sees_after_any_event_of
     );
     assert_eq!(
         hidden_cards(&ruleset, viewer(1), &creation_only),
-        set(&[1, 2])
+        set(&[1, 2, 3])
     );
 }
 
