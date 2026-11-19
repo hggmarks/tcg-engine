@@ -316,11 +316,12 @@ fn regenerate_effects_self_play_digests() {
 
 #[test]
 fn an_effects_self_play_failure_reproduces_itself_from_its_record() {
-    // The Action Phase lists only `play_creature`: a Player who has played what they can has no
-    // Legal Action left in a Game that is on.
+    // `pass_turn` needs a card that no card can be (`where: false`; every action must be listed
+    // and the Phase must list one that ends the Turn, ADR-0027): a Player who has played what they
+    // can has no Legal Action left in a Game that is on.
     let ruleset = effects_with_ruleset(
-        "actions: [play_creature, attack, pass_turn]",
-        "actions: [play_creature]",
+        "  - id: pass_turn\n    effects:",
+        "  - id: pass_turn\n    params:\n      - { name: card, zone: hand, card_type: creature, where: false }\n    effects:",
     );
     let decks = effects_decks(&ruleset);
     let failure = self_play(&ruleset, &decks, Seed(0), MAX_STEPS, Checks::On)

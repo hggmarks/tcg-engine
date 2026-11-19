@@ -12,9 +12,9 @@ use tcg_engine::ruleset_definition::{
     ActionDraft, CardTypeDraft, CardTypeId, CardValue, DefinitionError, DefinitionErrorKind,
     Effect, EffectDraft, Expression, ExpressionDraft, FieldDraft, FieldType, FieldTypeDraft,
     FieldValue, InitializerDraft, InstanceStateDraft, MetaDraft, ParamAlternativeDraft,
-    ParamCardsDraft, ParamDraft, ParamName, ParametersDraft, RefDraft, RefType, ReferenceTarget,
-    RulesetDefinition, RulesetDraft, StateName, Visibility, WinConditionDraft, WinConditionWhen,
-    WinConditionWhenDraft, ZoneDraft,
+    ParamCardsDraft, ParamDraft, ParamName, ParametersDraft, PhaseDraft, RefDraft, RefType,
+    ReferenceTarget, RulesetDefinition, RulesetDraft, StateName, TurnDraft, Visibility,
+    WinConditionDraft, WinConditionWhen, WinConditionWhenDraft, ZoneDraft,
 };
 
 // ---- builders
@@ -264,6 +264,20 @@ fn draft_with(params: Vec<ParamDraft>, effects: Vec<EffectDraft>) -> RulesetDraf
         params,
         cost: vec![],
         effects,
+    });
+    // The Turn can be left (ADR-0027): Main lists `attack` and the action that ends the Turn.
+    draft.actions.push(ActionDraft {
+        id: "pass_turn".to_string(),
+        params: vec![],
+        cost: vec![],
+        effects: vec![EffectDraft::EndTurn],
+    });
+    draft.turn = Some(TurnDraft {
+        phases: vec![PhaseDraft {
+            id: "main".to_string(),
+            automatic: None,
+            actions: Some(vec!["attack".to_string(), "pass_turn".to_string()]),
+        }],
     });
     draft
 }

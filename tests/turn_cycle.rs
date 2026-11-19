@@ -154,8 +154,8 @@ fn recently_played() -> InstanceStateDraft {
     }
 }
 
-/// The code-built Small Ruleset with the given Start and End phases, Main waiting for `pass_turn`,
-/// and the declared but unlisted action `idle`. Creatures can be `recently_played`; Leaders and
+/// The code-built Small Ruleset with the given Start and End phases, Main waiting for `pass_turn`
+/// or the action `idle`, which does nothing and does not end the Turn. Creatures can be `recently_played`; Leaders and
 /// mana cards cannot.
 fn draft_with_turn(start: Vec<AutomaticStepDraft>, end: Vec<AutomaticStepDraft>) -> RulesetDraft {
     let mut draft = small_draft();
@@ -177,7 +177,7 @@ fn draft_with_turn(start: Vec<AutomaticStepDraft>, end: Vec<AutomaticStepDraft>)
     draft.turn = Some(TurnDraft {
         phases: vec![
             automatic_phase("start", start),
-            action_phase("main", &["pass_turn"]),
+            action_phase("main", &["pass_turn", "idle"]),
             automatic_phase("end", end),
         ],
     });
@@ -346,9 +346,11 @@ fn game_creation_begins_the_first_turn_and_waits_in_the_action_phase() {
 
 #[test]
 fn a_ruleset_without_a_turn_creates_a_game_without_turns() {
-    // `turn` absent: creation stops after setup, and no Action is legal.
+    // `turn` absent: creation stops after setup, and no Action is legal. Every action needs a phase
+    // that lists it (ADR-0027), so such a ruleset declares none and each Action is unknown.
     let mut draft = small_turn_draft();
     draft.turn = None;
+    draft.actions = vec![];
     let ruleset = ruleset_of(draft);
     let creation = create_with(&ruleset, &decks(), 1);
     let state = &creation.opening.state;
@@ -361,7 +363,7 @@ fn a_ruleset_without_a_turn_creates_a_game_without_turns() {
     )));
     assert_eq!(
         ruleset.transition(state, &pass(0)),
-        Err(Rejection::ActionNotInCurrentPhase {
+        Err(Rejection::UnknownAction {
             action: ActionId::new("pass_turn")
         })
     );
@@ -867,21 +869,23 @@ fn an_action_not_in_the_current_phase_is_rejected() {
         action: ActionId::new(name),
     };
 
-    // `idle` is declared but Main does not list it.
+    // Validation lists every action in a phase (ADR-0027), so an action is out of the current
+    // phase only when the current phase is not an action phase. `idle` is listed in Main.
     let idle = Action {
         player: p(0),
         action: ActionId::new("idle"),
         arguments: vec![],
     };
-    assert_action_rejected(&ruleset, &opening(&ruleset), &idle, not_in_phase("idle"));
 
     // The Empty GameState has no phase.
     let empty = create_with(&ruleset, &decks(), 1).empty;
+    assert_action_rejected(&ruleset, &empty, &idle, not_in_phase("idle"));
     assert_action_rejected(&ruleset, &empty, &pass(0), not_in_phase("pass_turn"));
 
     // A phase the ruleset declares but that is not an action phase.
     let mut state = opening(&ruleset);
     apply_all(&mut state, &[turn_began(0, 5), phase_began("start")]);
+    assert_action_rejected(&ruleset, &state, &idle, not_in_phase("idle"));
     assert_action_rejected(&ruleset, &state, &pass(0), not_in_phase("pass_turn"));
 
     // A phase the ruleset does not know.

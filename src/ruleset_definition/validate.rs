@@ -188,6 +188,22 @@ pub(super) fn validate(draft: RulesetDraft) -> Result<RulesetDefinition, Definit
         None => None,
     };
 
+    // Every action is listed by a phase; without a `turn` no phase lists anything (ADR-0027).
+    for (index, action) in valid_actions.iter().enumerate() {
+        let listed = valid_turn.as_ref().is_some_and(|turn| {
+            turn.phases.iter().any(|phase| match &phase.kind {
+                PhaseKind::Actions(ids) => ids.contains(&action.id),
+                PhaseKind::Automatic(_) => false,
+            })
+        });
+        if !listed {
+            return fail(
+                actions_path.clone().id(&actions[index].id),
+                DefinitionErrorKind::UnlistedAction,
+            );
+        }
+    }
+
     let win_conditions_path = DefinitionPath::root().key("win_conditions");
     let mut seen = Seen::new(win_conditions_path.clone());
     let mut valid_win_conditions = Vec::with_capacity(win_conditions.len());
@@ -342,7 +358,10 @@ fn validate_action(
         costs.push(validate_cost(cost, &refs, cost_path.clone().index(index))?);
     }
 
-    let effects = validate_effects(&action.effects, &refs, at.key("effects"))?;
+    let effects_path = at.key("effects");
+    let effects = validate_effects(&action.effects, &refs, effects_path.clone())?;
+    // After all the effects were checked, as for a Card Effect (ADR-0022).
+    check_end_turn_placement(&effects, &effects_path)?;
 
     Ok(ActionDefinition {
         id: ActionId::new(&action.id),
@@ -350,6 +369,55 @@ fn validate_action(
         costs,
         effects,
     })
+}
+
+/// `end_turn` is only the last top-level effect of an action (ADR-0027): the first one, in document
+/// order (depth first, `then` before `else`), that is inside an `if` or followed by another effect
+/// is the error, at its own path. `list` is the path of `effects`.
+fn check_end_turn_placement(
+    effects: &[Effect],
+    list: &DefinitionPath,
+) -> Result<(), DefinitionError> {
+    for (index, effect) in effects.iter().enumerate() {
+        let at = list.clone().index(index);
+        match effect {
+            Effect::EndTurn if index + 1 != effects.len() => {
+                return fail(at, DefinitionErrorKind::EndTurnNotLast)
+            }
+            Effect::If {
+                then, otherwise, ..
+            } => {
+                forbid_end_turn_in_if(then, &at.clone().key("then"))?;
+                forbid_end_turn_in_if(otherwise, &at.key("else"))?;
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+/// Rejects an `end_turn` anywhere in the effects of a branch of an `if`, at any depth.
+fn forbid_end_turn_in_if(effects: &[Effect], list: &DefinitionPath) -> Result<(), DefinitionError> {
+    for (index, effect) in effects.iter().enumerate() {
+        let at = list.clone().index(index);
+        match effect {
+            Effect::EndTurn => return fail(at, DefinitionErrorKind::EndTurnInIfEffect),
+            Effect::If {
+                then, otherwise, ..
+            } => {
+                forbid_end_turn_in_if(then, &at.clone().key("then"))?;
+                forbid_end_turn_in_if(otherwise, &at.key("else"))?;
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+/// Whether the action ends the Turn: its effects end with a top-level `end_turn`. Only meaningful
+/// once `check_end_turn_placement` passed, when that is the only place an `end_turn` can be.
+fn ends_the_turn(action: &ActionDefinition) -> bool {
+    action.effects.last() == Some(&Effect::EndTurn)
 }
 
 /// The scope of a Card Effect (ADR-0022): the one name `self`, the carrying card, typed as the
@@ -738,7 +806,7 @@ fn validate_phase_kind(
             at.key("automatic"),
         )?)),
         (None, Some(actions)) => {
-            let list = at.key("actions");
+            let list = at.clone().key("actions");
             let mut seen = Seen::new(list.clone());
             let mut valid = Vec::with_capacity(actions.len());
             for (index, id) in actions.iter().enumerate() {
@@ -757,6 +825,14 @@ fn validate_phase_kind(
                 }
                 seen.insert(id, index)?;
                 valid.push(ActionId::new(id));
+            }
+            // The Game waits here until some action ends the Turn (ADR-0027).
+            let can_leave = context
+                .actions
+                .iter()
+                .any(|action| valid.contains(&action.id) && ends_the_turn(action));
+            if !can_leave {
+                return fail(at, DefinitionErrorKind::NoTurnEndingAction);
             }
             Ok(PhaseKind::Actions(valid))
         }

@@ -745,10 +745,24 @@ fn a_listing_whose_candidates_come_from_several_zones_is_in_listing_order_along_
 // ---- the phase's list
 
 #[test]
-fn an_action_the_phase_does_not_list_is_not_listed() {
-    let ruleset = small_with_ruleset(
+fn an_action_the_ruleset_does_not_declare_is_not_listed() {
+    // Validation lists every declared action in the action phase (ADR-0027), so a phase can no
+    // longer leave one out: the shorter ruleset leaves `attack` out of both `actions` and Main.
+    let shorter = edit(
+        SMALL_RULESET,
         "actions: [play_creature, attack, pass_turn]",
         "actions: [play_creature, pass_turn]",
+    );
+    let from = shorter
+        .find("  # The attacker is an untapped creature")
+        .expect("the attack action starts with its comment");
+    let to = shorter
+        .find("  - id: pass_turn")
+        .expect("pass_turn follows attack");
+    assert!(from < to);
+    let ruleset = ruleset_from(
+        &format!("{}{}", &shorter[..from], &shorter[to..]),
+        SMALL_CATALOG,
     );
     let state = mid_game(&ruleset);
 
@@ -768,21 +782,26 @@ fn an_action_the_phase_does_not_list_is_not_listed() {
             pass(0)
         ]
     );
-    assert_same_set(&listed, &brute_force(&ruleset, &state), "the shorter phase");
+    assert_same_set(
+        &listed,
+        &brute_force(&ruleset, &state),
+        "the shorter ruleset",
+    );
 }
 
 // ---- the end of the Game
 
-/// The Small Ruleset without a `turn`: its text from `turn:` up to the `actions:` section left out.
+/// The Small Ruleset without a `turn`: its text from `turn:` up to the `win_conditions:` section
+/// left out, `actions:` included (ADR-0027: without a `turn` no phase lists an action).
 fn without_a_turn() -> DeclarativeRuleset {
     let start = SMALL_RULESET
         .find("\nturn:")
         .expect("the Small Ruleset has a turn");
     let end = SMALL_RULESET
-        .find("\nactions:")
-        .expect("the Small Ruleset has an actions section");
+        .find("\nwin_conditions:")
+        .expect("the Small Ruleset has a win_conditions section");
     assert_eq!(SMALL_RULESET.matches("\nturn:").count(), 1);
-    assert_eq!(SMALL_RULESET.matches("\nactions:").count(), 1);
+    assert_eq!(SMALL_RULESET.matches("\nwin_conditions:").count(), 1);
     assert!(start < end);
     let text = format!("{}{}", &SMALL_RULESET[..start], &SMALL_RULESET[end..]);
     ruleset_from(&text, SMALL_CATALOG)
