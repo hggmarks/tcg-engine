@@ -121,7 +121,7 @@ The location of an element in a Ruleset Definition, Card Catalog or Deck List, s
 A named place where cards are held, with a Visibility and an ordered flag. A shuffle, a draw and a move step that take cards from the Top take them only from an ordered zone, which validation enforces (ADR-0013); a destination may be unordered. A `move` effect of an action takes a named card from any zone.
 
 **Visibility**:
-Who may see a Zone's cards: hidden, owner or public.
+Who may see a Zone's cards: `public` every Viewer, `owner` only the Zone's owner, `hidden` nobody, its owner included. A Viewer who cannot see a zone still sees its card count (ADR-0004, ADR-0028).
 
 **Card Type**:
 A kind of card with a Field Schema list, an Instance-State Schema list and an effects flag.
@@ -337,7 +337,7 @@ What a Triggered Card Effect matches among Events, the single key of `on`: `ente
 `modify: { field, amount }` of a Continuous Card Effect: an additive integer on a field of the Card Definition of the card it reaches (the carrying card, or the cards of its Modifier Scope), not on its instance state. The field must be declared by the card type it reaches (`UnknownModifyField`, an instance state included) and be an int (`ModifyFieldNotInt`); `amount` is an unquoted integer. It is **active** while its carrying card is in the Active Zone and its `while` holds, and then adds `amount` to every Derived Read of the field; additive modifiers commute.
 
 **Derived Read**:
-The value a ref gives for an int field of a card: the base value plus the amounts of the active Field Modifiers, computed at read time by `expression::read` and stored nowhere, with no Event (ADR-0024). Instance states are read as stored. An overflow is `DerivedValueOverflow`. The `while` of a Field Modifier is evaluated with **base values only**, so a derived read never needs another derived read. `modifier_sum(ruleset, state, card, field)` is the one seam: it adds the own modifiers of `card` (no scope, `card` in the Active Zone) and then scans the carriers in the Active Zone, in Player Order and stored zone order, for the set-scoped modifiers whose Modifier Scope reaches `card` (ADR-0025); `expression::read` and its callers are unchanged.
+The value a ref gives for an int field of a card: the base value plus the amounts of the active Field Modifiers, computed at read time by `expression::read` and stored nowhere, with no Event (ADR-0024). Instance states are read as stored. A Viewer asks for one through `DeclarativeRuleset::derived_read(observer, state, observed_card, field)`, for an int field of a card it sees; it is not a method of the `Observations` trait, and its errors are `UnknownObservedCard`, `NotAnIntField` and a `DerivedValueOverflow` naming the Observed Card (ADR-0028). An overflow is `DerivedValueOverflow`. The `while` of a Field Modifier is evaluated with **base values only**, so a derived read never needs another derived read. `modifier_sum(ruleset, state, card, field)` is the one seam: it adds the own modifiers of `card` (no scope, `card` in the Active Zone) and then scans the carriers in the Active Zone, in Player Order and stored zone order, for the set-scoped modifiers whose Modifier Scope reaches `card` (ADR-0025); `expression::read` and its callers are unchanged.
 
 **Active Zone**:
 `effects: { active_zone: <zone> }` of a ruleset, the zone where Card Effects act (`RulesetDefinition::effects_active_zone`; `DanglingReference` at `effects.active_zone` if undeclared). The Effects Ruleset's is `field`. A Field Modifier is active only while its **carrier** is there (ADR-0024); a Modifier Scope names the zone its **targets** are in, which may be any declared zone (ADR-0025). A `turn_start` trigger fires only while its card is there, while `enter: <zone>` fires on arrival in the matcher's own zone, whichever it is (the enter exception, ADR-0023). Absent means no Card Effect is ever active: no modifier applies and no trigger is eligible, `enter` included.
@@ -427,6 +427,41 @@ The optional `LegalActions` capability of a Ruleset: `legal_actions(state)` retu
 
 **Listing Order**:
 The order of a Legal Action Listing in the Declarative Ruleset: the actions in the order the current Action Phase lists them; for one action the argument lists in lexicographic order, param by param, each by ascending Card Instance Id whatever the zone. A card that fits several alternatives of a param is one candidate (ADR-0018). The listing visits only the cards of the zones a param names, which gives the same order (ADR-0021).
+
+## Observations
+
+**Observations**:
+The optional capability of a Ruleset whose GameState a Viewer can observe, a trait beside `LegalActions` that the Declarative Ruleset implements and the Toy Ruleset does not (a `compile_fail` doctest pins it). `observer(viewer, empty, events)` builds an Observer by folding Events applied to the Empty GameState; `observe(observer, state)` gives the Observed GameState. `Ruleset` is unchanged, there is no serde and no I/O (ADR-0028).
+
+**Viewer**:
+Who observes. Its only kind is a Player of the Game (`Viewer::Player`); a Spectator is a later, additive kind (the enum is non-exhaustive).
+
+**Observation**:
+What a Viewer is given of a Game: an Observed GameState and, from ticket [24], Observed Events. It holds base facts only; Derived Reads are asked beside it, never stored in it (ADR-0028).
+
+**Observed GameState**:
+A GameState as one Viewer sees it: always the Players, the Active Player, the Turn Number, the phase, the Terminal Outcome and the card count of every zone; for each zone the Viewer sees, its Observed Cards bottom first; for the Visible Cards, their facts. Never the Random State, never the order of a zone the Viewer cannot see, never a Card Instance Id.
+
+**Observer**:
+One Viewer's pure fold of the Events applied to the Empty GameState: it holds the mapping between Observed Cards and Card Instances (`card_instance`, `observed_card`) and is never shown to the Viewer. It changes no GameState, Event, Game Record or snapshot. A card appears (takes the next handle) when a `CardCreated` puts it, or a `CardMoved` brings it from a zone the Viewer cannot see, into a zone the Viewer sees; it disappears (its handle is retired, never reused) when a `CardMoved` takes it from a seen zone to an unseen one; otherwise it keeps its handle. Every other Event leaves the mapping alone.
+
+**Observed Card**:
+A Viewer's handle (`ObservedCard(u32)`) for a card it has been shown, in place of the Card Instance Id. Dense from 0 per Viewer, in the order cards become visible, in Event order, so by creation-trace order, not by id or zone. A handle names the card only while the Viewer sees it.
+
+**Visible Card**:
+A card the Viewer sees, in an Observed GameState: its Observed Card, owner, Card Definition and instance state as stored; the fields of its definition come from the catalog and no derived value is held.
+
+**Observed Zone**:
+One zone as a Viewer sees it: its count always, and its Observed Cards, bottom first, only when the Viewer sees the zone (`cards()` is `None` otherwise).
+
+**Unknown Viewer**:
+The `ObservationError` for a Viewer that is not a Player of the Game, never a panic.
+
+**Unknown Observed Card**:
+The `ObservationError` for an Observed Card the Viewer does not hold now: never given, or retired.
+
+**Observer Out Of Step**:
+The `ObservationError` for Events or a GameState that do not fit the Observer or the Ruleset: a move out of a zone the Viewer sees of a card with no handle, a zone the Ruleset does not declare, a seen card without a handle, or a handle without a seen card. An internal inconsistency, never expected from a Game followed from its Empty GameState, and an error rather than a panic.
 
 ## Ending the Game
 
