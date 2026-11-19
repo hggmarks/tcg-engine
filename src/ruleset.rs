@@ -58,6 +58,59 @@ pub trait LegalActions: Ruleset {
     fn legal_actions(&self, state: &Self::State) -> Vec<Self::Action>;
 }
 
+/// The optional capability of a Ruleset whose GameState a Viewer can observe (ADR-0028).
+///
+/// An Observer follows the Events of a Game from its Empty GameState and holds, for one Viewer, what
+/// that Viewer has been shown; an Observed GameState is what the Viewer sees of a GameState. It is
+/// separate from [`Ruleset`], which does not change, like [`LegalActions`] (ADR-0018). The Toy
+/// Ruleset has no hidden information to hide, and does not implement it.
+///
+/// The Declarative Ruleset has the capability:
+///
+/// ```
+/// use tcg_engine::declarative::DeclarativeRuleset;
+/// use tcg_engine::ruleset::Observations;
+///
+/// fn needs<R: Observations>() {}
+/// needs::<DeclarativeRuleset>();
+/// ```
+///
+/// The Toy Ruleset does not. This is the same code with only the type changed:
+///
+/// ```compile_fail
+/// use tcg_engine::ruleset::Observations;
+/// use tcg_engine::toy::ToyRuleset;
+///
+/// fn needs<R: Observations>() {}
+/// needs::<ToyRuleset>();
+/// ```
+pub trait Observations: Ruleset {
+    /// Who observes: in the Declarative Ruleset, a Player of the Game.
+    type Viewer;
+    /// The per-Viewer value that follows the Events; never shown to the Viewer.
+    type Observer;
+    /// What a Viewer sees of a GameState.
+    type ObservedState;
+    /// Why an Observer or an Observed GameState cannot be built.
+    type ObservationError;
+
+    /// The Observer of `viewer` once `events` were applied, in order, to `empty`, the Game's Empty
+    /// GameState.
+    fn observer(
+        &self,
+        viewer: Self::Viewer,
+        empty: &Self::State,
+        events: &[Self::Event],
+    ) -> Result<Self::Observer, Self::ObservationError>;
+
+    /// The Observed GameState of `state`, the GameState `observer` has followed, for its Viewer.
+    fn observe(
+        &self,
+        observer: &Self::Observer,
+        state: &Self::State,
+    ) -> Result<Self::ObservedState, Self::ObservationError>;
+}
+
 /// The outcome of an accepted State Transition.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Transition<S, E> {
