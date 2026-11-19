@@ -8,6 +8,7 @@
 
 mod derived_read;
 mod error;
+mod follow;
 mod observed_state;
 mod observer;
 mod viewer;
