@@ -9,10 +9,11 @@ use tcg_engine::definition_path::{DefinitionPath, PathSegment};
 use tcg_engine::ruleset_definition::{
     ActionDraft, ActionId, AutomaticStep, AutomaticStepDraft, CardTypeDraft, CardTypeId, Condition,
     ConditionDraft, DeckInputDraft, DefinitionError, DefinitionErrorKind, Effect, EffectDraft,
-    FieldDraft, FieldName, FieldType, FieldTypeDraft, FieldValue, Initializer, InitializerDraft,
-    InstanceStateDraft, MetaDraft, ParametersDraft, PhaseDraft, PhaseKind, PlayerSelector,
-    Position, ReferenceTarget, RulesetDefinition, RulesetDraft, SetupStep, SetupStepDraft,
-    StateName, TurnDraft, Visibility, ZoneDraft, ZoneId,
+    ExpressionDraft, FieldDraft, FieldName, FieldType, FieldTypeDraft, FieldValue, Initializer,
+    InitializerDraft, InstanceStateDraft, MetaDraft, ParamAlternativeDraft, ParamCardsDraft,
+    ParamDraft, ParametersDraft, PhaseDraft, PhaseKind, PlayerSelector, Position, RefDraft,
+    ReferenceTarget, RulesetDefinition, RulesetDraft, SetupStep, SetupStepDraft, StateName,
+    TurnDraft, Visibility, ZoneDraft, ZoneId,
 };
 
 // ---- draft builders
@@ -2105,5 +2106,344 @@ fn actions_are_checked_after_setup_and_before_the_turn() {
         error_of(draft).path,
         path().key("actions").index(0).key("id"),
         "actions before the turn"
+    );
+}
+
+// ---- how a Turn is left (ticket #62)
+
+fn action_of(id: &str, effects: Vec<EffectDraft>) -> ActionDraft {
+    ActionDraft {
+        id: id.to_string(),
+        params: vec![],
+        cost: vec![],
+        effects,
+    }
+}
+
+/// An `if` that holds and does nothing but run the given effects: the one effect an action with no
+/// params can have besides `end_turn`.
+fn if_effect(then: Vec<EffectDraft>, otherwise: Vec<EffectDraft>) -> EffectDraft {
+    EffectDraft::If {
+        condition: ExpressionDraft::Literal(FieldValue::Bool(true)),
+        then,
+        otherwise,
+    }
+}
+
+/// An action with the param `card` (a creature in the hand) and the given effects.
+fn move_action(id: &str, effects: Vec<EffectDraft>) -> ActionDraft {
+    ActionDraft {
+        id: id.to_string(),
+        params: vec![ParamDraft {
+            name: "card".to_string(),
+            cards: ParamCardsDraft::Single(ParamAlternativeDraft {
+                zone: "hand".to_string(),
+                card_type: "creature".to_string(),
+                owner: None,
+                condition: None,
+            }),
+        }],
+        cost: vec![],
+        effects,
+    }
+}
+
+/// Moves the param `card` to the field.
+fn move_card() -> EffectDraft {
+    EffectDraft::Move {
+        card: RefDraft("card".to_string()),
+        to: "field".to_string(),
+    }
+}
+
+/// The Small Ruleset structure with the given actions and the one action phase Main, which lists
+/// `listed`.
+fn small_ruleset_with_actions(actions: Vec<ActionDraft>, listed: &[&str]) -> RulesetDraft {
+    let mut draft = small_ruleset_draft();
+    draft.actions = actions;
+    draft.turn = Some(TurnDraft {
+        phases: vec![action_phase("main", listed)],
+    });
+    draft
+}
+
+/// The path of effect `index` of the action `action`.
+fn effect_path(action: &str, index: usize) -> DefinitionPath {
+    path().key("actions").id(action).key("effects").index(index)
+}
+
+#[test]
+fn an_end_turn_followed_by_an_effect_is_rejected() {
+    let draft = small_ruleset_with_actions(
+        vec![move_action(
+            "pass_turn",
+            vec![EffectDraft::EndTurn, move_card()],
+        )],
+        &["pass_turn"],
+    );
+    assert_eq!(
+        error_of(draft),
+        DefinitionError {
+            path: effect_path("pass_turn", 0),
+            kind: DefinitionErrorKind::EndTurnNotLast,
+        }
+    );
+}
+
+#[test]
+fn an_action_that_ends_the_turn_twice_is_rejected_at_the_first_end_turn() {
+    let draft = small_ruleset_with_actions(
+        vec![action_of(
+            "pass_turn",
+            vec![EffectDraft::EndTurn, EffectDraft::EndTurn],
+        )],
+        &["pass_turn"],
+    );
+    assert_eq!(
+        error_of(draft),
+        DefinitionError {
+            path: effect_path("pass_turn", 0),
+            kind: DefinitionErrorKind::EndTurnNotLast,
+        }
+    );
+}
+
+#[test]
+fn an_end_turn_inside_an_if_effect_is_rejected() {
+    let in_if = |path: DefinitionPath| DefinitionError {
+        path,
+        kind: DefinitionErrorKind::EndTurnInIfEffect,
+    };
+    let cases = [
+        // In `then`, with a top-level `end_turn` after the `if`.
+        (
+            vec![
+                if_effect(vec![EffectDraft::EndTurn], vec![]),
+                EffectDraft::EndTurn,
+            ],
+            in_if(effect_path("pass_turn", 0).key("then").index(0)),
+        ),
+        // In `else`.
+        (
+            vec![
+                if_effect(vec![], vec![EffectDraft::EndTurn]),
+                EffectDraft::EndTurn,
+            ],
+            in_if(effect_path("pass_turn", 0).key("else").index(0)),
+        ),
+        // Nested: an `if` in the `else` of an `if`, at index 2 of its `then`.
+        (
+            vec![
+                if_effect(
+                    vec![],
+                    vec![if_effect(
+                        vec![
+                            if_effect(vec![], vec![]),
+                            if_effect(vec![], vec![]),
+                            EffectDraft::EndTurn,
+                        ],
+                        vec![],
+                    )],
+                ),
+                EffectDraft::EndTurn,
+            ],
+            in_if(
+                effect_path("pass_turn", 0)
+                    .key("else")
+                    .index(0)
+                    .key("then")
+                    .index(2),
+            ),
+        ),
+        // An `if` that is the last top-level effect: being last does not excuse nesting.
+        (
+            vec![if_effect(vec![EffectDraft::EndTurn], vec![])],
+            in_if(effect_path("pass_turn", 0).key("then").index(0)),
+        ),
+        // Depth first, `then` before `else`.
+        (
+            vec![
+                if_effect(vec![EffectDraft::EndTurn], vec![EffectDraft::EndTurn]),
+                EffectDraft::EndTurn,
+            ],
+            in_if(effect_path("pass_turn", 0).key("then").index(0)),
+        ),
+    ];
+    for (effects, expected) in cases {
+        let draft =
+            small_ruleset_with_actions(vec![action_of("pass_turn", effects)], &["pass_turn"]);
+        assert_eq!(error_of(draft), expected);
+    }
+}
+
+#[test]
+fn an_action_phase_without_an_action_that_ends_the_turn_is_rejected() {
+    let no_ender = DefinitionError {
+        path: phase_path("main"),
+        kind: DefinitionErrorKind::NoTurnEndingAction,
+    };
+
+    // Every listed action lacks a top-level `end_turn`.
+    let draft = small_ruleset_with_actions(
+        vec![
+            action_of("idle", vec![]),
+            move_action("play", vec![move_card()]),
+        ],
+        &["idle", "play"],
+    );
+    assert_eq!(error_of(draft), no_ender);
+
+    // An action that ends the Turn exists, but Main does not list it.
+    let mut draft = small_ruleset_with_actions(
+        vec![action_of("idle", vec![]), pass_turn_action()],
+        &["idle"],
+    );
+    assert_eq!(error_of(draft.clone()), no_ender);
+
+    // An empty list lists no ender either.
+    draft.turn = Some(TurnDraft {
+        phases: vec![action_phase("main", &[])],
+    });
+    assert_eq!(error_of(draft), no_ender);
+}
+
+#[test]
+fn an_action_no_phase_lists_is_rejected() {
+    // `idle` is declared, Main lists only `pass_turn`.
+    let draft = small_ruleset_with_actions(
+        vec![pass_turn_action(), action_of("idle", vec![])],
+        &["pass_turn"],
+    );
+    assert_eq!(
+        error_of(draft),
+        DefinitionError {
+            path: path().key("actions").id("idle"),
+            kind: DefinitionErrorKind::UnlistedAction,
+        }
+    );
+
+    // Without a `turn` no phase lists anything.
+    let mut draft = small_ruleset_draft();
+    draft.actions = vec![pass_turn_action()];
+    assert_eq!(
+        error_of(draft),
+        DefinitionError {
+            path: path().key("actions").id("pass_turn"),
+            kind: DefinitionErrorKind::UnlistedAction,
+        }
+    );
+
+    // No actions and no turn is still valid.
+    assert!(RulesetDefinition::validate(small_ruleset_draft()).is_ok());
+}
+
+#[test]
+fn an_action_ending_with_end_turn_loads() {
+    let draft = small_ruleset_with_actions(
+        vec![
+            move_action("play", vec![move_card(), EffectDraft::EndTurn]),
+            action_of(
+                "pass_turn",
+                vec![if_effect(vec![], vec![]), EffectDraft::EndTurn],
+            ),
+        ],
+        &["play", "pass_turn"],
+    );
+    let definition = RulesetDefinition::validate(draft).expect("end_turn is last and top-level");
+    assert_eq!(definition.actions().len(), 2);
+    for action in definition.actions() {
+        assert_eq!(action.effects().last(), Some(&Effect::EndTurn));
+    }
+}
+
+#[test]
+fn turn_cycle_errors_are_reported_in_validation_order() {
+    let ghost = EffectDraft::Move {
+        card: RefDraft("ghost".to_string()),
+        to: "field".to_string(),
+    };
+    // `broken` misplaces `end_turn` twice (in an `if`, then not last) and has a dangling ref in its
+    // last effect; `idle` is the only action Main lists and ends no Turn; `broken` is unlisted.
+    let mut draft = small_ruleset_with_actions(
+        vec![
+            action_of(
+                "broken",
+                vec![
+                    if_effect(vec![EffectDraft::EndTurn], vec![]),
+                    EffectDraft::EndTurn,
+                    ghost,
+                ],
+            ),
+            action_of("idle", vec![]),
+        ],
+        &["idle"],
+    );
+
+    // The effects of an action are all checked before the placement of its `end_turn`.
+    assert_eq!(
+        error_of(draft.clone()),
+        DefinitionError {
+            path: effect_path("broken", 2).key("move").key("card"),
+            kind: dangling(ReferenceTarget::Param, "ghost"),
+        }
+    );
+
+    // Then the first misplaced `end_turn` in document order: the one in the `if`.
+    draft.actions[0].effects[2] = if_effect(vec![], vec![]);
+    assert_eq!(
+        error_of(draft.clone()),
+        DefinitionError {
+            path: effect_path("broken", 0).key("then").index(0),
+            kind: DefinitionErrorKind::EndTurnInIfEffect,
+        }
+    );
+
+    // Then the one that is not last.
+    draft.actions[0].effects[0] = if_effect(vec![], vec![]);
+    assert_eq!(
+        error_of(draft.clone()),
+        DefinitionError {
+            path: effect_path("broken", 1),
+            kind: DefinitionErrorKind::EndTurnNotLast,
+        }
+    );
+
+    // Then the phase that cannot be left.
+    draft.actions[0].effects.remove(1);
+    assert_eq!(
+        error_of(draft.clone()),
+        DefinitionError {
+            path: phase_path("main"),
+            kind: DefinitionErrorKind::NoTurnEndingAction,
+        }
+    );
+
+    // Then the action no phase lists.
+    draft.actions[1].effects = vec![EffectDraft::EndTurn];
+    assert_eq!(
+        error_of(draft),
+        DefinitionError {
+            path: path().key("actions").id("broken"),
+            kind: DefinitionErrorKind::UnlistedAction,
+        }
+    );
+
+    // The check of an action phase comes before the count of action phases.
+    let mut draft = small_ruleset_with_actions(
+        vec![action_of("idle", vec![]), pass_turn_action()],
+        &["idle"],
+    );
+    draft.turn = Some(TurnDraft {
+        phases: vec![
+            action_phase("main", &["idle"]),
+            action_phase("second", &["pass_turn"]),
+        ],
+    });
+    assert_eq!(
+        error_of(draft),
+        DefinitionError {
+            path: phase_path("main"),
+            kind: DefinitionErrorKind::NoTurnEndingAction,
+        }
     );
 }

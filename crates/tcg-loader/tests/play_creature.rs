@@ -769,7 +769,10 @@ fn param_names_are_identifiers_and_unique_within_their_action() {
     );
 
     // The same name in another action is fine: params belong to their action.
-    let reused = small_with(MAIN_WITH_PLAY, EXTRA_ACTIONS);
+    let reused = small_with(
+        "actions: [play_creature, bounce, calm, pass_turn]",
+        EXTRA_ACTIONS,
+    );
     assert!(load_ruleset_definition(&reused).is_ok());
 }
 
@@ -1337,9 +1340,16 @@ fn playing_without_enough_mana_is_rejected() {
 
 #[test]
 fn playing_outside_a_phase_that_lists_it_is_rejected() {
-    // `play_creature` is declared but Main lists only `pass_turn`.
-    let ruleset = ruleset_from(&small_with("actions: [pass_turn]", ""));
-    let state = opening(&ruleset);
+    // Validation lists every action in the action phase (ADR-0027), so the Game is outside it
+    // only when the current phase is automatic: back in `start` of the Turn in progress.
+    let ruleset = small();
+    let mut state = opening(&ruleset);
+    apply_all(
+        &mut state,
+        &[Event::PhaseBegan {
+            phase: PhaseId::new("start"),
+        }],
+    );
     let creature = hand_card_with_cost(&ruleset, &state, 0, 1);
     let not_in_phase = Rejection::ActionNotInCurrentPhase {
         action: ActionId::new("play_creature"),

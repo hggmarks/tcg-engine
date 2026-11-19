@@ -353,6 +353,26 @@ fn an_unknown_key_inside_a_phase_or_an_action_is_reported_inside_it() {
 }
 
 #[test]
+fn a_misplaced_end_turn_in_yaml_is_rejected_at_its_path() {
+    // Ticket #62: `end_turn` is the last top-level effect of an action; the engine reports the
+    // first one that is not, addressed by action id.
+    let error = definition_error(&document(
+        "turn:\n  phases:\n    - id: main\n      actions: [pass_turn]\n\nactions:\n  - id: pass_turn\n    effects: [ { end_turn: {} }, { end_turn: {} } ]\n",
+    ));
+    assert_eq!(
+        error,
+        DefinitionError {
+            path: path()
+                .key("actions")
+                .id("pass_turn")
+                .key("effects")
+                .index(0),
+            kind: DefinitionErrorKind::EndTurnNotLast,
+        }
+    );
+}
+
+#[test]
 fn turn_meaning_is_checked_by_the_engine_with_phases_addressed_by_id() {
     // A phase with neither `automatic` nor `actions` parses; the engine rejects it.
     assert_eq!(

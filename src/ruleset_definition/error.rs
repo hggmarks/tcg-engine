@@ -149,6 +149,19 @@ pub enum DefinitionErrorKind {
     /// about (the Subject) through its refs, and exactly one; `found` is how many different card
     /// types its refs name.
     InvalidSubjectCount { found: usize },
+    /// An `end_turn` inside an `if` of an action, at its own path, such as
+    /// `actions[x].effects[1].then[0]` or `actions[x].effects[0].else[0].then[2]`: `end_turn` is
+    /// only ever a top-level effect (ADR-0027).
+    EndTurnInIfEffect,
+    /// A top-level `end_turn` of an action that is followed by another effect, at its own path,
+    /// such as `actions[x].effects[0]`; for `[end_turn, end_turn]` it is the first one (ADR-0027).
+    EndTurnNotLast,
+    /// The action phase, such as `turn.phases[main]`: none of the actions it lists ends the Turn
+    /// (its effects end with a top-level `end_turn`), so the Game could wait there forever.
+    NoTurnEndingAction,
+    /// An action that no phase lists, such as `actions[idle]`; every action of a ruleset without a
+    /// `turn` is one.
+    UnlistedAction,
 }
 
 impl fmt::Display for DefinitionErrorKind {
@@ -263,6 +276,19 @@ impl fmt::Display for DefinitionErrorKind {
                 f,
                 "an expression win condition must read exactly one card type, found {found}"
             ),
+            Self::EndTurnInIfEffect => write!(
+                f,
+                "`end_turn` cannot be inside an `if`: it is only the last top-level effect of an action"
+            ),
+            Self::EndTurnNotLast => write!(
+                f,
+                "`end_turn` must be the last effect of an action: no effect may follow it"
+            ),
+            Self::NoTurnEndingAction => write!(
+                f,
+                "the action phase lists no action that ends the Turn, so the Game could not leave it"
+            ),
+            Self::UnlistedAction => write!(f, "no phase lists this action, so it could never be taken"),
             Self::UnsupportedFieldType { field_type } => {
                 write!(f, "the field type {field_type:?} is not supported yet")
             }

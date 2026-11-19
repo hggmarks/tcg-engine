@@ -8,8 +8,8 @@ use tcg_engine::ruleset::{LegalActions, Ruleset};
 use tcg_selfplay::{self_play, verify_record, Checks, FailureKind, SelfPlayFailure, POLICY_STREAM};
 
 use crate::common::{
-    decks, digest_line, p, pass, pin_difference, small, small_version_2, small_with_ruleset,
-    MAX_STEPS,
+    decks, digest_line, edit, p, pass, pin_difference, ruleset_from, small, small_version_2,
+    MAX_STEPS, SMALL_CATALOG, SMALL_RULESET,
 };
 
 /// The Seeds of the self-play pin: `0..PINNED_SEEDS`.
@@ -167,8 +167,23 @@ fn a_game_that_ends_on_its_last_allowed_step_is_not_a_failure() {
 
 #[test]
 fn a_game_without_a_legal_action_is_a_failure() {
-    // The Action Phase lists no action: the Game is on and nothing can be done.
-    let ruleset = small_with_ruleset("actions: [play_creature, attack, pass_turn]", "actions: []");
+    // `play_creature` and `pass_turn` get `where: false`; `attack` has no attacker at the start. None
+    // can be taken at the start: the Game is on and nothing can be done. (The Phase
+    // cannot list no action: ADR-0027 asks one that ends the Turn.)
+    let never = "card_type: creature, where: false }";
+    let impossible_play = edit(
+        SMALL_RULESET,
+        "card_type: creature }\n    # Taps",
+        &format!("{never}\n    # Taps"),
+    );
+    let impossible = edit(
+        &impossible_play,
+        "  - id: pass_turn\n    effects:",
+        &format!(
+            "  - id: pass_turn\n    params:\n      - {{ name: card, zone: hand, {never}\n    effects:"
+        ),
+    );
+    let ruleset = ruleset_from(&impossible, SMALL_CATALOG);
     let decks = decks(&ruleset);
     let failure = self_play(&ruleset, &decks, Seed(5), MAX_STEPS, Checks::On)
         .expect_err("there is no Legal Action");

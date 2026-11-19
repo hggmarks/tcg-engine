@@ -11,8 +11,8 @@ use tcg_engine::ruleset_definition::{
     ActionDraft, ActionId, CardTypeDraft, CardTypeId, CardValue, Cost, CostDraft, DefinitionError,
     DefinitionErrorKind, Effect, EffectDraft, FieldDraft, FieldName, FieldTypeDraft, FieldValue,
     InitializerDraft, InstanceStateDraft, MetaDraft, ParamAlternativeDraft, ParamCardsDraft,
-    ParamDraft, ParamName, ParamOwner, ParametersDraft, RefDraft, ReferenceTarget,
-    RulesetDefinition, RulesetDraft, StateName, Visibility, ZoneDraft, ZoneId,
+    ParamDraft, ParamName, ParamOwner, ParametersDraft, PhaseDraft, RefDraft, ReferenceTarget,
+    RulesetDefinition, RulesetDraft, StateName, TurnDraft, Visibility, ZoneDraft, ZoneId,
 };
 
 fn bool_state(name: &str) -> InstanceStateDraft {
@@ -83,6 +83,20 @@ fn draft_with_play_creature(count: &str) -> RulesetDraft {
                 value: FieldValue::Bool(true),
             },
         ],
+    });
+    // The Turn can be left (ADR-0027): Main lists `play_creature` and the action that ends the Turn.
+    draft.actions.push(ActionDraft {
+        id: "pass_turn".to_string(),
+        params: vec![],
+        cost: vec![],
+        effects: vec![EffectDraft::EndTurn],
+    });
+    draft.turn = Some(TurnDraft {
+        phases: vec![PhaseDraft {
+            id: "main".to_string(),
+            automatic: None,
+            actions: Some(vec!["play_creature".to_string(), "pass_turn".to_string()]),
+        }],
     });
     draft
 }
