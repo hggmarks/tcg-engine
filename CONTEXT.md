@@ -485,7 +485,7 @@ The `ObservationError` for a Viewer that is not a Player of the Game, never a pa
 The `ObservationError` for an Observed Card the Viewer does not hold now: never given, or retired.
 
 **Observer Out Of Step**:
-The `ObservationError` for Events or a GameState that do not fit the Observer or the Ruleset: a `CardCreated` of a card that already has a handle; a move out of a zone the Viewer sees of a card with no handle, or out of an unseen zone of a card that holds one; a zone the Ruleset does not declare; a seen card without a handle, or a handle without a seen card; a card missing from the GameState or the catalog; an Event of a trace that does not apply to the GameState it is followed from (ADR-0029). An internal inconsistency, never expected from a Game followed from its Empty GameState, and an error rather than a panic.
+The `ObservationError` for Events or a GameState that do not fit the Observer or the Ruleset: a `CardCreated` of a card that already has a handle; a move out of a zone the Viewer sees of a card with no handle, or out of an unseen zone of a card that holds one; a zone the Ruleset does not declare; a seen card without a handle, or a handle without a seen card; a card missing from the GameState or the catalog; an Event of a trace that does not apply to the GameState it is followed from, or a transition whose GameState is not the one its trace leads to (ADR-0029). An internal inconsistency, never expected from a Game followed from its Empty GameState, and an error rather than a panic.
 
 ## Ending the Game
 

@@ -42,8 +42,9 @@ impl DeclarativeRuleset {
     ///
     /// A card argument of the Taken Action is the Observed Card the Viewer holds after the
     /// transition; else the one it held before (now retired); else hidden. All-or-nothing, like
-    /// [`follow_events`](Self::follow_events): the next Observed GameState is built before the
-    /// Observer is committed, so a `transition.state` that does not fit leaves it unchanged.
+    /// [`follow_events`](Self::follow_events). The GameState the trace leads to from `previous`
+    /// must be `transition.state`, else the error is `ObserverOutOfStep`; the next Observed
+    /// GameState is built before the Observer is committed, so on `Err` it is unchanged.
     pub fn follow_transition(
         &self,
         observer: &mut Observer,
@@ -52,11 +53,11 @@ impl DeclarativeRuleset {
         transition: &Transition<GameState, Event>,
     ) -> Result<ObservedTransition, ObservationError> {
         let mut folded = observer.clone();
-        let events = self.project(
-            &mut folded,
-            &mut previous.clone(),
-            transition.trace.events(),
-        )?;
+        let mut working = previous.clone();
+        let events = self.project(&mut folded, &mut working, transition.trace.events())?;
+        if working != transition.state {
+            return Err(ObservationError::ObserverOutOfStep);
+        }
         let arguments = action
             .arguments
             .iter()
@@ -340,6 +341,9 @@ mod tests {
         let mut observer = ruleset
             .observer(viewer, &start, &[])
             .expect("the Viewer is a Player");
+        let observed_start = ruleset
+            .observe(&observer, &start)
+            .expect("the Empty GameState is observed");
 
         // Seat 0 sees the public field (cards 0, 1, 2: handles 0, 1, 2) and not seat 1's hand.
         let creation = [
@@ -349,32 +353,59 @@ mod tests {
             created(3, 1, "hand"),
             created(4, 1, "hand"),
         ];
-        ruleset
+        let observed_creation = ruleset
             .follow_events(&mut observer, &start, &creation)
             .expect("the creation is followed");
         let created_state = start.apply_trace(&creation).expect("the cards are created");
 
-        let shuffles = [
+        // Two shuffles, then a draw from seat 0's empty hand.
+        let trace = [
             shuffled(0, "field", &[2, 0, 1], 9),
             shuffled(1, "hand", &[4, 3], 10),
+            Event::DrawFromEmptyZone {
+                player: PlayerId(0),
+                zone: ZoneId::new("hand"),
+            },
         ];
         let observed = ruleset
-            .follow_events(&mut observer, &created_state, &shuffles)
-            .expect("the shuffles are followed");
+            .follow_events(&mut observer, &created_state, &trace)
+            .expect("the trace is followed");
 
+        let expected = vec![
+            ObservedEvent::ZoneShuffled {
+                player: PlayerId(0),
+                zone: ZoneId::new("field"),
+                order: vec![ObservedCard(2), ObservedCard(0), ObservedCard(1)],
+            },
+            ObservedEvent::UnseenZoneShuffled {
+                player: PlayerId(1),
+                zone: ZoneId::new("hand"),
+            },
+            ObservedEvent::DrawFromEmptyZone {
+                player: PlayerId(0),
+                zone: ZoneId::new("hand"),
+            },
+        ];
+        assert_eq!(observed, expected);
+
+        // Applying the projected events to the Observed GameState of the Empty GameState gives the
+        // Observed GameState of the resulting GameState.
+        let final_state = created_state
+            .apply_trace(&trace)
+            .expect("the trace applies");
+        let observed_final = ruleset
+            .observe(&observer, &final_state)
+            .expect("the resulting GameState is observed");
+        let all: Vec<ObservedEvent> = observed_creation.into_iter().chain(observed).collect();
         assert_eq!(
-            observed,
-            vec![
-                ObservedEvent::ZoneShuffled {
-                    player: PlayerId(0),
-                    zone: ZoneId::new("field"),
-                    order: vec![ObservedCard(2), ObservedCard(0), ObservedCard(1)],
-                },
-                ObservedEvent::UnseenZoneShuffled {
-                    player: PlayerId(1),
-                    zone: ZoneId::new("hand"),
-                },
-            ]
+            observed_start.apply_events(&all),
+            Ok(observed_final.clone())
+        );
+        assert_eq!(
+            observed_final
+                .zone(PlayerId(0), &ZoneId::new("field"))
+                .and_then(|zone| zone.cards()),
+            Some([ObservedCard(2), ObservedCard(0), ObservedCard(1)].as_slice())
         );
     }
 }

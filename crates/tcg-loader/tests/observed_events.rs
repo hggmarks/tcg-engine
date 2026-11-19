@@ -364,6 +364,18 @@ fn follow_all(ruleset: &DeclarativeRuleset, game: &Scripted, seat: u32) -> Obser
     }
 }
 
+/// Applying each seat's Observed Events to its Observed GameState from before the transition gives
+/// the Observed GameState the transition carries.
+fn assert_applies(before: &[ObservedGameState; 2], seen: &[ObservedTransition; 2]) {
+    for (seat, (previous, transition)) in before.iter().zip(seen).enumerate() {
+        assert_eq!(
+            previous.apply_events(&transition.events),
+            Ok(transition.state.clone()),
+            "seat {seat}"
+        );
+    }
+}
+
 // ---- tests
 
 #[test]
@@ -640,7 +652,9 @@ fn a_card_that_leaves_sight_and_comes_back_gets_a_fresh_observed_card() {
     let first_for_seat_1 = handles_given(&game.log[1]);
 
     // Seat 0 plays it: it enters the field, then moves itself to the top of its deck.
+    let before = [game.observed(0), game.observed(1)];
     let (transition, seen) = game.play(&play(0, BOOMERANG));
+    assert_applies(&before, &seen);
     let mana = card_at(transition.trace.events(), 0);
     assert_eq!(transition.trace.events().len(), 4);
     let boomerang = CardId::new("boomerang");
@@ -718,14 +732,18 @@ fn a_card_that_leaves_sight_and_comes_back_gets_a_fresh_observed_card() {
     assert_eq!(game.handle(1, BOOMERANG), None);
 
     // Two passes later seat 0's Turn begins and it draws the card on top of its deck: the boomerang.
-    let _ = game.play(&pass(0));
+    let before = [game.observed(0), game.observed(1)];
+    let (_, seen) = game.play(&pass(0));
+    assert_applies(&before, &seen);
     let given_before_draw = handles_given(&game.log[0]);
     assert_eq!(
         game.observed(0).cards().len() + 1,
         usize::try_from(given_before_draw).expect("few handles"),
         "the retired handle is counted as given, not as visible"
     );
+    let before = [game.observed(0), game.observed(1)];
     let (_, seen) = game.play(&pass(1));
+    assert_applies(&before, &seen);
     let draws: Vec<&ObservedEvent> = seen[0]
         .events
         .iter()
@@ -1292,8 +1310,8 @@ fn a_trace_that_does_not_fit_leaves_the_observer_unchanged() {
     );
     assert_eq!(observer, before);
 
-    // A transition whose next GameState is not the one its trace leads to: the trace folds, but
-    // the Observed GameState cannot be built. The Observer still stays as it was.
+    // A transition whose next GameState is not the one its trace leads to. The Observer still stays
+    // as it was.
     let mismatched = Transition {
         state: start.clone(),
         trace: transition.trace.clone(),
@@ -1310,6 +1328,50 @@ fn a_trace_that_does_not_fit_leaves_the_observer_unchanged() {
         .expect("the real transition is followed");
     assert_eq!(observer, advanced);
     assert_eq!(followed.events.len(), transition.trace.events().len());
+}
+
+#[test]
+fn a_transition_whose_gamestate_is_not_the_one_its_trace_leads_to_leaves_the_observer_unchanged() {
+    let ruleset = effects();
+    let creation = create_effects(&ruleset);
+    let start = &creation.opening.state;
+    let mut observer = ruleset
+        .observer(viewer(0), &creation.empty, &[])
+        .expect("the Observer is built");
+    ruleset
+        .follow_events(
+            &mut observer,
+            &creation.empty,
+            creation.opening.trace.events(),
+        )
+        .expect("the creation trace is followed");
+    let before = observer.clone();
+
+    // The real trace, with a state that is the real one plus one more Event: an extra phase.
+    let transition = ruleset
+        .transition(start, &pass(0))
+        .expect("the pass is accepted");
+    let forged = Transition {
+        state: transition
+            .state
+            .apply_trace(&[Event::PhaseBegan {
+                phase: PhaseId::new("end"),
+            }])
+            .expect("the extra phase applies"),
+        trace: transition.trace.clone(),
+    };
+    assert_ne!(forged.state, transition.state);
+    assert_eq!(
+        ruleset.follow_transition(&mut observer, start, &pass(0), &forged),
+        Err(ObservationError::ObserverOutOfStep)
+    );
+    assert_eq!(observer, before);
+
+    // The real transition still follows from the unchanged Observer.
+    assert!(ruleset
+        .follow_transition(&mut observer, start, &pass(0), &transition)
+        .is_ok());
+    assert_ne!(observer, before);
 }
 
 #[test]
@@ -1364,7 +1426,7 @@ fn an_observed_event_that_does_not_fit_leaves_the_observed_gamestate_unchanged()
             card: own_leader,
             player: p(1),
             from: zone("deck"),
-            to: zone("hand"),
+            to: zone("field"),
             definition: CardId::new("any"),
             state: Vec::new(),
         },
