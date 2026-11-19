@@ -293,7 +293,7 @@ fn edit(yaml: &str, from: &str, to: &str) -> String {
 }
 
 /// The Small Ruleset plus one action `peek`, listed in the Main phase, whose one param is over
-/// `param_zone` (with `owner`, if given). Test-only: nothing under `rulesets/` changes.
+/// the zone `param` declares (with its `owner`, if given). Test-only: nothing under `rulesets/` changes.
 fn small_with_peek(param: &str) -> DeclarativeRuleset {
     let with_phase = edit(
         SMALL_RULESET,
@@ -595,5 +595,47 @@ fn an_observer_that_has_not_followed_the_game_state_is_out_of_step_when_listing(
     assert_eq!(
         ruleset.observed_legal_actions(&stale, &later.state),
         Err(ObservationError::ObserverOutOfStep)
+    );
+}
+
+#[test]
+fn an_observer_holding_a_handle_for_a_card_now_unseen_still_gets_the_unseen_card_error() {
+    // The Observer folds the creation trace and then one more Event, a `CardMoved` of a card of
+    // seat 0's deck into its hand, that the GameState does not show: it holds a handle for a card
+    // the GameState keeps in the hidden `deck`. The unseen zone, read from the GameState, decides:
+    // the handle neither leaks the card nor turns the error into `ObserverOutOfStep`.
+    let ruleset = small_with_peek("{ name: card, zone: deck, card_type: creature }");
+    let creation = create(&ruleset, [SMALL_DECK_A, SMALL_DECK_B], SMALL_SEED);
+    let position = Position::opening(&creation);
+    let state = &position.state;
+    let Some(Argument::Card(peeked)) = ruleset
+        .legal_actions(state)
+        .iter()
+        .find(|legal_action| legal_action.action.as_str() == "peek")
+        .and_then(|legal_action| legal_action.arguments.first().copied())
+    else {
+        panic!("the engine lists a `peek`");
+    };
+    assert_eq!(state.zone_of(peeked), Some(&zone("deck")));
+
+    let mut events = position.events.clone();
+    events.push(Event::CardMoved {
+        card: peeked,
+        player: p(0),
+        from: zone("deck"),
+        to: zone("hand"),
+    });
+    let observer = ruleset
+        .observer(viewer(0), &creation.empty, &events)
+        .expect("the Observer is built");
+    assert!(
+        observer.observed_card(peeked).is_some(),
+        "the Observer holds a handle for the card"
+    );
+    assert_eq!(
+        ruleset.observed_legal_actions(&observer, state),
+        Err(ObservationError::LegalActionNamesUnseenCard {
+            action: ActionId::new("peek")
+        })
     );
 }

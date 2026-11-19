@@ -7,7 +7,8 @@ use super::viewer::{ObservedCard, Viewer};
 use crate::player::PlayerId;
 use crate::ruleset_definition::{ActionId, FieldName};
 
-/// Why an Observer, an Observed GameState or a Derived Read cannot be produced.
+/// Why an Observer, an Observed GameState, a Derived Read or an Observed Action (listing the
+/// Viewer's Observed Legal Actions, or translating an Observed Action) cannot be produced.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ObservationError {
     /// The Viewer is not a Player of the Game.
