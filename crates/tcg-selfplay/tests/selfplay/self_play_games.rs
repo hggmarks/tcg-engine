@@ -167,8 +167,8 @@ fn a_game_that_ends_on_its_last_allowed_step_is_not_a_failure() {
 
 #[test]
 fn a_game_without_a_legal_action_is_a_failure() {
-    // Every action the Action Phase lists needs a card that no card can be (`where: false`), and
-    // none of them can be taken at the start: the Game is on and nothing can be done. (The Phase
+    // `play_creature` and `pass_turn` get `where: false`; `attack` has no attacker at the start. None
+    // can be taken at the start: the Game is on and nothing can be done. (The Phase
     // cannot list no action: ADR-0027 asks one that ends the Turn.)
     let never = "card_type: creature, where: false }";
     let impossible_play = edit(
