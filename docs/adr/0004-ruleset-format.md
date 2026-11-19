@@ -2,6 +2,7 @@
 
 - Status: accepted
 - Decision 3's typed-model names are amended by ADR-0007 (`Ruleset` becomes `RulesetDefinition`).
+- Amended by ADR-0028: the recorded open item on hidden information is decided, and the three Visibility values get their exact meaning (`public` every Viewer, `owner` its owner only, `hidden` nobody, its owner included).
 - Date: 2026-10-23
 
 ## Context
@@ -55,7 +56,7 @@ Options: a new engine primitive or an extension mechanism in code/script.
 ## Recorded open items
 
 - Validate item 6 with a second ruleset that has a different number of players.
-- Effect resolution model and hidden information are not yet decided.
+- Effect resolution model and hidden information are not yet decided. *Amended by ADR-0028: hidden information is decided (Viewers, Observers and Observed GameStates); the effect resolution model is ADR-0023's.*
 - State size (performance): ADR-0021 decided that the GameState shares what a
   transition does not change (ids and Card Instance state are `Arc`s, copied on
   write) and measured the cost of Legal Action listing. Still open: a smaller
