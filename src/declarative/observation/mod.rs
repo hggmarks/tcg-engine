@@ -9,11 +9,15 @@
 mod derived_read;
 mod error;
 mod follow;
+mod observed_event;
 mod observed_state;
 mod observer;
 mod viewer;
 
 pub use error::ObservationError;
+pub use observed_event::{
+    ObservedApplyError, ObservedEvent, ObservedTransition, TakenAction, TakenArgument,
+};
 pub use observed_state::{ObservedGameState, ObservedZone, VisibleCard};
 pub use observer::Observer;
 pub use viewer::{ObservedCard, Viewer};

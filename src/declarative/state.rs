@@ -111,6 +111,42 @@ impl TerminalOutcome {
     pub fn is_drawn_game(&self) -> bool {
         self.winners.is_empty()
     }
+
+    /// The Terminal Outcome of a Game of `players` that ends with `losses`: the winners are the
+    /// Players who did not lose. Shared by `GameState::apply` and the Observed GameState's apply
+    /// (ADR-0029), so both reject the same losses.
+    pub(crate) fn of(
+        players: &PlayerOrder,
+        losses: &[Loss],
+    ) -> Result<TerminalOutcome, ApplyError> {
+        if losses.is_empty() {
+            return Err(ApplyError::NoLoser);
+        }
+        let seats = players.players();
+        let mut previous: Option<usize> = None;
+        for loss in losses {
+            let Some(seat) = seats.iter().position(|&member| member == loss.player) else {
+                return Err(ApplyError::UnknownPlayer {
+                    player: loss.player,
+                });
+            };
+            if previous.is_some_and(|before| seat <= before) {
+                return Err(ApplyError::LosersOutOfSeatOrder {
+                    player: loss.player,
+                });
+            }
+            previous = Some(seat);
+        }
+        let winners = seats
+            .iter()
+            .copied()
+            .filter(|player| !losses.iter().any(|loss| loss.player == *player))
+            .collect();
+        Ok(TerminalOutcome {
+            winners,
+            losses: losses.to_vec(),
+        })
+    }
 }
 
 /// The complete state of one declarative Game: Players by seat, the Active Player, the Turn Number
@@ -473,42 +509,10 @@ impl GameState {
                 Ok(())
             }
             Event::GameEnded { losses } => {
-                self.outcome = Some(self.outcome_of(losses)?);
+                self.outcome = Some(TerminalOutcome::of(&self.player_order, losses)?);
                 Ok(())
             }
         }
-    }
-
-    /// The Terminal Outcome of a Game that ends with `losses`: the winners are the Players who did
-    /// not lose.
-    fn outcome_of(&self, losses: &[Loss]) -> Result<TerminalOutcome, ApplyError> {
-        if losses.is_empty() {
-            return Err(ApplyError::NoLoser);
-        }
-        let players = self.player_order.players();
-        let mut previous: Option<usize> = None;
-        for loss in losses {
-            let Some(seat) = players.iter().position(|&member| member == loss.player) else {
-                return Err(ApplyError::UnknownPlayer {
-                    player: loss.player,
-                });
-            };
-            if previous.is_some_and(|before| seat <= before) {
-                return Err(ApplyError::LosersOutOfSeatOrder {
-                    player: loss.player,
-                });
-            }
-            previous = Some(seat);
-        }
-        let winners = players
-            .iter()
-            .copied()
-            .filter(|player| !losses.iter().any(|loss| loss.player == *player))
-            .collect();
-        Ok(TerminalOutcome {
-            winners,
-            losses: losses.to_vec(),
-        })
     }
 
     /// Applies `events` in order to a clone of this state and returns the result; this state is
