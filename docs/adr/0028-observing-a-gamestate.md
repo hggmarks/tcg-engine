@@ -20,7 +20,7 @@ The first half of hidden information (ticket [23], #63, of the Observations road
 
 **Honest limits.** The Observer trusts the Events: it does not check them against the Empty GameState (that is `apply`'s job), only against its own mapping and the declared zones. A count is always visible, so a Viewer sees that a hidden zone changed size; and a seen zone keeps its stored order, which for an `owner` zone (the hand) is shown to its owner. Both are the rules, not leaks.
 
-**Known limit for [26]'s leak check.** A Derived Read adds the Field Modifiers of every carrier in the Active Zone, whatever that zone's Visibility. Both shipped rulesets have a public Active Zone (`field`), so nothing hidden contributes. A ruleset with a non-public Active Zone would let a visible card's Derived Read reveal that hidden carriers exist. This ticket does not change it; the self-play leak check of [26] must account for it.
+**Known limit for [26]'s leak check.** A Derived Read adds the Field Modifiers of every carrier in the Active Zone, whatever that zone's Visibility. The Effects Ruleset's Active Zone is the public `field`, and the Small Ruleset has none, so nothing hidden contributes. A ruleset with a non-public Active Zone would let a visible card's Derived Read reveal that hidden carriers exist. This ticket does not change it; the self-play leak check of [26] must account for it.
 
 **Conflicts.** ADR-0004's recorded open item "hidden information is not yet decided" is decided here and marked as amended there. ADR-0010's rule for future observations is met, not changed. ADR-0018's capability pattern is reused unchanged.
 
