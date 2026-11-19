@@ -449,7 +449,7 @@ The optional capability of a Ruleset whose GameState a Viewer can observe, a tra
 Who observes. Its only kind is a Player of the Game (`Viewer::Player`); a Spectator is a later, additive kind (the enum is non-exhaustive).
 
 **Observation**:
-What a Viewer is given of a Game: an Observed GameState and, from ticket [24], Observed Events. It holds base facts only; Derived Reads are asked beside it, never stored in it (ADR-0028).
+What a Viewer is given of a Game: an Observed GameState and, for each accepted transition, Observed Events and an Observed Transition (ADR-0028, ADR-0029). It holds base facts only; Derived Reads are asked beside it, never stored in it (ADR-0028).
 
 **Observed GameState**:
 A GameState as one Viewer sees it: always the Players, the Active Player, the Turn Number, the phase, the Terminal Outcome and the card count of every zone; for each zone the Viewer sees, its Observed Cards bottom first; for the Visible Cards, their facts. Never the Random State, never the order of a zone the Viewer cannot see, never a Card Instance Id.
@@ -466,6 +466,18 @@ A card the Viewer sees, in an Observed GameState: its Observed Card, owner, Card
 **Observed Zone**:
 One zone as a Viewer sees it: its count always, and its Observed Cards, bottom first, only when the Viewer sees the zone (`cards()` is `None` otherwise).
 
+**Observed Event**:
+One Event as a Viewer observes it, in trace order: `CardCreated`/`UnseenCardCreated`, `CardMoved`, `CardMovedIntoSight` (a card the Viewer starts to see, with its Card Definition and its instance state at that point of the trace), `CardMovedOutOfSight` (its Observed Card is retired), `UnseenCardMoved`, `ZoneShuffled` (the new order of Observed Cards, for a zone the Viewer sees) and `UnseenZoneShuffled`, `CardStateChanged` (only for a card the Viewer sees; none otherwise), `TurnBegan`, `PhaseBegan`, `DrawFromEmptyZone` and `GameEnded`. No variant carries a Card Instance Id or a Random State. `ObservedGameState::apply` folds them; `follow_events` and `follow_transition` of the Declarative Ruleset produce them (ADR-0029).
+
+**Observed Transition**:
+What a Viewer is given of one accepted transition, mirroring `Transition`: the Taken Action, the Observed Events in trace order and the next Observed GameState. Built by `follow_transition`, which folds the transition's Event Trace into the Observer and fails whole or not at all (ADR-0029).
+
+**Taken Action**:
+The Action of a transition as a Viewer observes it taken: the acting Player, the action id and each card argument as a `TakenArgument`: the Observed Card the Viewer holds after the transition, else the one it held before (now retired), else `HiddenCard`. It is not an Action the Viewer can take (ADR-0029).
+
+**Observed Apply Error**:
+The `ObservedApplyError` of applying an Observed Event to an Observed GameState: `GameAlreadyEnded` once the Terminal Outcome is set, and `EventDoesNotFit` for every other misfit (an unknown Player, zone, card or state, a zone seen or unseen the wrong way, a card not in its source zone or visible already, a count below zero, an order that is not a permutation, a value of the wrong type, a draw from a zone that is not empty, a phase before any Turn, bad losses). Atomic; it needs no Ruleset and no Observer (ADR-0029).
+
 **Unknown Viewer**:
 The `ObservationError` for a Viewer that is not a Player of the Game, never a panic.
 
@@ -473,7 +485,7 @@ The `ObservationError` for a Viewer that is not a Player of the Game, never a pa
 The `ObservationError` for an Observed Card the Viewer does not hold now: never given, or retired.
 
 **Observer Out Of Step**:
-The `ObservationError` for Events or a GameState that do not fit the Observer or the Ruleset: a `CardCreated` of a card that already has a handle; a move out of a zone the Viewer sees of a card with no handle, or out of an unseen zone of a card that holds one; a zone the Ruleset does not declare; a seen card without a handle, or a handle without a seen card; a card missing from the GameState or the catalog. An internal inconsistency, never expected from a Game followed from its Empty GameState, and an error rather than a panic.
+The `ObservationError` for Events or a GameState that do not fit the Observer or the Ruleset: a `CardCreated` of a card that already has a handle; a move out of a zone the Viewer sees of a card with no handle, or out of an unseen zone of a card that holds one; a zone the Ruleset does not declare; a seen card without a handle, or a handle without a seen card; a card missing from the GameState or the catalog; an Event of a trace that does not apply to the GameState it is followed from (ADR-0029). An internal inconsistency, never expected from a Game followed from its Empty GameState, and an error rather than a panic.
 
 ## Ending the Game
 
