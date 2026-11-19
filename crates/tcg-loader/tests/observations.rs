@@ -403,6 +403,40 @@ fn no_observation_exposes_a_card_instance_id_a_random_state_or_a_hidden_order() 
             .expect("the shuffled GameState is observed");
         assert_eq!(after, before, "seat {seat}");
     }
+
+    // The `owner` case: P0's hand reordered. P1 sees only its count, so P1's Observed GameState is
+    // unchanged, while P0, who sees its hand, sees the new order.
+    let hand = opening
+        .zone(p(0), &zone("hand"))
+        .expect("the hand exists")
+        .to_vec();
+    let reordered: Vec<CardInstanceId> = hand.iter().rev().copied().collect();
+    assert_ne!(hand, reordered);
+    let reorder = Event::ZoneShuffled {
+        player: p(0),
+        zone: zone("hand"),
+        order: reordered.clone(),
+        random_state: opening.random_state().clone(),
+    };
+    let after_reorder = opening
+        .apply_trace(std::slice::from_ref(&reorder))
+        .expect("the reorder applies");
+    assert_eq!(
+        after_reorder.zone(p(0), &zone("hand")),
+        Some(&reordered[..])
+    );
+    let mut events = creation.opening.trace.events().to_vec();
+    events.push(reorder);
+    let observer_1 = observer_over(&ruleset, &creation, 1, &events);
+    let after_1 = ruleset
+        .observe(&observer_1, &after_reorder)
+        .expect("the reordered GameState is observed");
+    assert_eq!(after_1, observe_opening(&ruleset, &creation, 1));
+    let observer_0 = observer_over(&ruleset, &creation, 0, &events);
+    let after_0 = ruleset
+        .observe(&observer_0, &after_reorder)
+        .expect("the reordered GameState is observed");
+    assert_ne!(after_0, observe_opening(&ruleset, &creation, 0));
 }
 
 #[test]

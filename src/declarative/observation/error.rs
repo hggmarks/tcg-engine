@@ -25,11 +25,13 @@ pub enum ObservationError {
         card: ObservedCard,
         field: FieldName,
     },
-    /// The Events or the GameState do not fit the Observer or the Ruleset: an Event moves a card
-    /// out of a zone the Viewer sees that the Observer never showed, or names a zone the Ruleset
-    /// does not declare; a GameState shows a card the Observer has no handle for, or the Observer
-    /// holds a handle for a card the GameState does not show. An internal inconsistency, never
-    /// expected from a Game followed from its Empty GameState.
+    /// The Events or the GameState do not fit the Observer or the Ruleset: a `CardCreated` of a
+    /// card that already has a handle; a `CardMoved` out of a zone the Viewer sees of a card the
+    /// Observer has no handle for, or out of an unseen zone of a card it holds one for; a zone the
+    /// Ruleset does not declare; a GameState that shows a card the Observer has no handle for, or
+    /// that lacks a card the Observer holds a handle for; a card missing from the GameState or its
+    /// catalog. An internal inconsistency, never expected from a Game followed from its Empty
+    /// GameState.
     ObserverOutOfStep,
     /// There are more Observed Cards than a handle can number.
     ObservedCardOverflow,

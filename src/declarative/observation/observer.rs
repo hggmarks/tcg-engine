@@ -32,7 +32,7 @@ pub struct Observer {
 /// form of the fold reads it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Sight {
-    /// The Event names no card.
+    /// The Event names no single card.
     NoCard,
     /// The Event names a card the Viewer does not see, before and after.
     Unseen,
@@ -113,10 +113,12 @@ impl Observer {
                     (None, false) => Ok(Sight::Unseen),
                 }
             }
+            Event::CardStateChanged { card, .. } => {
+                Ok(self.observed_card(*card).map_or(Sight::Unseen, Sight::Kept))
+            }
             Event::ZoneShuffled { .. }
             | Event::TurnBegan { .. }
             | Event::PhaseBegan { .. }
-            | Event::CardStateChanged { .. }
             | Event::DrawFromEmptyZone { .. }
             | Event::GameEnded { .. } => Ok(Sight::NoCard),
         }
@@ -194,5 +196,102 @@ impl Observations for DeclarativeRuleset {
         state: &GameState,
     ) -> Result<ObservedGameState, ObservationError> {
         observed_state::observe(self, observer, state)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::card_catalog::{CardCatalog, CardCatalogDraft, CardId, CatalogMetaDraft};
+    use crate::ruleset_definition::{
+        FieldValue, MetaDraft, ParametersDraft, RulesetDefinition, RulesetDraft, StateName,
+        ZoneDraft,
+    };
+
+    /// Two Players, a `field` every Viewer sees and a `hand` only its owner sees; no cards defined.
+    fn ruleset() -> DeclarativeRuleset {
+        let definition = RulesetDefinition::validate(RulesetDraft {
+            meta: MetaDraft {
+                id: "unit".to_string(),
+                version: 1,
+            },
+            parameters: ParametersDraft {
+                players: 2,
+                starting_player: 0,
+            },
+            zones: vec![
+                ZoneDraft {
+                    id: "field".to_string(),
+                    visibility: Visibility::Public,
+                    ordered: false,
+                },
+                ZoneDraft {
+                    id: "hand".to_string(),
+                    visibility: Visibility::Owner,
+                    ordered: false,
+                },
+            ],
+            card_types: Vec::new(),
+            inputs: Vec::new(),
+            setup: Vec::new(),
+            actions: Vec::new(),
+            turn: None,
+            win_conditions: Vec::new(),
+            effects: None,
+        })
+        .expect("the unit ruleset is valid");
+        let catalog = CardCatalog::validate(
+            &definition,
+            CardCatalogDraft {
+                meta: CatalogMetaDraft {
+                    ruleset: "unit".to_string(),
+                    ruleset_version: 1,
+                },
+                cards: Vec::new(),
+            },
+        )
+        .expect("the unit catalog is valid");
+        DeclarativeRuleset::new(definition, catalog)
+    }
+
+    fn created(card: u32, owner: u32, zone: &str) -> Event {
+        Event::CardCreated {
+            card: CardInstanceId(card),
+            owner: PlayerId(owner),
+            definition: CardId::new("any"),
+            zone: ZoneId::new(zone),
+            state: Vec::new(),
+        }
+    }
+
+    fn changed(card: u32) -> Event {
+        Event::CardStateChanged {
+            card: CardInstanceId(card),
+            state: StateName::new("tapped"),
+            value: FieldValue::Bool(true),
+        }
+    }
+
+    #[test]
+    fn a_card_state_change_keeps_the_sight_of_a_held_card_and_leaves_an_unseen_one_unseen() {
+        let ruleset = ruleset();
+        let mut observer = Observer::new(Viewer::Player(PlayerId(0)));
+        // Seat 0 sees card 0 (public field) and not card 1 (seat 1's hand).
+        let appeared = observer.follow(&ruleset, &created(0, 0, "field"));
+        assert_eq!(appeared, Ok(Sight::Appeared(ObservedCard(0))));
+        let hidden = observer.follow(&ruleset, &created(1, 1, "hand"));
+        assert_eq!(hidden, Ok(Sight::Unseen));
+        let before = observer.clone();
+
+        assert_eq!(
+            observer.follow(&ruleset, &changed(0)),
+            Ok(Sight::Kept(ObservedCard(0)))
+        );
+        assert_eq!(observer, before);
+        assert_eq!(observer.follow(&ruleset, &changed(1)), Ok(Sight::Unseen));
+        assert_eq!(observer, before);
+        // A card the Observer never heard of is unseen too, never a panic.
+        assert_eq!(observer.follow(&ruleset, &changed(9)), Ok(Sight::Unseen));
+        assert_eq!(observer, before);
     }
 }
