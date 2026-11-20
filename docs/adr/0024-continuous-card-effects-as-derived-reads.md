@@ -8,13 +8,15 @@
 
 **`while` reads base values only.** This settles the question of the review of #49: when a `while` reads the very field its own `modify` changes (`while: { gte: [ self.power, 3 ] }`, `modify: { field: power, amount: -1 }`), the condition sees the base value. Reading derived values would make the derived read circular (the modifier's activity would depend on the value it changes). `expression` has a private read mode, `Derived` or `Base`, threaded through `evaluate`; `holds` and `read` are derived, `holds_base` is what `modifier_sum` evaluates a `while` with, and it never re-enters `modifier_sum`, so there is no recursion. A `while` that reads another card's modified field would also see its base value; only `self` is in scope today.
 
-**Checked arithmetic.** The derived value and the sum of modifiers use `checked_add`; an overflow in either direction is the typed `Rejection::DerivedValueOverflow { card, field }`, never a panic or a wrap. Like every rejection it leaves the GameState untouched (ADR-0002) and emits no Event.
+**Checked arithmetic.** The derived value and the sum of modifiers use `checked_add`; an overflow in either direction is the typed `Rejection::DerivedValueOverflow { card, field }`, never a panic or a wrap *(Amended by ADR-0032: except in the `where` of one of several alternatives of a param, where the overflow means that alternative does not fit and binding tries the next)*. Like every rejection it leaves the GameState untouched (ADR-0002) and emits no Event.
 
 **The active zone.** Where Card Effects act is declared by the ruleset, not fixed by the engine: an optional top-level block `effects: { active_zone: <zone> }` (`RulesetDraft::effects`, `EffectsDraft`; `RulesetDefinition::effects_active_zone`). The zone must be declared (`DanglingReference` at `effects.active_zone`), the loader rejects an unknown key and a missing `active_zone`. With no block no modifier is ever active: lenient, no new required key. The Effects Ruleset declares `field`.
 
 **Partial lift of ADR-0022.** The rejection of a continuous Card Effect is lifted: `card_catalog::validate::unsupported` returns `None` for it, `CardDefinition::effects()` holds it, and the error `UnsupportedContinuousCardEffect` is deleted (ADR-0022's `UnsupportedEffect` is the precedent). The triggered rejection is unchanged. There is no set-scoped syntax yet, so nothing representable needs a new rejection here; ticket [19] introduces its own surface (the grammar and the rejection of what it does not support). The checks of the envelope (shape, `while` as a bool in the scope of `self`, `modify` of an int field) are unchanged.
 
 **Out of scope, by design.** Non-additive modifiers (set-to-X, granting abilities) and layering, modifying instance states, and set scopes are not decided here. Conflict with an older ADR: none beyond the lift above; ADR-0002, ADR-0010 and ADR-0015/0016 are untouched (no Event, no new state, the same refs).
+
+**Amended by ADR-0032:** the overflow exception marked under *Checked arithmetic*.
 
 **Realized by ADR-0025:** the widening of `modifier_sum` predicted above (set-scoped modifiers) is ADR-0025.
 
