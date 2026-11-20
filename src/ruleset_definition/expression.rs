@@ -442,3 +442,61 @@ pub(super) fn params_read(expression: &Expression) -> Vec<&ParamName> {
     walk(expression, &mut found);
     found
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn types(ids: &[&str]) -> Vec<CardTypeId> {
+        ids.iter().map(|id| CardTypeId::new(id)).collect()
+    }
+
+    fn scope(params: &[(&str, &[&str])]) -> Refs<'static> {
+        Refs {
+            zones: &[],
+            card_types: &[],
+            params: params
+                .iter()
+                .map(|(name, ids)| ScopedParam {
+                    name: ParamName::new(name),
+                    types: types(ids),
+                })
+                .collect(),
+            missing: ReferenceTarget::Param,
+            has_self: false,
+        }
+    }
+
+    #[test]
+    fn narrowing_intersects_the_possible_card_types() {
+        let refs = scope(&[("p", &["a", "b"]), ("q", &["a"])]);
+        let p = ParamName::new("p");
+
+        // [a, b] narrowed by [b, c] is [b]: c is not something the param can be.
+        let narrowed = refs.narrowed(&p, &types(&["b", "c"]));
+        assert_eq!(narrowed.types_of(&p), types(&["b"]).as_slice());
+
+        // The order is the param's, not the tested list's.
+        let ordered = scope(&[("p", &["b", "a"])]);
+        let narrowed = ordered.narrowed(&p, &types(&["a", "b"]));
+        assert_eq!(narrowed.types_of(&p), types(&["b", "a"]).as_slice());
+
+        // Nothing in common leaves nothing: the caller decides that is an error.
+        let narrowed = refs.narrowed(&p, &types(&["c"]));
+        assert!(narrowed.types_of(&p).is_empty());
+
+        // Another param is unchanged, and so is the scope the narrowing started from.
+        let narrowed = refs.narrowed(&p, &types(&["b"]));
+        assert_eq!(
+            narrowed.types_of(&ParamName::new("q")),
+            types(&["a"]).as_slice()
+        );
+        assert_eq!(refs.types_of(&p), types(&["a", "b"]).as_slice());
+
+        // A param that is not in scope stays out of scope.
+        let absent = ParamName::new("absent");
+        let narrowed = refs.narrowed(&absent, &types(&["a"]));
+        assert!(narrowed.types_of(&absent).is_empty());
+        assert_eq!(narrowed.types_of(&p), types(&["a", "b"]).as_slice());
+    }
+}

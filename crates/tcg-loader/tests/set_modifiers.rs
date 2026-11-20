@@ -36,7 +36,9 @@ use tcg_engine::declarative::{
 use tcg_engine::player::PlayerId;
 use tcg_engine::random::Seed;
 use tcg_engine::ruleset::{EventTrace, LegalActions, Ruleset, Transition};
-use tcg_engine::ruleset_definition::{ActionId, FieldName, FieldValue, StateName, ZoneId};
+use tcg_engine::ruleset_definition::{
+    ActionId, FieldName, FieldValue, ParamName, StateName, ZoneId,
+};
 use tcg_loader::{load_card_catalog, load_deck_list, load_ruleset_definition};
 
 const RULESET: &str = include_str!("../../../rulesets/effects-ruleset/effects-ruleset.yaml");
@@ -1471,4 +1473,137 @@ fn an_opponent_scoped_aura_with_include_self_does_not_reach_its_carrier() {
     assert_eq!(inert.played.events(7), [tap(inert.opposing_moss)]);
     assert_eq!(inert.played.steps, plain.played.steps);
     assert_eq!(inert.played.final_state(), plain.played.final_state());
+}
+
+// ---- an overflowing `where` in a `one_of` alternative (ticket #74, ADR-0032)
+//
+// The `where` of a param alternative reads a derived value, so it can overflow like any other read.
+// With several alternatives, an alternative whose `where` overflows does not fit and binding tries
+// the next; with one, the overflow is the Rejection. The scenario is the overflow Game of
+// `a_set_field_modifier_overflow_is_a_typed_error`: a `titan_aura` and a goblin on the field, so
+// the goblin's `power` read overflows. `attack` is replaced by a test-only action whose effects read
+// no derived value, so that only the `where` can overflow.
+
+/// An `attack` of the real params shape: `attacker` is an untapped creature that was not recently
+/// played (and passes `attacker_extra`, a line of the `and`), `target` is a Leader of an opponent
+/// that fits one of the two alternatives `first` and `second`. Its effects are the tap and the hit.
+fn overflow_ruleset(attacker_extra: &str, first: &str, second: &str) -> DeclarativeRuleset {
+    let action = format!(
+        "  - id: attack
+    params:
+      - name: attacker
+        zone: field
+        card_type: creature
+        where:
+          and:
+            - {{ eq: [{{ ref: attacker.tapped }}, false] }}
+            - {{ eq: [{{ ref: attacker.recently_played }}, false] }}
+            - {attacker_extra}
+      - name: target
+        one_of:
+          - {first}
+          - {second}
+    effects:
+      - set_state: {{ card: {{ ref: attacker }}, state: tapped, value: true }}
+      - add_state: {{ card: {{ ref: target }}, state: current_life, amount: -1 }}
+
+"
+    );
+    let from = RULESET
+        .find("  - id: attack\n")
+        .expect("the ruleset has `attack`");
+    let to = RULESET
+        .find("  - id: pass_turn")
+        .expect("the ruleset has `pass_turn`");
+    let yaml = format!("{}{action}{}", &RULESET[..from], &RULESET[to..]);
+    ruleset_with(&yaml, &catalog_yaml())
+}
+
+const OVERFLOWS: &str = "{ gte: [{ ref: attacker.power }, 0] }";
+const ALWAYS: &str = "{ eq: [true, true] }";
+const LEADER: &str = "zone: leader_zone, card_type: leader, owner: opponent";
+
+/// The overflow Game at the Turn where the goblin attacks: its power is `1 + i64::MAX`.
+fn overflow_scenario(ruleset: &DeclarativeRuleset) -> (GameState, CardInstanceId, CardInstanceId) {
+    let creation = create(ruleset, OVERFLOW_SEED, "captain_ardel");
+    let opening = creation.opening.state.clone();
+    let aura = find(&opening, 0, "hand", "titan_aura");
+    let goblin = find(&opening, 0, "hand", "goblin_scout");
+    let leader_1 = find(&opening, 1, "leader_zone", "captain_ardel");
+    let played = play_all(
+        ruleset,
+        creation,
+        &[play(0, aura), play(0, goblin), pass(0), pass(1)],
+    );
+    (played.final_state().clone(), goblin, leader_1)
+}
+
+#[test]
+fn an_overflowing_where_in_one_alternative_tries_the_next_alternative() {
+    // The first alternative's `where` overflows on the goblin's power; the second fits the Leader.
+    let ruleset = overflow_ruleset(
+        ALWAYS,
+        &format!("{{ {LEADER}, where: {OVERFLOWS} }}"),
+        &format!("{{ {LEADER} }}"),
+    );
+    let (state, goblin, leader_1) = overflow_scenario(&ruleset);
+    let before = state.clone();
+
+    let attack = attack(0, goblin, leader_1);
+    let accepted = ruleset
+        .transition(&state, &attack)
+        .expect("the Leader fits the second alternative");
+    assert_eq!(accepted.trace.events(), [tap(goblin), hit(leader_1, 4)]);
+    assert_eq!(state, before);
+
+    // Listing goes through the same binding.
+    assert!(ruleset.legal_actions(&state).contains(&attack));
+}
+
+#[test]
+fn an_overflowing_where_with_no_alternative_fitting_is_no_alternative_matched() {
+    // The first overflows and the second's `where` does not hold: the usual Rejection, not the
+    // overflow, and nothing changed.
+    let ruleset = overflow_ruleset(
+        ALWAYS,
+        &format!("{{ {LEADER}, where: {OVERFLOWS} }}"),
+        &format!("{{ {LEADER}, where: {{ eq: [{{ ref: attacker.recently_played }}, true] }} }}"),
+    );
+    let (state, goblin, leader_1) = overflow_scenario(&ruleset);
+    let before = state.clone();
+
+    let attack = attack(0, goblin, leader_1);
+    assert_eq!(
+        ruleset.transition(&state, &attack),
+        Err(Rejection::NoAlternativeMatched {
+            param: ParamName::new("target"),
+            card: leader_1,
+        })
+    );
+    assert_eq!(state, before);
+    assert!(!ruleset.legal_actions(&state).contains(&attack));
+}
+
+#[test]
+fn a_single_alternative_param_whose_where_overflows_is_still_derived_value_overflow() {
+    // `attacker` has one alternative, and its `where` reads the goblin's power: the overflow is the
+    // Rejection, as before, whatever `target` has.
+    let ruleset = overflow_ruleset(
+        OVERFLOWS,
+        &format!("{{ {LEADER} }}"),
+        &format!("{{ {LEADER} }}"),
+    );
+    let (state, goblin, leader_1) = overflow_scenario(&ruleset);
+    let before = state.clone();
+
+    let attack = attack(0, goblin, leader_1);
+    assert_eq!(
+        ruleset.transition(&state, &attack),
+        Err(Rejection::DerivedValueOverflow {
+            card: goblin,
+            field: FieldName::new("power"),
+        })
+    );
+    assert_eq!(state, before);
+    assert!(!ruleset.legal_actions(&state).contains(&attack));
 }
