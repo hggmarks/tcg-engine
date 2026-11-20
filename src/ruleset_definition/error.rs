@@ -162,6 +162,10 @@ pub enum DefinitionErrorKind {
     /// An action that no phase lists, such as `actions[idle]`; every action of a ruleset without a
     /// `turn` is one.
     UnlistedAction,
+    /// The `is_card_type` of an `if` condition, such as `actions[x].effects[0].if.is_card_type`:
+    /// the card type `card_type` is none that `param` can have, so `then` could never run and the
+    /// test would retype the param (ADR-0032).
+    ImpossibleCardType { param: String, card_type: String },
 }
 
 impl fmt::Display for DefinitionErrorKind {
@@ -289,6 +293,10 @@ impl fmt::Display for DefinitionErrorKind {
                 "the action phase lists no action that ends the Turn, so the Game could not leave it"
             ),
             Self::UnlistedAction => write!(f, "no phase lists this action, so it could never be taken"),
+            Self::ImpossibleCardType { param, card_type } => write!(
+                f,
+                "`{param}` can never be a `{card_type}`: testing for it would retype the param"
+            ),
             Self::UnsupportedFieldType { field_type } => {
                 write!(f, "the field type {field_type:?} is not supported yet")
             }

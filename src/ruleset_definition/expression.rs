@@ -65,15 +65,17 @@ impl Refs<'_> {
             .map_or(&[], |scoped| scoped.types.as_slice())
     }
 
-    /// The same scope where `param` may take only `types`.
-    pub(super) fn narrowed(&self, param: &ParamName, types: Vec<CardTypeId>) -> Self {
+    /// The same scope where `param` may take only the card types that are also in `types`: its own
+    /// possible card types that `types` lists, in the param's order (ADR-0032). The result may be
+    /// empty, which the caller reports; a param that is not in scope is left out of scope.
+    pub(super) fn narrowed(&self, param: &ParamName, types: &[CardTypeId]) -> Self {
         let mut narrowed = self.clone();
         if let Some(scoped) = narrowed
             .params
             .iter_mut()
             .find(|candidate| &candidate.name == param)
         {
-            scoped.types = types;
+            scoped.types.retain(|own| types.contains(own));
         }
         narrowed
     }
@@ -448,7 +450,7 @@ mod tests {
     use super::*;
 
     fn types(ids: &[&str]) -> Vec<CardTypeId> {
-        ids.iter().map(|id| CardTypeId::new(id)).collect()
+        ids.iter().map(|id| CardTypeId::new(*id)).collect()
     }
 
     fn scope(params: &[(&str, &[&str])]) -> Refs<'static> {
@@ -458,7 +460,7 @@ mod tests {
             params: params
                 .iter()
                 .map(|(name, ids)| ScopedParam {
-                    name: ParamName::new(name),
+                    name: ParamName::new(*name),
                     types: types(ids),
                 })
                 .collect(),

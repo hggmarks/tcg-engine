@@ -696,11 +696,21 @@ fn validate_effect(
         } => {
             let condition = check_condition(condition, refs, at.clone().key("if"))?;
             // A condition that is exactly `is_card_type` narrows what the param may be in each
-            // branch: the one type in `then`, the other types in `else` (all of them, if nothing
-            // would be left).
+            // branch: the param's types that are the tested one in `then` (none is an error), the
+            // other types in `else` (all of them, if nothing would be left). ADR-0032.
             let (then_refs, else_refs) = match &condition {
                 Expression::IsCardType { card, card_type } => {
                     let types = refs.types_of(&card.param);
+                    let then_refs = refs.narrowed(&card.param, std::slice::from_ref(card_type));
+                    if then_refs.types_of(&card.param).is_empty() {
+                        return fail(
+                            at.key("if").key("is_card_type"),
+                            DefinitionErrorKind::ImpossibleCardType {
+                                param: card.param.as_str().to_string(),
+                                card_type: card_type.as_str().to_string(),
+                            },
+                        );
+                    }
                     let mut others: Vec<CardTypeId> = types
                         .iter()
                         .filter(|candidate| *candidate != card_type)
@@ -709,10 +719,7 @@ fn validate_effect(
                     if others.is_empty() {
                         others = types.to_vec();
                     }
-                    (
-                        refs.narrowed(&card.param, vec![card_type.clone()]),
-                        refs.narrowed(&card.param, others),
-                    )
+                    (then_refs, refs.narrowed(&card.param, &others))
                 }
                 _ => (refs.clone(), refs.clone()),
             };
