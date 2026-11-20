@@ -73,14 +73,20 @@ fn self_play_with_observation_checks_over_curious_owl() {
     for seed in 0..SEEDS {
         let game = self_play(&ruleset, &decks, Seed(seed), MAX_STEPS, Checks::On)
             .unwrap_or_else(|failure| panic!("seed {seed} fails: {failure:?}"));
-        // Every pause is answered, except one that ended the Game, and a Game never ends with a
-        // decision pending.
+        // A Game ends with a Terminal Outcome, which clears any pending decision. Every pause is
+        // answered by a later Action, except one whose own transition ended the Game.
+        assert!(game.state.outcome().is_some(), "seed {seed}");
         assert!(game.state.pending_decision().is_none(), "seed {seed}");
-        assert!(
-            (answers(&game)..=answers(&game) + 1).contains(&pauses(&game)),
-            "seed {seed}: {} pauses, {} Answers",
+        let ended_paused = game.traces.last().is_some_and(|trace| {
+            trace
+                .events()
+                .iter()
+                .any(|event| matches!(event, Event::DecisionPending { .. }))
+        });
+        assert_eq!(
             pauses(&game),
-            answers(&game)
+            answers(&game) + usize::from(ended_paused),
+            "seed {seed}"
         );
         // The record, verified with every Invariant, replays the same Game.
         let replay = verify_record(&ruleset, &game.record)

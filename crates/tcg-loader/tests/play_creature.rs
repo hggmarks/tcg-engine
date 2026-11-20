@@ -194,7 +194,7 @@ fn opening(ruleset: &DeclarativeRuleset) -> GameState {
 }
 
 fn action(player: u32, id: &str, cards: &[CardInstanceId]) -> Action {
-    Action {
+    Action::Declared {
         player: p(player),
         action: ActionId::new(id),
         arguments: cards.iter().copied().map(Argument::Card).collect(),
@@ -1369,9 +1369,9 @@ fn playing_on_the_opponents_turn_is_rejected() {
     let ruleset = small();
     let state = opening(&ruleset);
     let theirs = hand_card_with_cost(&ruleset, &state, 1, 1);
-    let not_active = Rejection::NotActivePlayer {
+    let not_active = Rejection::NotDecidingPlayer {
         player: p(1),
-        active: p(0),
+        deciding: p(0),
     };
     assert_rejected(&ruleset, &state, &play(1, theirs), not_active.clone());
     // The Player is checked before the arguments.

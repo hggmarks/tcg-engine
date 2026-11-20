@@ -161,6 +161,9 @@ fn describe(event: &Event) -> String {
             format!("empty p{} {}", player.0, zone.as_str())
         }
         Event::GameEnded { losses } => format!("ended with {} losses", losses.len()),
+        // These tests load a ruleset with no Card Effects, so no decision is ever pending.
+        Event::DecisionPending { decider, .. } => format!("asked p{}", decider.0),
+        Event::DecisionAnswered { player, .. } => format!("answered p{}", player.0),
     }
 }
 

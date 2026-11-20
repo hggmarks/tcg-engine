@@ -109,8 +109,20 @@ pub fn p(seat: u32) -> PlayerId {
     PlayerId(seat)
 }
 
+/// The player, action id and arguments of a Declared Action; `None` for an Answer.
+pub fn declared(action: &Action) -> Option<(PlayerId, &ActionId, &[Argument])> {
+    match action {
+        Action::Declared {
+            player,
+            action,
+            arguments,
+        } => Some((*player, action, arguments.as_slice())),
+        Action::Answer { .. } => None,
+    }
+}
+
 pub fn pass(player: u32) -> Action {
-    Action {
+    Action::Declared {
         player: p(player),
         action: ActionId::new("pass_turn"),
         arguments: Vec::<Argument>::new(),
@@ -168,13 +180,30 @@ pub fn digest_line(seed: u64, game: &SelfPlayGame) -> String {
         line(format!("{event:?}"));
     }
     for (action, trace) in game.record.actions().iter().zip(&game.traces) {
-        line(format!("{action:?}"));
+        line(action_line(action));
         for event in trace.events() {
             line(format!("{event:?}"));
         }
     }
     line(format!("{:?}", game.state.outcome()));
     format!("{seed} {} {hash:016x}\n", game.record.actions().len())
+}
+
+/// The line of an Action in the pin (ADR-0033). A Declared Action keeps the `Debug` line of the struct
+/// it was before `Action` became an enum, `Action { player: .., action: .., arguments: [..] }`, so the
+/// committed pins stay byte for byte what they were; an Answer, which no committed Game holds, is
+/// its own `Debug`.
+fn action_line(action: &Action) -> String {
+    match action {
+        Action::Declared {
+            player,
+            action,
+            arguments,
+        } => {
+            format!("Action {{ player: {player:?}, action: {action:?}, arguments: {arguments:?} }}")
+        }
+        Action::Answer { .. } => format!("{action:?}"),
+    }
 }
 
 /// Compares `lines` (one per Seed, in order) with the `committed` pin, byte for byte; the answer

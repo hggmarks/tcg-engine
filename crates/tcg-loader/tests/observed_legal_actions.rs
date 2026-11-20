@@ -96,15 +96,35 @@ fn create(ruleset: &DeclarativeRuleset, yamls: [&str; 2], seed: u64) -> GameCrea
 }
 
 fn action(player: u32, id: &str, cards: &[CardInstanceId]) -> Action {
-    Action {
+    Action::Declared {
         player: p(player),
         action: ActionId::new(id),
         arguments: cards.iter().copied().map(Argument::Card).collect(),
     }
 }
 
+/// The action id and the arguments of a Declared Action: every Action these tests list is one.
+fn declared(action: &Action) -> (&ActionId, &[Argument]) {
+    match action {
+        Action::Declared {
+            action, arguments, ..
+        } => (action, arguments),
+        Action::Answer { .. } => panic!("an Answer is listed, but no decision is pending"),
+    }
+}
+
+/// The same for an Observed Action.
+fn observed_declared(action: &ObservedAction) -> (&ActionId, &[ObservedArgument]) {
+    match action {
+        ObservedAction::Declared {
+            action, arguments, ..
+        } => (action, arguments),
+        ObservedAction::Answer { .. } => panic!("an Observed Answer is listed"),
+    }
+}
+
 fn observed_action(player: u32, id: &str, cards: &[ObservedCard]) -> ObservedAction {
-    ObservedAction {
+    ObservedAction::Declared {
         player: p(player),
         action: ActionId::new(id),
         arguments: cards.iter().copied().map(ObservedArgument::Card).collect(),
@@ -201,21 +221,23 @@ fn small_turn_3(ruleset: &DeclarativeRuleset, creation: &GameCreation) -> Positi
 fn expected_observed(observer: &Observer, legal: &[Action], seat: u32) -> Vec<ObservedAction> {
     legal
         .iter()
-        .filter(|legal_action| legal_action.player == p(seat))
-        .map(|legal_action| ObservedAction {
-            player: legal_action.player,
-            action: legal_action.action.clone(),
-            arguments: legal_action
-                .arguments
-                .iter()
-                .map(|&Argument::Card(id)| {
-                    ObservedArgument::Card(
-                        observer
-                            .observed_card(id)
-                            .expect("the Viewer sees every card of its own Legal Actions"),
-                    )
-                })
-                .collect(),
+        .filter(|legal_action| legal_action.player() == p(seat))
+        .map(|legal_action| {
+            let (id, arguments) = declared(legal_action);
+            ObservedAction::Declared {
+                player: legal_action.player(),
+                action: id.clone(),
+                arguments: arguments
+                    .iter()
+                    .map(|&Argument::Card(id)| {
+                        ObservedArgument::Card(
+                            observer
+                                .observed_card(id)
+                                .expect("the Viewer sees every card of its own Legal Actions"),
+                        )
+                    })
+                    .collect(),
+            }
         })
         .collect()
 }
@@ -242,9 +264,10 @@ fn assert_observed_legal_actions_match(
             assert_eq!(listed.len(), legal.len());
             // Each handle maps back to the Card Instance of the engine's Legal Action.
             for (observed, engine) in listed.iter().zip(&legal) {
-                assert_eq!(observed.arguments.len(), engine.arguments.len());
-                for (shown, &Argument::Card(id)) in observed.arguments.iter().zip(&engine.arguments)
-                {
+                let (shown_arguments, engine_arguments) =
+                    (observed_declared(observed).1, declared(engine).1);
+                assert_eq!(shown_arguments.len(), engine_arguments.len());
+                for (shown, &Argument::Card(id)) in shown_arguments.iter().zip(engine_arguments) {
                     let ObservedArgument::Card(handle) = *shown;
                     assert_eq!(observer.card_instance(handle), Some(id));
                 }
@@ -332,7 +355,7 @@ fn the_active_players_observed_legal_actions_match_legal_actions_at_a_later_main
         assert!(
             legal
                 .iter()
-                .any(|legal_action| legal_action.action.as_str() == wanted),
+                .any(|legal_action| declared(legal_action).0.as_str() == wanted),
             "the later Main phase lists `{wanted}`"
         );
     }
@@ -394,7 +417,7 @@ fn an_attack_on_an_opponents_creature_and_leader_is_expressed_and_translated_wit
         .expect("the Observed Legal Actions are listed");
     let attacks: Vec<&ObservedAction> = listed
         .iter()
-        .filter(|observed| observed.action.as_str() == "attack")
+        .filter(|observed| observed_declared(observed).0.as_str() == "attack")
         .collect();
     assert_eq!(
         attacks,
@@ -516,7 +539,7 @@ fn observed_legal_actions_work_on_the_small_ruleset() {
     assert!(ruleset
         .legal_actions(&later.state)
         .iter()
-        .any(|legal_action| legal_action.action.as_str() == "attack"));
+        .any(|legal_action| declared(legal_action).0.as_str() == "attack"));
     for position in [&opening, &later] {
         assert_observed_legal_actions_match(&ruleset, &creation, position);
         assert_translating_gives_the_accepted_engine_action(&ruleset, &creation, position);
@@ -547,7 +570,7 @@ fn a_legal_action_naming_a_card_its_player_cannot_see_is_an_error() {
             ruleset
                 .legal_actions(state)
                 .iter()
-                .any(|legal_action| legal_action.action.as_str() == "peek"),
+                .any(|legal_action| declared(legal_action).0.as_str() == "peek"),
             "{label}: the engine lists `peek`"
         );
 
@@ -586,8 +609,8 @@ fn an_observer_that_has_not_followed_the_game_state_is_out_of_step_when_listing(
     let stale = Position::opening(&creation).observer(&ruleset, &creation, 0);
     let legal = ruleset.legal_actions(&later.state);
     assert!(
-        legal.iter().any(|legal_action| legal_action
-            .arguments
+        legal.iter().any(|legal_action| declared(legal_action)
+            .1
             .iter()
             .any(|&Argument::Card(id)| stale.observed_card(id).is_none())),
         "a Legal Action names a card the stale Observer holds no handle for"
@@ -611,8 +634,8 @@ fn an_observer_holding_a_handle_for_a_card_now_unseen_still_gets_the_unseen_card
     let peeked: Vec<CardInstanceId> = ruleset
         .legal_actions(state)
         .iter()
-        .filter(|legal_action| legal_action.action.as_str() == "peek")
-        .flat_map(|legal_action| legal_action.arguments.iter().copied())
+        .filter(|legal_action| declared(legal_action).0.as_str() == "peek")
+        .flat_map(|legal_action| declared(legal_action).1.iter().copied())
         .map(|Argument::Card(id)| id)
         .collect();
     assert!(!peeked.is_empty(), "the engine lists a `peek`");

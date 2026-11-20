@@ -417,11 +417,6 @@ fn observed_answers_round_trip() {
             })
         );
     }
-    // The Answer converts from the engine's, one to one.
-    assert_eq!(
-        ObservedAnswer::from(Answer::Option(7)),
-        ObservedAnswer::Option(7)
-    );
 }
 
 #[test]

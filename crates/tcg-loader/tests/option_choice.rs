@@ -1251,9 +1251,7 @@ fn a_choice_in_a_step_is_a_load_error() {
     let yaml = edit(
         EFFECTS_RULESET,
         "        - untap: { player: active, zones: [mana_zone, field] }\n",
-        &format!(
-            "        - choose_one: {{ decider: controller, options: [ [], [] ] }}\n        - untap: {{ player: active, zones: [mana_zone, field] }}\n"
-        ),
+        "        - choose_one: { decider: controller, options: [ [], [] ] }\n        - untap: { player: active, zones: [mana_zone, field] }\n",
     );
     let error = yaml_error(&yaml);
     assert_eq!(

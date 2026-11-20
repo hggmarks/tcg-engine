@@ -22,9 +22,9 @@ use tcg_selfplay::{
 };
 
 use crate::common::{
-    digest_line, effects, effects_deck, effects_decks, effects_with_ruleset, fnv1a, pin_difference,
-    steps, DECK_A, DECK_B, EFFECTS_DECK_A, EFFECTS_DECK_B, FNV_START, MAX_STEPS, SMALL_CATALOG,
-    SMALL_RULESET,
+    declared, digest_line, effects, effects_deck, effects_decks, effects_with_ruleset, fnv1a,
+    pin_difference, steps, DECK_A, DECK_B, EFFECTS_DECK_A, EFFECTS_DECK_B, FNV_START, MAX_STEPS,
+    SMALL_CATALOG, SMALL_RULESET,
 };
 
 /// The Seeds of the Effects self-play pin: `0..PINNED_SEEDS`.
@@ -112,7 +112,7 @@ const SHADE_DECK: &str = "inputs:
 ";
 
 fn play_creature(player: u32, card: CardInstanceId) -> Action {
-    Action {
+    Action::Declared {
         player: PlayerId(player),
         action: ActionId::new("play_creature"),
         arguments: vec![Argument::Card(card)],
@@ -206,11 +206,10 @@ fn effect_use(ruleset: &DeclarativeRuleset, game: &SelfPlayGame) -> EffectUse {
     let mut used = EffectUse::default();
     let mut field = BTreeSet::new();
     for (action, trace) in game.record.actions().iter().zip(&game.traces) {
-        if let (true, [Argument::Card(card)]) = (
-            action.action.as_str() == "play_creature",
-            action.arguments.as_slice(),
-        ) {
-            used.triggered_card_played |= carries(*card, is_triggered);
+        if let Some((_, id, [Argument::Card(card)])) = declared(action) {
+            if id.as_str() == "play_creature" {
+                used.triggered_card_played |= carries(*card, is_triggered);
+            }
         }
         for event in trace.events() {
             if let Event::CardMoved { card, from, to, .. } = event {
@@ -396,8 +395,8 @@ fn the_recomputed_game_state_equals_the_engine_state_after_every_transition() {
                     .is_some_and(|zone| zone.as_str() == "field")
                     && effects_of(&ruleset, card.definition()).iter().any(is_aura)
             });
-            if let [Argument::Card(card)] = action.arguments.as_slice() {
-                saw_a_trigger_play |= action.action.as_str() == "play_creature"
+            if let Some((_, id, [Argument::Card(card)])) = declared(action) {
+                saw_a_trigger_play |= id.as_str() == "play_creature"
                     && step.prior.card(*card).is_some_and(|played| {
                         effects_of(&ruleset, played.definition())
                             .iter()
@@ -715,19 +714,19 @@ fn a_cascade_of_triggers_replays_identically() {
                 .iter()
                 .zip(steps(&ruleset, &game))
                 .position(|(action, step)| {
-                    action.action.as_str() == "play_creature"
-                        && matches!(
-                            action.arguments.as_slice(),
-                            [Argument::Card(card)]
-                                if step.prior.card(*card).is_some_and(|played| played.definition() == &pyre_imp)
-                        )
+                    matches!(
+                        declared(action),
+                        Some((_, id, [Argument::Card(card)]))
+                            if id.as_str() == "play_creature"
+                                && step.prior.card(*card).is_some_and(|played| played.definition() == &pyre_imp)
+                    )
                 })?;
             Some((game, index))
         })
         .expect("a Pyre Imp is played in the pinned Games");
 
     let action = &game.record.actions()[index];
-    let Some(Argument::Card(imp)) = action.arguments.first() else {
+    let Some((actor, _, [Argument::Card(imp)])) = declared(action) else {
         panic!("the play names the card");
     };
     let events = game.traces[index].events();
@@ -747,7 +746,7 @@ fn a_cascade_of_triggers_replays_identically() {
         .skip(to_trash.saturating_add(1))
         .find_map(|(index, event)| {
             matches!(event, Event::CardMoved { player, from, to, .. }
-                if *player == action.player && from.as_str() == "deck" && to.as_str() == "hand")
+                if *player == actor && from.as_str() == "deck" && to.as_str() == "hand")
             .then_some(index)
         })
         .expect("its second trigger draws a card after the imp reaches the trash");

@@ -13,7 +13,7 @@ use tcg_engine::card_catalog::{
 };
 use tcg_engine::deck_list::DeckList;
 use tcg_engine::declarative::{
-    Action, Argument, CardInstanceId, DeclarativeRuleset, Event, GameState,
+    Action, Argument, CardInstanceId, DeclarativeRuleset, Event, GameState, TakenAction,
 };
 use tcg_engine::definition_path::DefinitionPath;
 use tcg_engine::player::PlayerId;
@@ -109,7 +109,7 @@ fn decks(ruleset: &DeclarativeRuleset, yamls: [&str; 2]) -> Vec<DeckList> {
 }
 
 fn action(player: u32, id: &str, cards: &[CardInstanceId]) -> Action {
-    Action {
+    Action::Declared {
         player: PlayerId(player),
         action: ActionId::new(id),
         arguments: cards.iter().copied().map(Argument::Card).collect(),
@@ -274,8 +274,15 @@ fn render(played: &Played) -> String {
         text.push_str(&format!("{event:?}\n"));
     }
     for (index, (action, events)) in played.steps.iter().enumerate() {
-        let cards: Vec<String> = action
-            .arguments
+        let Action::Declared {
+            player,
+            action: id,
+            arguments,
+        } = action
+        else {
+            panic!("a Golden Game has no Answer");
+        };
+        let cards: Vec<String> = arguments
             .iter()
             .map(|argument| match argument {
                 Argument::Card(card) => card.0.to_string(),
@@ -284,8 +291,8 @@ fn render(played: &Played) -> String {
         text.push_str(&format!(
             "== action {}: player {} {} [{}]\n",
             index + 1,
-            action.player.0,
-            action.action.as_str(),
+            player.0,
+            id.as_str(),
             cards.join(", ")
         ));
         for event in events {
@@ -380,6 +387,7 @@ fn effects_ruleset_loads_and_creates_a_game() {
             "eager_recruit",
             "restless_shade",
             "pyre_imp",
+            "curious_owl",
             "battle_veteran",
             "weary_ox",
             "banner_bearer",
@@ -882,6 +890,23 @@ const OBSERVED_PATHS: [&str; 2] = [
 const REGENERATE_OBSERVED_COMMAND: &str =
     "cargo test -p tcg-loader --test effects_ruleset -- --ignored regenerate_observed_golden_snapshots";
 
+/// The line of a Taken Action in the observed snapshots (ADR-0033). A Taken Declared Action keeps the
+/// `Debug` line of the struct it was before `TakenAction` became an enum, `TakenAction { player: ..,
+/// action: .., arguments: [..] }`, so the committed snapshots stay byte for byte what they were; an
+/// Answer, which no snapshot holds, is its own `Debug`.
+fn taken_line(taken: &TakenAction) -> String {
+    match taken {
+        TakenAction::Declared {
+            player,
+            action,
+            arguments,
+        } => format!(
+            "TakenAction {{ player: {player:?}, action: {action:?}, arguments: {arguments:?} }}"
+        ),
+        TakenAction::Answer { .. } => format!("{taken:?}"),
+    }
+}
+
 /// The text of the snapshot of the Effects Leader-kill Golden Game as seat `seat` observed it:
 /// the Observer follows the creation trace and then each accepted Action of the script.
 fn render_observed(seat: u32) -> String {
@@ -920,7 +945,11 @@ fn render_observed(seat: u32) -> String {
         let observed = ruleset
             .follow_transition(&mut observer, &state, action, &transition)
             .expect("the transition is followed");
-        text.push_str(&format!("== action {}\n{:?}\n", index + 1, observed.action));
+        text.push_str(&format!(
+            "== action {}\n{}\n",
+            index + 1,
+            taken_line(&observed.action)
+        ));
         for event in &observed.events {
             text.push_str(&format!("{event:?}\n"));
         }

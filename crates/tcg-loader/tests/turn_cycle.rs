@@ -67,7 +67,7 @@ fn zone(id: &str) -> ZoneId {
 }
 
 fn pass(player: u32) -> Action {
-    Action {
+    Action::Declared {
         player: p(player),
         action: ActionId::new("pass_turn"),
         arguments: vec![],

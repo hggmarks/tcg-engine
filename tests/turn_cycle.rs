@@ -209,7 +209,7 @@ fn opening(ruleset: &DeclarativeRuleset) -> GameState {
 }
 
 fn pass(player: u32) -> Action {
-    Action {
+    Action::Declared {
         player: p(player),
         action: ActionId::new("pass_turn"),
         arguments: vec![],
@@ -837,9 +837,9 @@ fn an_action_by_a_player_who_is_not_active_is_rejected() {
         &ruleset,
         &opening(&ruleset),
         &pass(1),
-        Rejection::NotActivePlayer {
+        Rejection::NotDecidingPlayer {
             player: p(1),
-            active: p(0),
+            deciding: p(0),
         },
     );
 }
@@ -847,7 +847,7 @@ fn an_action_by_a_player_who_is_not_active_is_rejected() {
 #[test]
 fn an_unknown_action_is_rejected() {
     let ruleset = ruleset();
-    let action = Action {
+    let action = Action::Declared {
         player: p(0),
         action: ActionId::new("cast_spell"),
         arguments: vec![],
@@ -871,7 +871,7 @@ fn an_action_not_in_the_current_phase_is_rejected() {
 
     // Validation lists every action in a phase (ADR-0027), so an action is out of the current
     // phase only when the current phase is not an action phase. `idle` is listed in Main.
-    let idle = Action {
+    let idle = Action::Declared {
         player: p(0),
         action: ActionId::new("idle"),
         arguments: vec![],
@@ -897,7 +897,7 @@ fn an_action_not_in_the_current_phase_is_rejected() {
 fn rejections_are_checked_in_order() {
     let ruleset = ruleset();
     let state = opening(&ruleset);
-    let unknown_action = |player: u32| Action {
+    let unknown_action = |player: u32| Action::Declared {
         player: p(player),
         action: ActionId::new("cast_spell"),
         arguments: vec![],
@@ -909,9 +909,9 @@ fn rejections_are_checked_in_order() {
     );
     assert_eq!(
         ruleset.transition(&state, &unknown_action(1)),
-        Err(Rejection::NotActivePlayer {
+        Err(Rejection::NotDecidingPlayer {
             player: p(1),
-            active: p(0)
+            deciding: p(0)
         })
     );
     // An unknown Action beats a phase that does not list it, even with no phase at all.
@@ -927,9 +927,9 @@ fn rejections_are_checked_in_order() {
 #[test]
 fn a_rejection_names_what_went_wrong() {
     // Display texts are for people; they name the Player and the Action.
-    let rejection = Rejection::NotActivePlayer {
+    let rejection = Rejection::NotDecidingPlayer {
         player: p(1),
-        active: p(0),
+        deciding: p(0),
     };
     let text = rejection.to_string();
     assert!(
