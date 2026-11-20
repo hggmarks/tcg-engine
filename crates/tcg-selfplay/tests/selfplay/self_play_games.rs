@@ -275,9 +275,9 @@ fn verify_record_reports_the_last_accepted_action_of_a_rejected_record() {
         failure.kind,
         FailureKind::Replay(ReplayError::ActionRejected {
             index: 0,
-            rejection: Rejection::NotActivePlayer {
+            rejection: Rejection::NotDecidingPlayer {
                 player: p(1),
-                active: p(0),
+                deciding: p(0),
             },
         })
     );

@@ -11,6 +11,7 @@ use std::fmt;
 use super::action_effects;
 use super::arguments;
 use super::creation::DeclarativeRuleset;
+use super::decision::Answer;
 use super::event::Event;
 use super::execution::Execution;
 use super::game_end;
@@ -22,14 +23,30 @@ use crate::ruleset_definition::{
     ActionId, CardTypeId, FieldName, ParamName, PhaseKind, StateName, ZoneId,
 };
 
-/// An Action of the declarative Ruleset: `player` takes the declared action `action`, with one
-/// argument for each of its params, in param order.
+/// An Action of the declarative Ruleset: either a Declared Action, or an Answer to the decision a
+/// Resolution is paused at (ADR-0033). While a decision is pending only Answers are Legal; while
+/// none is, only Declared Actions are.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Action {
-    pub player: PlayerId,
-    pub action: ActionId,
-    /// One per param of the action, in param order.
-    pub arguments: Vec<Argument>,
+pub enum Action {
+    /// `player` takes the declared action `action`, with one argument for each of its params, in
+    /// param order.
+    Declared {
+        player: PlayerId,
+        action: ActionId,
+        /// One per param of the action, in param order.
+        arguments: Vec<Argument>,
+    },
+    /// `player` answers the pending decision.
+    Answer { player: PlayerId, answer: Answer },
+}
+
+impl Action {
+    /// The Player who takes the Action.
+    pub fn player(&self) -> PlayerId {
+        match self {
+            Self::Declared { player, .. } | Self::Answer { player, .. } => *player,
+        }
+    }
 }
 
 /// The value an Action supplies for one param.
@@ -46,8 +63,18 @@ pub enum Rejection {
     GameOver,
     /// The Player is not in the Game.
     UnknownPlayer { player: PlayerId },
-    /// The Player is in the Game but it is not their Turn.
-    NotActivePlayer { player: PlayerId, active: PlayerId },
+    /// The Player is in the Game but is not the Deciding Player: the Active Player, or the one a
+    /// pending decision asks.
+    NotDecidingPlayer {
+        player: PlayerId,
+        deciding: PlayerId,
+    },
+    /// A Declared Action while a decision is pending: only its Answers are accepted.
+    DeclaredWhileDecisionPending,
+    /// An Answer, but no decision is pending.
+    NoDecisionPending,
+    /// The Answer picks option `index`, and the pending Choice has `options`.
+    OptionOutOfRange { index: u32, options: u32 },
     /// The ruleset declares no action with this id.
     UnknownAction { action: ActionId },
     /// The action is declared, but the current phase does not list it: there is no current phase,
@@ -119,8 +146,9 @@ pub enum Rejection {
     },
     /// Ending the Turn would take the Turn Number above its maximum.
     TurnNumberOverflow,
-    /// Resolving triggered Card Effects took more than `cap` trigger resolutions in one
-    /// transition (ADR-0023): the whole transition is refused and the GameState is untouched.
+    /// Resolving triggered Card Effects took more than `cap` trigger resolutions in one Resolution,
+    /// which spans the Answers of its pauses (ADR-0023, ADR-0033): the whole transition is refused
+    /// and the GameState is untouched.
     TriggerCapExceeded { cap: u32 },
     /// An Event the Ruleset generated was rejected: the GameState does not fit this ruleset, an
     /// internal inconsistency that is never expected.
@@ -129,6 +157,9 @@ pub enum Rejection {
     /// ref reads a value the card does not have or of another type. An internal inconsistency that
     /// is never expected.
     CardDataMismatch { card: CardInstanceId },
+    /// An effect of a ruleset action paused at a Choice. Validation refuses a Choice there, so this
+    /// is an internal inconsistency that is never expected.
+    ChoiceOutsideTriggeredEffect,
     /// An expression has a value of another type than its operator or slot needs. Validation
     /// guarantees the types, so this is an internal inconsistency that is never expected.
     ExpressionTypeMismatch,
@@ -142,11 +173,21 @@ impl fmt::Display for Rejection {
         match self {
             Self::GameOver => write!(f, "the Game is over"),
             Self::UnknownPlayer { player } => write!(f, "Player {} is not in the Game", player.0),
-            Self::NotActivePlayer { player, active } => write!(
+            Self::NotDecidingPlayer { player, deciding } => write!(
                 f,
-                "Player {} cannot act: it is the Turn of Player {}",
-                player.0, active.0
+                "Player {} cannot act: Player {} is the Deciding Player",
+                player.0, deciding.0
             ),
+            Self::DeclaredWhileDecisionPending => {
+                write!(f, "a decision is pending: only an Answer is accepted")
+            }
+            Self::NoDecisionPending => write!(f, "no decision is pending to answer"),
+            Self::OptionOutOfRange { index, options } => {
+                write!(
+                    f,
+                    "option {index} is out of range: the Choice has {options}"
+                )
+            }
             Self::UnknownAction { action } => {
                 write!(f, "the ruleset has no action `{}`", action.as_str())
             }
@@ -236,7 +277,7 @@ impl fmt::Display for Rejection {
             Self::TurnNumberOverflow => write!(f, "the Turn Number cannot go any higher"),
             Self::TriggerCapExceeded { cap } => write!(
                 f,
-                "triggered Card Effects took more than {cap} resolutions in one transition"
+                "triggered Card Effects took more than {cap} resolutions in one Resolution"
             ),
             Self::EventRejected(error) => write!(f, "an Event was rejected: {error}"),
             Self::CardDataMismatch { card } => write!(
@@ -244,6 +285,9 @@ impl fmt::Display for Rejection {
                 "the card instance {} does not fit the ruleset data",
                 card.0
             ),
+            Self::ChoiceOutsideTriggeredEffect => {
+                write!(f, "an effect of a ruleset action paused at a Choice")
+            }
             Self::ExpressionTypeMismatch => write!(
                 f,
                 "an expression has a value of another type than its operator needs"
@@ -290,41 +334,104 @@ impl Ruleset for DeclarativeRuleset {
         if state.outcome().is_some() {
             return Err(Rejection::GameOver);
         }
-        if !state.player_order().contains(action.player) {
-            return Err(Rejection::UnknownPlayer {
-                player: action.player,
+        let player = action.player();
+        if !state.player_order().contains(player) {
+            return Err(Rejection::UnknownPlayer { player });
+        }
+        if state.deciding_player() != player {
+            return Err(Rejection::NotDecidingPlayer {
+                player,
+                deciding: state.deciding_player(),
             });
         }
-        if state.active_player() != action.player {
-            return Err(Rejection::NotActivePlayer {
-                player: action.player,
-                active: state.active_player(),
-            });
+        match action {
+            Action::Declared {
+                player,
+                action: id,
+                arguments,
+            } => {
+                if state.pending_decision().is_some() {
+                    return Err(Rejection::DeclaredWhileDecisionPending);
+                }
+                self.declare(state, *player, id, arguments)
+            }
+            Action::Answer { player, answer } => self.answer(state, *player, *answer),
         }
+    }
+}
+
+impl DeclarativeRuleset {
+    /// A Declared Action: pays the costs, runs the effects, then resolves the triggers.
+    fn declare(
+        &self,
+        state: &GameState,
+        player: PlayerId,
+        id: &ActionId,
+        arguments: &[Argument],
+    ) -> Result<Transition<GameState, Event>, Rejection> {
         let definition = self.definition();
-        let Some(declared) = definition.action(&action.action) else {
-            return Err(Rejection::UnknownAction {
-                action: action.action.clone(),
-            });
+        let Some(declared) = definition.action(id) else {
+            return Err(Rejection::UnknownAction { action: id.clone() });
         };
-        let listed_in_current_phase = current_action_phase(self, state)
-            .is_some_and(|actions| actions.contains(&action.action));
+        let listed_in_current_phase =
+            current_action_phase(self, state).is_some_and(|actions| actions.contains(id));
         if !listed_in_current_phase {
-            return Err(Rejection::ActionNotInCurrentPhase {
-                action: action.action.clone(),
-            });
+            return Err(Rejection::ActionNotInCurrentPhase { action: id.clone() });
         }
 
-        let bound = arguments::bind(self, state, declared, action)?;
+        let bound = arguments::bind(self, state, declared, player, arguments)?;
 
         let mut execution = Execution::new(state.clone());
         for cost in declared.costs() {
-            action_effects::pay(self, &mut execution, &bound, action.player, cost)?;
+            action_effects::pay(self, &mut execution, &bound, player, cost)?;
         }
         for effect in declared.effects() {
             action_effects::run(self, &mut execution, &bound, effect)?;
         }
-        triggers::resolve(self, &mut execution)?;
+        let paused = triggers::resolve(self, &mut execution)?;
+        self.finish(execution, paused)
+    }
+
+    /// An Answer: checks the option, applies `DecisionAnswered` and goes on with the paused
+    /// Resolution.
+    fn answer(
+        &self,
+        state: &GameState,
+        player: PlayerId,
+        answer: Answer,
+    ) -> Result<Transition<GameState, Event>, Rejection> {
+        let Some(pending) = state.pending_decision() else {
+            return Err(Rejection::NoDecisionPending);
+        };
+        let paused = pending.paused();
+        let Answer::Option(index) = answer;
+        let options = triggers::option_count(self, state, paused)?;
+        if index >= options {
+            return Err(Rejection::OptionOutOfRange { index, options });
+        }
+        let mut execution = Execution::new(state.clone());
+        execution
+            .apply(Event::DecisionAnswered { player, answer })
+            .map_err(Rejection::EventRejected)?;
+        let again = triggers::resume(self, &mut execution, paused, index)?;
+        self.finish(execution, again)
+    }
+
+    /// Ends a transition: a pause is applied as the last Event, then the win conditions run.
+    fn finish(
+        &self,
+        mut execution: Execution,
+        pause: Option<triggers::Pause>,
+    ) -> Result<Transition<GameState, Event>, Rejection> {
+        if let Some(pause) = pause {
+            execution
+                .apply(Event::DecisionPending {
+                    decider: pause.decider,
+                    kind: pause.kind,
+                    paused: pause.paused,
+                })
+                .map_err(Rejection::EventRejected)?;
+        }
         game_end::end_game_if_lost(self, &mut execution)?;
         Ok(Transition {
             state: execution.state,

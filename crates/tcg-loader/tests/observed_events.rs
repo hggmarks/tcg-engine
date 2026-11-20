@@ -14,9 +14,10 @@
 use tcg_engine::card_catalog::CardId;
 use tcg_engine::deck_list::DeckList;
 use tcg_engine::declarative::{
-    Action, Argument, CardInstanceId, DeclarativeRuleset, Event, GameCreation, GameRecord,
-    GameState, Loss, ObservationError, ObservedApplyError, ObservedCard, ObservedEvent,
-    ObservedGameState, ObservedTransition, Observer, TakenAction, TakenArgument, Viewer,
+    Action, Argument, CardInstanceId, DecisionKind, DeclarativeRuleset, Event, GameCreation,
+    GameRecord, GameState, Loss, ObservationError, ObservedAnswer, ObservedApplyError,
+    ObservedCard, ObservedEvent, ObservedGameState, ObservedTransition, Observer, TakenAction,
+    TakenArgument, Viewer,
 };
 use tcg_engine::player::PlayerId;
 use tcg_engine::random::Seed;
@@ -140,7 +141,7 @@ fn create_effects(ruleset: &DeclarativeRuleset) -> GameCreation {
 }
 
 fn action(player: u32, id: &str, cards: &[CardInstanceId]) -> Action {
-    Action {
+    Action::Declared {
         player: p(player),
         action: ActionId::new(id),
         arguments: cards.iter().copied().map(Argument::Card).collect(),
@@ -199,7 +200,9 @@ fn card_of(event: &ObservedEvent) -> Option<ObservedCard> {
         | ObservedEvent::TurnBegan { .. }
         | ObservedEvent::PhaseBegan { .. }
         | ObservedEvent::DrawFromEmptyZone { .. }
-        | ObservedEvent::GameEnded { .. } => None,
+        | ObservedEvent::GameEnded { .. }
+        | ObservedEvent::DecisionPending { .. }
+        | ObservedEvent::DecisionAnswered { .. } => None,
     }
 }
 
@@ -476,7 +479,7 @@ fn an_opponents_draw_is_an_unseen_move_and_the_drawer_sees_a_new_observed_card()
     );
     assert_eq!(
         seen[0].action,
-        TakenAction {
+        TakenAction::Declared {
             player: p(0),
             action: ActionId::new("pass_turn"),
             arguments: vec![]
@@ -590,7 +593,7 @@ fn an_opponents_creature_enters_the_field_as_a_new_observed_card_named_by_the_ta
     );
     assert_eq!(
         seen[0].action,
-        TakenAction {
+        TakenAction::Declared {
             player: p(1),
             action: ActionId::new("play_creature"),
             arguments: vec![TakenArgument::Card(new)],
@@ -625,7 +628,7 @@ fn an_opponents_creature_enters_the_field_as_a_new_observed_card_named_by_the_ta
     );
     assert_eq!(
         seen[1].action,
-        TakenAction {
+        TakenAction::Declared {
             player: p(1),
             action: ActionId::new("play_creature"),
             arguments: vec![TakenArgument::Card(in_hand)],
@@ -691,7 +694,7 @@ fn a_card_that_leaves_sight_and_comes_back_gets_a_fresh_observed_card() {
     assert_eq!(game.handle(0, BOOMERANG), None);
     assert_eq!(seen[0].state.card(old), None);
     assert_eq!(
-        seen[0].action.arguments,
+        taken_arguments(&seen[0].action),
         vec![TakenArgument::Card(old)],
         "a card the Viewer held before the transition and no longer holds"
     );
@@ -728,7 +731,10 @@ fn a_card_that_leaves_sight_and_comes_back_gets_a_fresh_observed_card() {
             },
         ]
     );
-    assert_eq!(seen[1].action.arguments, vec![TakenArgument::HiddenCard]);
+    assert_eq!(
+        taken_arguments(&seen[1].action),
+        [TakenArgument::HiddenCard]
+    );
     assert_eq!(game.handle(1, BOOMERANG), None);
 
     // Two passes later seat 0's Turn begins and it draws the card on top of its deck: the boomerang.
@@ -934,26 +940,49 @@ fn binds_every_field_with_its_type(event: &ObservedEvent) {
         ObservedEvent::GameEnded { losses } => {
             let _: &Vec<Loss> = losses;
         }
+        ObservedEvent::DecisionPending { decider, kind } => {
+            let _: &PlayerId = decider;
+            let _: &DecisionKind = kind;
+        }
+        ObservedEvent::DecisionAnswered { player, answer } => {
+            let _: &PlayerId = player;
+            let _: &ObservedAnswer = answer;
+        }
     }
 }
 
 /// The same for the Taken Action and its arguments.
 fn binds_every_taken_field_with_its_type(taken: &TakenAction) {
-    let TakenAction {
-        player,
-        action,
-        arguments,
-    } = taken;
-    let _: &PlayerId = player;
-    let _: &ActionId = action;
-    let _: &Vec<TakenArgument> = arguments;
-    for argument in arguments {
-        match argument {
-            TakenArgument::Card(card) => {
-                let _: &ObservedCard = card;
+    match taken {
+        TakenAction::Declared {
+            player,
+            action,
+            arguments,
+        } => {
+            let _: &PlayerId = player;
+            let _: &ActionId = action;
+            let _: &Vec<TakenArgument> = arguments;
+            for argument in arguments {
+                match argument {
+                    TakenArgument::Card(card) => {
+                        let _: &ObservedCard = card;
+                    }
+                    TakenArgument::HiddenCard => {}
+                }
             }
-            TakenArgument::HiddenCard => {}
         }
+        TakenAction::Answer { player, answer } => {
+            let _: &PlayerId = player;
+            let _: &ObservedAnswer = answer;
+        }
+    }
+}
+
+/// The arguments of a Taken Declared Action: every Taken Action of these Games is one.
+fn taken_arguments(taken: &TakenAction) -> &[TakenArgument] {
+    match taken {
+        TakenAction::Declared { arguments, .. } => arguments,
+        TakenAction::Answer { .. } => panic!("the Taken Action is an Answer"),
     }
 }
 
@@ -1079,7 +1108,7 @@ fn trigger_events_and_a_cascade_are_projected_in_trace_order() {
     );
     assert_eq!(
         seen[0].action,
-        TakenAction {
+        TakenAction::Declared {
             player: p(0),
             action: ActionId::new("play_creature"),
             arguments: vec![TakenArgument::Card(own)],
@@ -1112,7 +1141,7 @@ fn trigger_events_and_a_cascade_are_projected_in_trace_order() {
     );
     assert_eq!(
         seen[1].action,
-        TakenAction {
+        TakenAction::Declared {
             player: p(0),
             action: ActionId::new("play_creature"),
             arguments: vec![TakenArgument::Card(arrived)],

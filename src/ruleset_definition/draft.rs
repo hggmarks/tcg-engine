@@ -207,6 +207,12 @@ pub enum EffectDraft {
         then: Vec<EffectDraft>,
         otherwise: Vec<EffectDraft>,
     },
+    /// `choose_one: { decider, options }`: `decider` is `controller` or `opponent`, and each option
+    /// is a list of effects.
+    ChooseOne {
+        decider: String,
+        options: Vec<Vec<EffectDraft>>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

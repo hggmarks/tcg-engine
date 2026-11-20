@@ -215,7 +215,7 @@ fn invariant_observed_actions_round_trip_detects_a_violation() {
         .find(|(_, legal)| legal.len() >= 3 && legal[1] != legal[2])
         .expect("a GameState with several Legal Actions");
     let (observer, state) = {
-        let acting = legal[0].player;
+        let acting = legal[0].player();
         observer_after(&ruleset, &game, actions, Viewer::Player(acting))
     };
     let who = observer.viewer();
@@ -231,7 +231,7 @@ fn invariant_observed_actions_round_trip_detects_a_violation() {
         &ruleset,
         &game,
         actions,
-        Viewer::Player(PlayerId(1 - legal[0].player.0)),
+        Viewer::Player(PlayerId(1 - legal[0].player().0)),
     );
     assert_eq!(
         check_observed_actions(&ruleset, &other_observer, &state, &legal),

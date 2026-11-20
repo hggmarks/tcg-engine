@@ -99,7 +99,7 @@ fn opening(ruleset: &DeclarativeRuleset, seed: u64) -> GameState {
 }
 
 fn action(player: u32, id: &str, cards: &[CardInstanceId]) -> Action {
-    Action {
+    Action::Declared {
         player: p(player),
         action: ActionId::new(id),
         arguments: cards.iter().copied().map(Argument::Card).collect(),
@@ -278,8 +278,15 @@ fn render(played: &Played) -> String {
         text.push_str(&format!("{event:?}\n"));
     }
     for (index, (action, events)) in played.steps.iter().enumerate() {
-        let cards: Vec<String> = action
-            .arguments
+        let Action::Declared {
+            player,
+            action: id,
+            arguments,
+        } = action
+        else {
+            panic!("a Golden Game has no Answer");
+        };
+        let cards: Vec<String> = arguments
             .iter()
             .map(|argument| match argument {
                 Argument::Card(card) => card.0.to_string(),
@@ -288,8 +295,8 @@ fn render(played: &Played) -> String {
         text.push_str(&format!(
             "== action {}: player {} {} [{}]\n",
             index + 1,
-            action.player.0,
-            action.action.as_str(),
+            player.0,
+            id.as_str(),
             cards.join(", ")
         ));
         for event in events {

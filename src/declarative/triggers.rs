@@ -1,4 +1,4 @@
-//! Resolving triggered Card Effects against the Events of a transition (ADR-0023).
+//! Resolving triggered Card Effects against the Events of a transition (ADR-0023, ADR-0033).
 //!
 //! The Events of the transition are scanned in order, from its first, cost Events included. An
 //! Event that matches the trigger of a card enqueues it, first in first out; the front of the queue
@@ -6,54 +6,162 @@
 //! Resolution ends when every Event was scanned and the queue is empty. Eligibility is decided when
 //! an Event is scanned: a trigger once enqueued fires even if its card has moved since, and only
 //! its `if` is read when it fires.
+//!
+//! A `do` may reach a Choice, which pauses the Resolution. It spans the Answers that follow: the
+//! queue, the Events not yet scanned and the Trigger Cap count are carried by the
+//! [`PausedResolution`], and [`resume`] goes on from them. The Events of a paused `do` are scanned
+//! only after the `do` completes, together with those after the pause, so a pause changes no order.
 
 use std::collections::VecDeque;
 
 use super::action::Rejection;
-use super::action_effects;
+use super::action_effects::{self, Flow};
 use super::arguments::BoundCards;
 use super::creation::DeclarativeRuleset;
+use super::decision::{DecisionKind, PausedResolution, QueuedTrigger};
 use super::event::Event;
 use super::execution::Execution;
 use super::expression;
-use super::state::{CardInstance, CardInstanceId};
-use crate::card_catalog::{CardEffect, TriggerMatcher};
+use super::state::{CardInstance, CardInstanceId, GameState};
+use crate::card_catalog::{CardEffect, TriggerMatcher, TriggeredCardEffect};
+use crate::player::PlayerId;
 use crate::ruleset_definition::ParamName;
 
-/// The Trigger Cap: the hard limit of trigger resolutions in one transition (ADR-0023).
+/// The Trigger Cap: the hard limit of trigger resolutions in one Resolution, which spans the pauses
+/// it makes (ADR-0023, ADR-0033).
 pub(super) const TRIGGER_CAP: u32 = 100;
 
-/// A trigger waiting to fire: the carrying card and the index of the Card Effect in the `effects`
-/// of its Card Definition.
-type Pending = (CardInstanceId, usize);
+/// A Resolution that stopped at a Choice: who is asked, for what, and what goes on afterwards.
+#[derive(Debug)]
+pub(super) struct Pause {
+    pub(super) decider: PlayerId,
+    pub(super) kind: DecisionKind,
+    pub(super) paused: PausedResolution,
+}
 
-/// Resolves triggered Card Effects against the transition's Events until none is pending: scans
-/// Events in order from the first (cost Events included), enqueues woken triggers FIFO, fires each
-/// by evaluating its `if` and running its `do`, whose Events are scanned in turn.
+/// Where a Resolution is: the queue, the Events still to scan (the ones a pause carried, then the
+/// transition's own from `scanned`) and the Trigger Cap count.
+struct Progress {
+    queue: VecDeque<QueuedTrigger>,
+    carried: Vec<Event>,
+    scanned: usize,
+    resolutions: u32,
+}
+
+/// Resolves triggered Card Effects against the transition's Events until none is pending or a `do`
+/// pauses at a Choice: scans Events in order from the first (cost Events included), enqueues woken
+/// triggers FIFO, fires each by evaluating its `if` and running its `do`, whose Events are scanned
+/// in turn.
 ///
 /// Every dequeue counts toward [`TRIGGER_CAP`], a false `if` included; the one after the cap is a
 /// `TriggerCapExceeded` rejection of the whole transition.
 pub(super) fn resolve(
     ruleset: &DeclarativeRuleset,
     execution: &mut Execution,
-) -> Result<(), Rejection> {
-    let mut queue: VecDeque<Pending> = VecDeque::new();
-    let mut scanned = 0;
-    let mut resolutions: u32 = 0;
+) -> Result<Option<Pause>, Rejection> {
+    run(
+        ruleset,
+        execution,
+        Progress {
+            queue: VecDeque::new(),
+            carried: Vec::new(),
+            scanned: 0,
+            resolutions: 0,
+        },
+    )
+}
+
+/// Goes on with a paused Resolution after the decision was answered with `option`. The first Event
+/// of `execution` is the `DecisionAnswered` that was applied: the scan skips it. The rest of the
+/// `do` runs first, then the carried Events are scanned, then those of this trace, with the queue
+/// and the Trigger Cap count of the pause. It may pause again.
+pub(super) fn resume(
+    ruleset: &DeclarativeRuleset,
+    execution: &mut Execution,
+    paused: &PausedResolution,
+    option: u32,
+) -> Result<Option<Pause>, Rejection> {
+    let triggered = triggered_of(ruleset, &execution.state, paused.trigger)?;
+    let bound = BoundCards::of(ParamName::new("self"), paused.trigger.card);
+    let flow = action_effects::resume(
+        ruleset,
+        execution,
+        &bound,
+        triggered.body(),
+        &paused.at,
+        option,
+    )?;
+    if let Flow::Paused(pause) = flow {
+        // Paused again before anything was scanned: everything not scanned is carried on, in
+        // order: what the first pause carried, then what this trace emitted after the Answer.
+        let mut unscanned = paused.unscanned.clone();
+        unscanned.extend(execution.events.iter().skip(1).cloned());
+        return Ok(Some(Pause {
+            decider: pause.decider,
+            kind: pause.kind,
+            paused: PausedResolution {
+                trigger: paused.trigger,
+                at: pause.at,
+                queue: paused.queue.clone(),
+                unscanned,
+                resolutions: paused.resolutions,
+            },
+        }));
+    }
+    run(
+        ruleset,
+        execution,
+        Progress {
+            queue: paused.queue.iter().copied().collect(),
+            carried: paused.unscanned.clone(),
+            scanned: 1,
+            resolutions: paused.resolutions,
+        },
+    )
+}
+
+fn run(
+    ruleset: &DeclarativeRuleset,
+    execution: &mut Execution,
+    progress: Progress,
+) -> Result<Option<Pause>, Rejection> {
+    let Progress {
+        mut queue,
+        carried,
+        mut scanned,
+        mut resolutions,
+    } = progress;
+    let mut carried_at = 0;
     loop {
+        while let Some(event) = carried.get(carried_at) {
+            queue.extend(woken_by(ruleset, execution, event)?);
+            carried_at = carried_at.saturating_add(1);
+        }
         while let Some(event) = execution.events.get(scanned) {
-            let woken = woken_by(ruleset, execution, event)?;
-            queue.extend(woken);
+            queue.extend(woken_by(ruleset, execution, event)?);
             scanned = scanned.saturating_add(1);
         }
-        let Some((card, index)) = queue.pop_front() else {
-            return Ok(());
+        let Some(trigger) = queue.pop_front() else {
+            return Ok(None);
         };
         resolutions = resolutions.saturating_add(1);
         if resolutions > TRIGGER_CAP {
             return Err(Rejection::TriggerCapExceeded { cap: TRIGGER_CAP });
         }
-        fire(ruleset, execution, card, index)?;
+        let before = execution.events.len();
+        if let Flow::Paused(pause) = fire(ruleset, execution, trigger)? {
+            return Ok(Some(Pause {
+                decider: pause.decider,
+                kind: pause.kind,
+                paused: PausedResolution {
+                    trigger,
+                    at: pause.at,
+                    queue: queue.into_iter().collect(),
+                    unscanned: execution.events.iter().skip(before).cloned().collect(),
+                    resolutions,
+                },
+            }));
+        }
     }
 }
 
@@ -64,8 +172,8 @@ fn woken_by(
     ruleset: &DeclarativeRuleset,
     execution: &Execution,
     event: &Event,
-) -> Result<Vec<Pending>, Rejection> {
-    let mut woken: Vec<(usize, Pending)> = Vec::new();
+) -> Result<Vec<QueuedTrigger>, Rejection> {
+    let mut woken: Vec<(usize, QueuedTrigger)> = Vec::new();
     let state = &execution.state;
     for instance in state.cards() {
         if !could_wake(event, instance) {
@@ -92,13 +200,19 @@ fn woken_by(
                         .position(|&player| player == owner)
                         .map_or(usize::MAX, |seat| seat.saturating_add(1))
                 };
-                woken.push((rank, (card, index)));
+                woken.push((
+                    rank,
+                    QueuedTrigger {
+                        card,
+                        effect: u32::try_from(index).unwrap_or(u32::MAX),
+                    },
+                ));
             }
         }
     }
     // Stable: the order of the scan is kept within a rank.
     woken.sort_by_key(|&(rank, _)| rank);
-    Ok(woken.into_iter().map(|(_, pending)| pending).collect())
+    Ok(woken.into_iter().map(|(_, trigger)| trigger).collect())
 }
 
 /// A cheap test that keeps the scan of every card from reading catalogs for Events that no matcher
@@ -136,31 +250,54 @@ fn matches(
     }
 }
 
-/// Fires one trigger: its `if` reads the carrying card as `self` in the state as it is now, and a
-/// false one emits nothing; otherwise each effect of its `do` runs, in order, to completion.
-fn fire(
-    ruleset: &DeclarativeRuleset,
-    execution: &mut Execution,
-    card: CardInstanceId,
-    index: usize,
-) -> Result<(), Rejection> {
+/// The Triggered Card Effect a queued trigger names, read from the catalog through the card it
+/// sits on.
+fn triggered_of<'a>(
+    ruleset: &'a DeclarativeRuleset,
+    state: &GameState,
+    trigger: QueuedTrigger,
+) -> Result<&'a TriggeredCardEffect, Rejection> {
+    let card: CardInstanceId = trigger.card;
     let mismatch = || Rejection::CardDataMismatch { card };
-    let instance = execution.state.card(card).ok_or_else(mismatch)?;
+    let instance = state.card(card).ok_or_else(mismatch)?;
     let definition = ruleset
         .catalog()
         .card(instance.definition())
         .ok_or_else(mismatch)?;
-    let Some(CardEffect::Triggered(triggered)) = definition.effects().get(index) else {
-        return Err(mismatch());
-    };
-    let bound = BoundCards::of(ParamName::new("self"), card);
+    let index = usize::try_from(trigger.effect).map_err(|_| mismatch())?;
+    match definition.effects().get(index) {
+        Some(CardEffect::Triggered(triggered)) => Ok(triggered),
+        _ => Err(mismatch()),
+    }
+}
+
+/// How many options the Choice a Paused Resolution is paused at has, read from the catalog through
+/// its path. A path that does not lead to a Choice is a data mismatch.
+pub(super) fn option_count(
+    ruleset: &DeclarativeRuleset,
+    state: &GameState,
+    paused: &PausedResolution,
+) -> Result<u32, Rejection> {
+    let triggered = triggered_of(ruleset, state, paused.trigger)?;
+    action_effects::option_count(triggered.body(), &paused.at).ok_or(Rejection::CardDataMismatch {
+        card: paused.trigger.card,
+    })
+}
+
+/// Fires one trigger: its `if` reads the carrying card as `self` in the state as it is now, and a
+/// false one emits nothing; otherwise each effect of its `do` runs, in order, until the end or a
+/// Choice.
+fn fire(
+    ruleset: &DeclarativeRuleset,
+    execution: &mut Execution,
+    trigger: QueuedTrigger,
+) -> Result<Flow, Rejection> {
+    let triggered = triggered_of(ruleset, &execution.state, trigger)?;
+    let bound = BoundCards::of(ParamName::new("self"), trigger.card);
     if let Some(condition) = triggered.condition() {
         if !expression::holds(ruleset, &execution.state, &bound, condition)? {
-            return Ok(());
+            return Ok(Flow::Done);
         }
     }
-    for effect in triggered.body() {
-        action_effects::run(ruleset, execution, &bound, effect)?;
-    }
-    Ok(())
+    action_effects::run_from(ruleset, execution, &bound, triggered.body(), 0)
 }

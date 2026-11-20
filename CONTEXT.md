@@ -58,7 +58,7 @@ The typed error a Ruleset returns for an Action it does not accept; the GameStat
 A Rejection: an Action names a Player who is not in the Player Order.
 
 **Not Active Player**:
-A Rejection: the Player performing an Action is not the Active Player.
+A Rejection of the Toy Ruleset: the Player performing an Action is not the Active Player. The declarative Ruleset's is the more general Not Deciding Player.
 
 **Self-Target**:
 A Rejection: a DealDamage Action whose source and target are the same Player.
@@ -76,7 +76,7 @@ A Rejection: a PassTurn Action that would take the Turn Number above the maximum
 Information that defines the game at a point in time and is therefore eligible to belong in GameState or its Event Trace.
 
 **Legality**:
-The Ruleset's determination that an Action is permitted in the current GameState.
+The Ruleset's determination that an Action is permitted in the current GameState. In the declarative Ruleset it includes that the Action's Player is the Deciding Player, and that a Declared Action is taken only while no decision is pending and an Answer only while one is (ADR-0033).
 
 **Player Order**:
 The canonical, ordered membership of Players in a GameState, used to determine cyclic turn succession.
@@ -176,7 +176,7 @@ A Deck Input's optional `max_copies`: the most copies of one Card Definition an 
 ## Declarative Games
 
 **Declarative Ruleset**:
-The Ruleset that interprets a RulesetDefinition and a Card Catalog. Its GameState changes only by Event Application. Its Action is a Player, an Action Definition id and one Argument per Action Parameter, and its Rejection is one of Game Over (checked before every other), Unknown Player, Not Active Player, Unknown Action, Action Not In Current Phase, Argument Count Mismatch, Unknown Card, Not Card Owner, Not Opponent Card, Card Not In Zone, Wrong Card Type, Where Condition Not Met, No Alternative Matched, Negative Count, Not Enough Untapped Cards, State Overflow, Turn Number Overflow, EventRejected, CardDataMismatch, ExpressionTypeMismatch or UnboundParam (ADR-0012, ADR-0014, ADR-0015, ADR-0016). It lists its Legal Actions, filtered through its own `transition` (ADR-0018).
+The Ruleset that interprets a RulesetDefinition and a Card Catalog. Its GameState changes only by Event Application. Its Action is a Declared Action (a Player, an Action Definition id and one Argument per Action Parameter) or an Answer (a Player and an Answer), and its Rejection is one of Game Over (checked before every other), Unknown Player, Not Deciding Player, Declared While Decision Pending, No Decision Pending, Option Out Of Range, ChoiceOutsideTriggeredEffect (an internal inconsistency: a ruleset action's effects paused), Unknown Action, Action Not In Current Phase, Argument Count Mismatch, Unknown Card, Not Card Owner, Not Opponent Card, Card Not In Zone, Wrong Card Type, Where Condition Not Met, No Alternative Matched, Negative Count, Not Enough Untapped Cards, State Overflow, Turn Number Overflow, EventRejected, CardDataMismatch, ExpressionTypeMismatch or UnboundParam (ADR-0012, ADR-0014, ADR-0015, ADR-0016). It lists its Legal Actions, filtered through its own `transition` (ADR-0018).
 
 **EventRejected**:
 A declarative Rejection for an internal inconsistency: an Event the Ruleset generated was rejected because the GameState does not fit this Ruleset. It is never expected.
@@ -343,16 +343,40 @@ The value a ref gives for an int field of a card: the base value plus the amount
 `effects: { active_zone: <zone> }` of a ruleset, the zone where Card Effects act (`RulesetDefinition::effects_active_zone`; `DanglingReference` at `effects.active_zone` if undeclared). The Effects Ruleset's is `field`. A Field Modifier is active only while its **carrier** is there (ADR-0024); a Modifier Scope names the zone its **targets** are in, which may be any declared zone (ADR-0025). A `turn_start` trigger fires only while its card is there, while `enter: <zone>` fires on arrival in the matcher's own zone, whichever it is (the enter exception, ADR-0023). Absent means no Card Effect is ever active: no modifier applies and no trigger is eligible, `enter` included.
 
 **Effects Ruleset**:
-The ruleset of Phase C (`rulesets/effects-ruleset/`, id `effects`), derived from the Small Ruleset, which is frozen. It differs by `meta`, by `effects: true` on `creature` and by `effects.active_zone: field`; its catalog adds six creatures that carry a triggered Card Effect (one of them, `pyre_imp`, a bounded cascade), two that carry a continuous one on themselves and three auras (a continuous one over a Modifier Scope). Its sample decks play all of them but `restless_shade`, which exists only to reach the Trigger Cap.
+The ruleset of Phase C (`rulesets/effects-ruleset/`, id `effects`), derived from the Small Ruleset, which is frozen. It differs by `meta`, by `effects: true` on `creature` and by `effects.active_zone: field`; its catalog adds seven creatures that carry a triggered Card Effect (one of them, `pyre_imp`, a bounded cascade, and one, `curious_owl`, an Option Choice), two that carry a continuous one on themselves and three auras (a continuous one over a Modifier Scope). Its sample decks play all of them but `restless_shade`, which exists only to reach the Trigger Cap, and `curious_owl`, which no shipped deck lists yet.
 
 **Trigger Resolution**:
-After an action's costs and effects, the Events of the transition are scanned in order from the first, costs included; an Event that matches a Trigger Matcher enqueues that trigger, first in first out, in the canonical order (cards of the Active Player first, then seat order, then `state.cards()` order, then the order of the card's `effects`). A trigger fires by reading its `if` and running its `do` to completion; the Events it emits are scanned in turn, so a **cascade** queues behind the triggers already waiting. Eligibility is decided when an Event is scanned: an enqueued trigger fires even if its card has moved. Resolution runs only in a transition, never in Game creation, and before the win check, which runs once on the final state (ADR-0023).
+After an action's costs and effects, the Events of the transition are scanned in order from the first, costs included; an Event that matches a Trigger Matcher enqueues that trigger, first in first out, in the canonical order (cards of the Active Player first, then seat order, then `state.cards()` order, then the order of the card's `effects`). A trigger fires by reading its `if` and running its `do` until its end or a Choice; the Events it emits are scanned in turn, so a **cascade** queues behind the triggers already waiting. Eligibility is decided when an Event is scanned: an enqueued trigger fires even if its card has moved. A Resolution runs from the Action that wakes the first trigger until the queue is empty, and **spans the pauses** a Choice makes: the Events of a paused `do` are scanned only after the `do` completes, together with those after the pause, so a pause changes no order. Resolution runs only in a transition, never in Game creation, and before the win check, which runs once on the final state of every accepted transition, a pausing one included (ADR-0023, ADR-0033).
 
 **Trigger Cap**:
-The hard limit of trigger resolutions in one transition: 100. Every trigger taken from the queue counts, one whose `if` is false included. The 101st rejects the whole transition with `Rejection::TriggerCapExceeded { cap }`; the input GameState is untouched.
+The hard limit of trigger resolutions in one Resolution: 100, counted across its pauses (the Paused Resolution carries the count, which an Answer does not reset). Every trigger taken from the queue counts, one whose `if` is false included. The 101st rejects the whole transition, the Action or Answer that would take it, with `Rejection::TriggerCapExceeded { cap }`; the input GameState is untouched (ADR-0023, ADR-0033).
 
 **Controller**:
 The owner of `self`, the carrying card: the Player a Draw Effect in a Card Effect draws for (`player: controller`). Outside a Card Effect there is no `self`, so an action's `draw` with `controller` is `ControllerOutsideCardEffect`.
+
+**Choice**:
+An Action Effect that asks a Player to decide, which pauses the Resolution until the Deciding Player answers (ADR-0033). Only a Triggered Card Effect's `do` may hold one, also nested in an `if` there and inside an option of another Choice: anywhere else (a ruleset action's effects, a Continuous Card Effect, a setup or turn step) it is a typed load error. Only the Option Choice exists; the Card Choice comes with a later ticket.
+
+**Option Choice**:
+The Choice `choose_one: { decider, options: [[effects], ...] }`: the Decider picks one of at least two effect lists (`TooFewOptions { found }` at `choose_one.options`; an unknown decider is `UnknownDecider` at `choose_one.decider`; outside a Card Effect `ChoiceOutsideTriggeredEffect` at `choose_one`), and the chosen list runs. An option may be empty, and no option has a label. The effects of an option are checked like those of a `do`, at `choose_one.options[k][i]`. The **"may" pattern** is an Option Choice with an empty option, a pattern and not a keyword: `choose_one` with `[[draw], []]` is "you may draw". `curious_owl` is one.
+
+**Decider**:
+Whom a Choice asks: `controller` (the owner of `self`) or `opponent` (the controller's opponent, the other Player), which is defined for exactly 2 Players: with another player count `OpponentDeciderNeedsTwoPlayers { players }` at `choose_one.decider` (ADR-0033).
+
+**Pending Decision**:
+The decision a Resolution is paused at, held by the GameState: the Decider, the kind of decision (`DecisionKind::Option`) and the Paused Resolution. It is stored by applying `DecisionPending`, cleared by `DecisionAnswered` or by `GameEnded`, and `pending_decision()` reads it. While it is held only `DecisionAnswered` and `GameEnded` apply (ADR-0033).
+
+**Paused Resolution**:
+What the engine needs to go on once a decision is answered, `PausedResolution { trigger, at, queue, unscanned, resolutions }`: the trigger whose `do` is paused (`self` is its card), the Effect Path of the Choice, the triggers still queued (front first), the Events the paused `do` emitted that no trigger has scanned yet, and the Trigger Cap count so far (the paused trigger included). Never observed: no Observed GameState, Observed Event or Taken Action carries it (ADR-0033).
+
+**Effect Path**:
+The position of a Choice in the `do` of a Triggered Card Effect: `EffectPath { branches, choice }`, the branches entered from the `do` outermost first (`Branch { effect, into }`: the index of an `if` or Choice in its list, and `Then`, `Else` or `Option(k)`), then the index of the Choice in the innermost list. A resume follows it and never reads an `if` on it again.
+
+**Deciding Player**:
+The Player who acts next, derived and never stored: the Decider while a decision is pending, otherwise the Active Player. `GameState::deciding_player()`. While a decision is pending the Answers are the only Legal Actions, listed in option index order for the Deciding Player (ADR-0033).
+
+**Answer**:
+The Action of the Deciding Player that settles the pending decision: `Action::Answer { player, answer }` with `Answer::Option(index)`, the index of the option picked, counted from 0. Its Event Trace starts with `DecisionAnswered`. A Declared Action while a decision is pending is `DeclaredWhileDecisionPending`, an Answer with none pending `NoDecisionPending`, an index past the last option `OptionOutOfRange { index, options }`, and an Action of any other Player `NotDecidingPlayer { player, deciding }`. The checks run in this order: `GameOver`, `UnknownPlayer`, `NotDecidingPlayer`; then for a Declared Action `DeclaredWhileDecisionPending` and the checks of ADR-0015; for an Answer `NoDecisionPending`, `OptionOutOfRange`, then the rejections of running it (the Trigger Cap among them).
 
 **Draw Effect**:
 The Action Effect `draw: { player, from, to, count }`, only meaningful in a Card Effect: moves `count` cards one at a time from the Top of `from` (an ordered zone) onto the Top of `to`; an empty `from` emits `DrawFromEmptyZone` and stops, which is how a trigger reaches the `draw_from_empty` win conditions (ADR-0014).
@@ -455,7 +479,7 @@ Who observes. Its only kind is a Player of the Game (`Viewer::Player`); a Specta
 What a Viewer is given of a Game: an Observed GameState and, for each accepted transition, Observed Events and an Observed Transition (ADR-0028, ADR-0029). It holds base facts only; Derived Reads are asked beside it, never stored in it (ADR-0028).
 
 **Observed GameState**:
-A GameState as one Viewer sees it: always the Players, the Active Player, the Turn Number, the phase, the Terminal Outcome and the card count of every zone; for each zone the Viewer sees, its Observed Cards bottom first; for the Visible Cards, their facts. Never the Random State, never the order of a zone the Viewer cannot see, never a Card Instance Id.
+A GameState as one Viewer sees it: always the Players, the Active Player, the Turn Number, the phase, the Terminal Outcome, the Observed Pending Decision and the card count of every zone; for each zone the Viewer sees, its Observed Cards bottom first; for the Visible Cards, their facts. Never the Random State, never the order of a zone the Viewer cannot see, never a Card Instance Id.
 
 **Observer**:
 One Viewer's pure fold of the Events applied to the Empty GameState: it holds the mapping between Observed Cards and Card Instances (`card_instance`, `observed_card`) and is never shown to the Viewer. It changes no GameState, Event, Game Record or snapshot. A card appears (takes the next handle) when a `CardCreated` puts it, or a `CardMoved` brings it from a zone the Viewer cannot see, into a zone the Viewer sees; it disappears (its handle is retired, never reused) when a `CardMoved` takes it from a seen zone to an unseen one; otherwise it keeps its handle. Every other Event leaves the mapping alone.
@@ -470,13 +494,19 @@ A card the Viewer sees, in an Observed GameState: its Observed Card, owner, Card
 One zone as a Viewer sees it: its count always, and its Observed Cards, bottom first, only when the Viewer sees the zone (`cards()` is `None` otherwise).
 
 **Observed Event**:
-One Event as a Viewer observes it, in trace order: `CardCreated`/`UnseenCardCreated`, `CardMoved`, `CardMovedIntoSight` (a card the Viewer starts to see, with its Card Definition and its instance state at that point of the trace), `CardMovedOutOfSight` (its Observed Card is retired), `UnseenCardMoved`, `ZoneShuffled` (the new order of Observed Cards, for a zone the Viewer sees) and `UnseenZoneShuffled`, `CardStateChanged` (only for a card the Viewer sees; none otherwise), `TurnBegan`, `PhaseBegan`, `DrawFromEmptyZone` and `GameEnded`. No variant carries a Card Instance Id or a Random State. `ObservedGameState::apply` folds them; `follow_events` and `follow_transition` of the Declarative Ruleset produce them (ADR-0029).
+One Event as a Viewer observes it, in trace order: `CardCreated`/`UnseenCardCreated`, `CardMoved`, `CardMovedIntoSight` (a card the Viewer starts to see, with its Card Definition and its instance state at that point of the trace), `CardMovedOutOfSight` (its Observed Card is retired), `UnseenCardMoved`, `ZoneShuffled` (the new order of Observed Cards, for a zone the Viewer sees) and `UnseenZoneShuffled`, `CardStateChanged` (only for a card the Viewer sees; none otherwise), `TurnBegan`, `PhaseBegan`, `DrawFromEmptyZone`, `GameEnded`, `DecisionPending` (the decider and the kind, never the Paused Resolution) and `DecisionAnswered` (the Player and the Observed Answer). No variant carries a Card Instance Id or a Random State. `ObservedGameState::apply` folds them; `follow_events` and `follow_transition` of the Declarative Ruleset produce them (ADR-0029).
 
 **Observed Transition**:
 What a Viewer is given of one accepted transition, mirroring `Transition`: the Taken Action, the Observed Events in trace order and the next Observed GameState. Built by `follow_transition`, which folds the transition's Event Trace into the Observer and fails whole or not at all (ADR-0029).
 
 **Taken Action**:
-The Action of a transition as a Viewer observes it taken: the acting Player, the action id and each card argument as a `TakenArgument`: the Observed Card the Viewer holds after the transition, else the one it held before (now retired), else `HiddenCard`. It is not an Action the Viewer can take (ADR-0029).
+The Action of a transition as a Viewer observes it taken: for a Declared Action the acting Player, the action id and each card argument as a `TakenArgument` (the Observed Card the Viewer holds after the transition, else the one it held before (now retired), else `HiddenCard`), `TakenAction::Declared`; for an Answer the Player and its `ObservedAnswer`, `TakenAction::Answer`. It is not an Action the Viewer can take (ADR-0029, ADR-0033).
+
+**Observed Pending Decision**:
+What every Viewer sees of a pending decision: `ObservedPendingDecision { decider, kind }`, read through `pending_decision()` of the Observed GameState, which also offers `deciding_player()`. Never the Paused Resolution (ADR-0033).
+
+**Observed Answer**:
+An Answer as a Viewer observes it: `ObservedAnswer::Option(index)`, in the Taken Action of an Answer, in `ObservedEvent::DecisionAnswered { player, answer }` and in an Observed Action. Every Viewer sees every Answer (ADR-0033).
 
 **Observed Apply Error**:
 The `ObservedApplyError` of applying an Observed Event to an Observed GameState: `GameAlreadyEnded` once the Terminal Outcome is set, and `EventDoesNotFit` for every other misfit (an unknown Player, zone, card or state, a zone seen or unseen the wrong way, a card not in its source zone or visible already, a count below zero, an order that is not a permutation, a value of the wrong type, a draw from a zone that is not empty, a phase before any Turn, bad losses). Atomic; it needs no Ruleset and no Observer (ADR-0029).
@@ -485,10 +515,10 @@ The `ObservedApplyError` of applying an Observed Event to an Observed GameState:
 The `ObservationError` for a Viewer that is not a Player of the Game, never a panic.
 
 **Observed Action**:
-An Action as a Viewer expresses it (ADR-0030): the engine Action with an Observed Card for each card argument. `ObservedAction { player, action, arguments }`, each argument an `ObservedArgument::Card`.
+An Action as a Viewer expresses it (ADR-0030): the engine Action with an Observed Card for each card argument. `ObservedAction::Declared { player, action, arguments }`, each argument an `ObservedArgument::Card`, or `ObservedAction::Answer { player, answer }` with an `ObservedAnswer` (ADR-0033).
 
 **Observed Legal Actions**:
-The Legal Actions (ADR-0018) whose Player is the Viewer, each card argument as its Observed Card, in the engine's Listing Order: `DeclarativeRuleset::observed_legal_actions(observer, state)`. A Viewer that is not the Active Player gets an empty list.
+The Legal Actions (ADR-0018) whose Player is the Viewer, each card argument as its Observed Card and each Answer as its option index, in the engine's Listing Order: `DeclarativeRuleset::observed_legal_actions(observer, state)`. A Viewer that is not the Deciding Player gets an empty list.
 
 **Translating an Observed Action**:
 Turning an Observed Action back into the engine Action through the Observer's mapping: `DeclarativeRuleset::translate_action(observer, action)`. It checks only the Player and the handles; the action id, the arity and the legality stay with `transition`.
@@ -516,8 +546,14 @@ A Player who lost and the Win Condition id that made them lose. A Player has at 
 **Drawn Game**:
 A Game in which every Player lost in the same transition, so it has no winner: the Terminal Outcome has no winners. It is not the Draw step; In the Small Ruleset deck-out alone cannot cause it, because only the Active Player draws.
 
+**DecisionPending**:
+The Event that a Resolution paused for a decision, `DecisionPending { decider, kind, paused }`. It is the last Event of the trace of the transition that pauses, before `GameEnded` if the same transition ends the Game; applying it stores the Pending Decision. `DecisionPending` while one is pending is `ApplyError::DecisionAlreadyPending`, and any Event but `DecisionAnswered` and `GameEnded` while one is pending is `ApplyError::DecisionPending` (ADR-0033).
+
+**DecisionAnswered**:
+The Event that the Deciding Player answered, `DecisionAnswered { player, answer }`. It is the first Event of the trace of an Answer; applying it clears the Pending Decision. With none pending it is `ApplyError::NoDecisionPending`, and from a Player who is not the decider `ApplyError::AnswerFromAnotherPlayer { player, decider }` (ADR-0033).
+
 **GameEnded**:
-The Event that the Game ended, with its Losses in seat order. Applying it sets the Terminal Outcome; no Event applies after it, and it is the last Event of the trace that emits it. A `GameEnded` without a Loss, with a Player twice or out of seat order, or with a Player not in the Game is an Apply Error.
+The Event that the Game ended, with its Losses in seat order. Applying it sets the Terminal Outcome and clears any Pending Decision; no Event applies after it, and it is the last Event of the trace that emits it, after a `DecisionPending` of the same transition. A `GameEnded` without a Loss, with a Player twice or out of seat order, or with a Player not in the Game is an Apply Error.
 
 **Game Over**:
 A Rejection: the Game has ended, so every Action is rejected, whoever takes it and whatever it is. It is checked before Unknown Player.

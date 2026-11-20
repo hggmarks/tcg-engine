@@ -20,8 +20,9 @@ mod viewer;
 pub use acting::{ObservedAction, ObservedArgument};
 pub use error::ObservationError;
 pub use observed_event::{
-    ObservedApplyError, ObservedEvent, ObservedTransition, TakenAction, TakenArgument,
+    ObservedAnswer, ObservedApplyError, ObservedEvent, ObservedTransition, TakenAction,
+    TakenArgument,
 };
-pub use observed_state::{ObservedGameState, ObservedZone, VisibleCard};
+pub use observed_state::{ObservedGameState, ObservedPendingDecision, ObservedZone, VisibleCard};
 pub use observer::Observer;
 pub use viewer::{ObservedCard, Viewer};

@@ -284,10 +284,16 @@ fn the_relabelling_of_one_stream_is_the_same_every_time_and_keeps_the_action_and
         .record
         .actions()
         .iter()
-        .position(|action| action.action == ActionId::new("play_creature"))
+        .position(|action| {
+            matches!(
+                action,
+                tcg_engine::declarative::Action::Declared { action, .. }
+                    if *action == ActionId::new("play_creature")
+            )
+        })
         .expect("the Game plays a creature");
     let action = &game.record.actions()[index];
-    let acting = action.player;
+    let acting = action.player();
     let prior = &folded[index].state;
     let hand: BTreeSet<CardInstanceId> = prior
         .zone(acting, &ZoneId::new("hand"))
@@ -311,7 +317,10 @@ fn the_relabelling_of_one_stream_is_the_same_every_time_and_keeps_the_action_and
     assert_eq!(relabel_with(5), relabel_with(5));
 
     let played_card = {
-        let tcg_engine::declarative::Argument::Card(card) = action.arguments[0];
+        let tcg_engine::declarative::Action::Declared { arguments, .. } = action else {
+            panic!("the play is a Declared Action");
+        };
+        let tcg_engine::declarative::Argument::Card(card) = arguments[0];
         card
     };
     let position = events.traces[index]
@@ -322,7 +331,10 @@ fn the_relabelling_of_one_stream_is_the_same_every_time_and_keeps_the_action_and
     for stream in 0..16 {
         let relabelled = relabel_with(stream);
         let relabelled_action = relabelled.action.as_ref().expect("the Action is kept");
-        let tcg_engine::declarative::Argument::Card(argument) = relabelled_action.arguments[0];
+        let tcg_engine::declarative::Action::Declared { arguments, .. } = relabelled_action else {
+            panic!("the relabelled play is a Declared Action");
+        };
+        let tcg_engine::declarative::Argument::Card(argument) = arguments[0];
         // The Action's card is mapped as the trace's: the same position moves the same card.
         assert!(
             matches!(
@@ -406,4 +418,109 @@ fn the_relabelling_shuffles_only_the_hidden_positions_of_an_unseen_zones_shuffle
         assert_eq!(folded.cards().len(), 3);
     }
     assert!(reordered, "no stream changed the order of the shuffle");
+}
+
+#[test]
+fn the_relabelling_maps_every_card_a_paused_resolution_names() {
+    use tcg_engine::declarative::{DecisionKind, EffectPath, PausedResolution, QueuedTrigger};
+    use tcg_engine::ruleset_definition::{FieldValue, StateName};
+
+    let (ruleset, _) = effects();
+    let changed = |card: u32| Event::CardStateChanged {
+        card: id(card),
+        state: StateName::new("tapped"),
+        value: FieldValue::Bool(true),
+    };
+    // Six cards of one class, in a hidden zone for both Viewers; the Events of the step name five
+    // of them: marker Events (a state change each) show where the permutation sends a card, and the
+    // pause carries the same cards in its trigger, its queue and its unscanned Events.
+    let creation: Vec<Event> = (0..6).map(|card| created(card, 0, "deck")).collect();
+    let pause = |trigger: u32, queue: &[u32], unscanned: Vec<Event>| Event::DecisionPending {
+        decider: PlayerId(0),
+        kind: DecisionKind::Option,
+        paused: PausedResolution {
+            trigger: QueuedTrigger {
+                card: id(trigger),
+                effect: 0,
+            },
+            at: EffectPath {
+                branches: Vec::new(),
+                choice: 0,
+            },
+            queue: queue
+                .iter()
+                .map(|&card| QueuedTrigger {
+                    card: id(card),
+                    effect: 1,
+                })
+                .collect(),
+            unscanned,
+            resolutions: 1,
+        },
+    };
+    let shuffled = |order: Vec<CardInstanceId>| Event::ZoneShuffled {
+        player: PlayerId(0),
+        zone: ZoneId::new("deck"),
+        order,
+        random_state: RandomState::from_seed(Seed(1)),
+    };
+    let events = GameEvents {
+        creation,
+        traces: vec![vec![
+            changed(1),
+            changed(2),
+            changed(3),
+            changed(4),
+            changed(5),
+            pause(
+                1,
+                &[2, 3],
+                vec![
+                    moved(4, 0, "deck", "mana_deck"),
+                    changed(5),
+                    shuffled(vec![id(5), id(4)]),
+                ],
+            ),
+        ]],
+    };
+    let hidden = hidden_cards(&ruleset, viewer(0), &events);
+    assert_eq!(hidden, set(&[0, 1, 2, 3, 4, 5]));
+
+    let mut moved_a_card = false;
+    for stream in 0..16 {
+        let mut rng = RandomState::from_seed(Seed(stream));
+        let relabelled = relabel(&ruleset, viewer(0), &hidden, &events, None, &mut rng);
+        let trace = &relabelled.events.traces[0];
+        // Where each card went, read off the marker Events.
+        let to = |card: u32| match &trace[usize::try_from(card - 1).expect("an index")] {
+            Event::CardStateChanged { card, .. } => *card,
+            other => panic!("a marker Event, got {other:?}"),
+        };
+        moved_a_card |= (1..=5).any(|card| to(card) != id(card));
+        let Event::DecisionPending { paused, .. } = &trace[5] else {
+            panic!("the pause is still the last Event");
+        };
+        assert_eq!(paused.trigger.card, to(1), "stream {stream}: the trigger");
+        assert_eq!(
+            paused
+                .queue
+                .iter()
+                .map(|queued| queued.card)
+                .collect::<Vec<_>>(),
+            [to(2), to(3)],
+            "stream {stream}: the queue"
+        );
+        assert_eq!(
+            paused.unscanned,
+            vec![
+                moved(to(4).0, 0, "deck", "mana_deck"),
+                changed(to(5).0),
+                shuffled(vec![to(5), to(4)]),
+            ],
+            "stream {stream}: the carried Events"
+        );
+        // What is not a card is kept.
+        assert_eq!(paused.resolutions, 1);
+    }
+    assert!(moved_a_card, "no stream relabelled a card");
 }

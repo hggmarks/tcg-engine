@@ -66,7 +66,7 @@ fn the_authoring_guide_examples_load_and_create_a_game() {
     let state = creation.opening.state;
     assert_eq!(state.active_player(), PlayerId(0));
     assert_eq!(state.phase(), Some(&PhaseId::new("main")));
-    let pass = Action {
+    let pass = Action::Declared {
         player: PlayerId(0),
         action: ActionId::new("pass_turn"),
         arguments: Vec::new(),

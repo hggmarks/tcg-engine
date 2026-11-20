@@ -239,7 +239,7 @@ fn find_two(
 }
 
 fn action(player: u32, id: &str, cards: &[CardInstanceId]) -> Action {
-    Action {
+    Action::Declared {
         player: p(player),
         action: ActionId::new(id),
         arguments: cards.iter().copied().map(Argument::Card).collect(),
@@ -710,8 +710,15 @@ fn render(played: &Played) -> String {
         text.push_str(&format!("{event:?}\n"));
     }
     for (index, (action, step)) in played.steps.iter().enumerate() {
-        let cards: Vec<String> = action
-            .arguments
+        let Action::Declared {
+            player,
+            action: id,
+            arguments,
+        } = action
+        else {
+            panic!("a Golden Game has no Answer");
+        };
+        let cards: Vec<String> = arguments
             .iter()
             .map(|argument| match argument {
                 Argument::Card(card) => card.0.to_string(),
@@ -720,8 +727,8 @@ fn render(played: &Played) -> String {
         text.push_str(&format!(
             "== action {}: player {} {} [{}]\n",
             index + 1,
-            action.player.0,
-            action.action.as_str(),
+            player.0,
+            id.as_str(),
             cards.join(", ")
         ));
         for event in step.trace.events() {
@@ -861,7 +868,10 @@ fn a_set_field_modifier_follows_its_carrier_out_of_the_active_zone() {
 
 /// The card seat 1 attacks with at Action 13 of `play_leave`: the attacker of that Action.
 fn played_otter(played: &Played) -> CardInstanceId {
-    match played.steps[12].0.arguments[0] {
+    let Action::Declared { arguments, .. } = &played.steps[12].0 else {
+        panic!("Action 13 is a Declared Action");
+    };
+    match arguments[0] {
         Argument::Card(card) => card,
     }
 }

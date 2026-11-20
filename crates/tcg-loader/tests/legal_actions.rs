@@ -106,7 +106,7 @@ fn opening(ruleset: &DeclarativeRuleset) -> GameState {
 }
 
 fn action(player: u32, id: &str, cards: &[CardInstanceId]) -> Action {
-    Action {
+    Action::Declared {
         player: p(player),
         action: ActionId::new(id),
         arguments: cards.iter().copied().map(Argument::Card).collect(),
@@ -230,7 +230,7 @@ fn brute_force(ruleset: &DeclarativeRuleset, state: &GameState) -> Vec<Action> {
                 tuples.extend(ids.iter().map(|&second| vec![first, second]));
             }
             for tuple in tuples {
-                let candidate = Action {
+                let candidate = Action::Declared {
                     player,
                     action: declared.id().clone(),
                     arguments: tuple.into_iter().map(Argument::Card).collect(),
@@ -244,10 +244,20 @@ fn brute_force(ruleset: &DeclarativeRuleset, state: &GameState) -> Vec<Action> {
     accepted
 }
 
+/// The action id and the arguments of a Declared Action: every Action these tests list is one.
+fn declared(action: &Action) -> (&ActionId, &[Argument]) {
+    match action {
+        Action::Declared {
+            action, arguments, ..
+        } => (action, arguments),
+        Action::Answer { .. } => panic!("an Answer is listed, but no decision is pending"),
+    }
+}
+
 /// The Actions of `list` that are of the action `id`.
 fn of_action<'a>(list: &'a [Action], id: &str) -> Vec<&'a Action> {
     list.iter()
-        .filter(|action| action.action == ActionId::new(id))
+        .filter(|action| *declared(action).0 == ActionId::new(id))
         .collect()
 }
 
@@ -416,7 +426,7 @@ fn a_card_that_fails_a_where_condition_is_not_listed() {
     assert!(!attacks.is_empty(), "the moss sprite can still attack");
     for attack in &attacks {
         assert_eq!(
-            attack.arguments[0],
+            declared(attack).1[0],
             Argument::Card(MOSS_0),
             "only the ready creature attacks: {attack:?}"
         );
@@ -443,7 +453,7 @@ fn a_card_that_fails_a_where_condition_is_not_listed() {
     assert_eq!(
         attacks
             .iter()
-            .map(|attack| attack.arguments[1])
+            .map(|attack| declared(attack).1[1])
             .collect::<Vec<_>>(),
         vec![Argument::Card(LEADER_1), Argument::Card(OTTER_1)],
         "the tapped enemy creature and the Leader are the only targets"
@@ -459,7 +469,7 @@ fn a_creature_the_player_cannot_pay_for_is_not_listed() {
         ruleset
             .legal_actions(state)
             .into_iter()
-            .filter(|action| action.action == ActionId::new("play_creature"))
+            .filter(|action| *declared(action).0 == ActionId::new("play_creature"))
             .collect()
     };
 
@@ -561,7 +571,7 @@ fn every_listed_action_is_accepted() {
                 "{name}: listed but rejected: {action:?}"
             );
             assert_eq!(
-                action.player,
+                action.player(),
                 state.active_player(),
                 "{name}: every listed Action is the Active Player's"
             );
@@ -709,8 +719,8 @@ fn a_listing_whose_candidates_come_from_several_zones_is_in_listing_order_along_
             let listed = ruleset.legal_actions(&state);
             let mut oracle = brute_force(&ruleset, &state);
             oracle.sort_by_key(|action| {
-                let cards: Vec<CardInstanceId> = action
-                    .arguments
+                let cards: Vec<CardInstanceId> = declared(action)
+                    .1
                     .iter()
                     .map(|argument| {
                         let Argument::Card(card) = argument;
@@ -720,7 +730,7 @@ fn a_listing_whose_candidates_come_from_several_zones_is_in_listing_order_along_
                 (
                     phase_order
                         .iter()
-                        .position(|id| ActionId::new(*id) == action.action),
+                        .position(|id| ActionId::new(*id) == *declared(action).0),
                     cards,
                 )
             });

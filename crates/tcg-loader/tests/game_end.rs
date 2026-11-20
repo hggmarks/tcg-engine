@@ -106,7 +106,7 @@ fn deck_out_loss(seat: u32) -> Loss {
 
 /// The only place this file builds an Action.
 fn action(player: u32, id: &str) -> Action {
-    Action {
+    Action::Declared {
         player: p(player),
         action: ActionId::new(id),
         arguments: vec![],

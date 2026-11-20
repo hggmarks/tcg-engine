@@ -10,7 +10,7 @@
 //! means its alternative does not fit when the param has several, and is the Rejection when it has
 //! one (ADR-0032).
 
-use super::action::{Action, Argument, Rejection};
+use super::action::{Argument, Rejection};
 use super::creation::DeclarativeRuleset;
 use super::expression;
 use super::state::{CardInstanceId, GameState};
@@ -51,22 +51,23 @@ impl BoundCards {
     }
 }
 
-/// Checks the arguments of `action` against the params of `declared`, in the documented order.
+/// Checks the `arguments` of the Action of `actor` against the params of `declared`, in the documented order.
 pub(super) fn bind(
     ruleset: &DeclarativeRuleset,
     state: &GameState,
     declared: &ActionDefinition,
-    action: &Action,
+    actor: PlayerId,
+    arguments: &[Argument],
 ) -> Result<BoundCards, Rejection> {
     let params = declared.params();
-    if params.len() != action.arguments.len() {
+    if params.len() != arguments.len() {
         return Err(Rejection::ArgumentCountMismatch {
             expected: u64::try_from(params.len()).unwrap_or(u64::MAX),
-            found: u64::try_from(action.arguments.len()).unwrap_or(u64::MAX),
+            found: u64::try_from(arguments.len()).unwrap_or(u64::MAX),
         });
     }
     let mut bound = BoundCards { cards: Vec::new() };
-    for (param, argument) in params.iter().zip(&action.arguments) {
+    for (param, argument) in params.iter().zip(arguments) {
         let Argument::Card(card) = *argument;
         if state.card(card).is_none() {
             return Err(Rejection::UnknownCard {
@@ -74,7 +75,7 @@ pub(super) fn bind(
                 card,
             });
         }
-        bound = bind_param(ruleset, state, action.player, &bound, param, card)?;
+        bound = bind_param(ruleset, state, actor, &bound, param, card)?;
     }
     Ok(bound)
 }

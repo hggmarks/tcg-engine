@@ -7,11 +7,14 @@
 //! of the Observer and commit it only on success.
 
 use super::error::ObservationError;
-use super::observed_event::{ObservedEvent, ObservedTransition, TakenAction, TakenArgument};
+use super::observed_event::{
+    ObservedAnswer, ObservedEvent, ObservedTransition, TakenAction, TakenArgument,
+};
 use super::observed_state;
 use super::observer::{sees, Observer, Sight};
 use crate::declarative::action::{Action, Argument};
 use crate::declarative::creation::DeclarativeRuleset;
+use crate::declarative::decision::Answer;
 use crate::declarative::event::Event;
 use crate::declarative::state::GameState;
 use crate::ruleset::Transition;
@@ -58,28 +61,43 @@ impl DeclarativeRuleset {
         if working != transition.state {
             return Err(ObservationError::ObserverOutOfStep);
         }
-        let arguments = action
-            .arguments
-            .iter()
-            .map(|argument| {
-                let Argument::Card(card) = argument;
-                match folded
-                    .observed_card(*card)
-                    .or(observer.observed_card(*card))
-                {
-                    Some(handle) => TakenArgument::Card(handle),
-                    None => TakenArgument::HiddenCard,
+        let taken = match action {
+            Action::Declared {
+                player,
+                action,
+                arguments,
+            } => {
+                let arguments = arguments
+                    .iter()
+                    .map(|argument| {
+                        let Argument::Card(card) = argument;
+                        match folded
+                            .observed_card(*card)
+                            .or(observer.observed_card(*card))
+                        {
+                            Some(handle) => TakenArgument::Card(handle),
+                            None => TakenArgument::HiddenCard,
+                        }
+                    })
+                    .collect();
+                TakenAction::Declared {
+                    player: *player,
+                    action: action.clone(),
+                    arguments,
                 }
-            })
-            .collect();
+            }
+            Action::Answer {
+                player,
+                answer: Answer::Option(index),
+            } => TakenAction::Answer {
+                player: *player,
+                answer: ObservedAnswer::Option(*index),
+            },
+        };
         let state = observed_state::observe(self, &folded, &transition.state)?;
         *observer = folded;
         Ok(ObservedTransition {
-            action: TakenAction {
-                player: action.player,
-                action: action.action.clone(),
-                arguments,
-            },
+            action: taken,
             events,
             state,
         })
@@ -238,6 +256,22 @@ impl DeclarativeRuleset {
             }
             (Event::GameEnded { losses }, Sight::NoCard) => ObservedEvent::GameEnded {
                 losses: losses.clone(),
+            },
+            (Event::DecisionPending { decider, kind, .. }, Sight::NoCard) => {
+                ObservedEvent::DecisionPending {
+                    decider: *decider,
+                    kind: *kind,
+                }
+            }
+            (
+                Event::DecisionAnswered {
+                    player,
+                    answer: Answer::Option(index),
+                },
+                Sight::NoCard,
+            ) => ObservedEvent::DecisionAnswered {
+                player: *player,
+                answer: ObservedAnswer::Option(*index),
             },
             _ => return Err(out_of_step()),
         };

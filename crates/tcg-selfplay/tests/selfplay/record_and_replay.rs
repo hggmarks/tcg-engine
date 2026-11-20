@@ -106,9 +106,9 @@ fn replay_reports_the_index_of_a_rejected_action() {
         ruleset.replay(&record).err(),
         Some(ReplayError::ActionRejected {
             index: 0,
-            rejection: Rejection::NotActivePlayer {
+            rejection: Rejection::NotDecidingPlayer {
                 player: p(1),
-                active: p(0),
+                deciding: p(0),
             },
         })
     );

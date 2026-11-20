@@ -150,7 +150,7 @@ fn zone_ids(ruleset: &DeclarativeRuleset) -> Vec<ZoneId> {
 }
 
 fn action(player: u32, id: &str, cards: &[CardInstanceId]) -> Action {
-    Action {
+    Action::Declared {
         player: p(player),
         action: ActionId::new(id),
         arguments: cards.iter().copied().map(Argument::Card).collect(),

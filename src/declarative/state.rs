@@ -6,6 +6,7 @@
 use std::fmt;
 use std::sync::Arc;
 
+use super::decision::PendingDecision;
 use super::event::Event;
 use crate::card_catalog::CardId;
 use crate::player::{PlayerId, PlayerOrder};
@@ -150,8 +151,8 @@ impl TerminalOutcome {
 }
 
 /// The complete state of one declarative Game: Players by seat, the Active Player, the Turn Number
-/// and phase, each Player's zones, every card instance, the Random State and, once the Game has
-/// ended, its Terminal Outcome.
+/// and phase, each Player's zones, every card instance, the Random State, the Pending Decision while
+/// a Resolution is paused and, once the Game has ended, its Terminal Outcome.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GameState {
     player_order: PlayerOrder,
@@ -162,6 +163,8 @@ pub struct GameState {
     cards: Vec<CardInstance>,
     random_state: RandomState,
     outcome: Option<TerminalOutcome>,
+    /// The decision a Resolution is paused at, if any (ADR-0033).
+    pending: Option<PendingDecision>,
 }
 
 /// Why an Event cannot be applied. The GameState is unchanged.
@@ -206,6 +209,15 @@ pub enum ApplyError {
     /// `GameEnded` lists `player` at or before the position of the loser before them in seat
     /// order: a Player listed twice, or the losses not in seat order.
     LosersOutOfSeatOrder { player: PlayerId },
+    /// A decision became pending while another one is (ADR-0033).
+    DecisionAlreadyPending,
+    /// A decision was answered, but none is pending.
+    NoDecisionPending,
+    /// The decision was answered by `player`, but `decider` is the one asked.
+    AnswerFromAnotherPlayer { player: PlayerId, decider: PlayerId },
+    /// An Event other than `DecisionAnswered` and `GameEnded` was applied while a decision is
+    /// pending: the Resolution is paused and nothing else happens until it is answered.
+    DecisionPending,
 }
 
 impl fmt::Display for ApplyError {
@@ -263,6 +275,14 @@ impl fmt::Display for ApplyError {
                 "Player {} is not listed after the previous loser in seat order",
                 player.0
             ),
+            Self::DecisionAlreadyPending => write!(f, "a decision is already pending"),
+            Self::NoDecisionPending => write!(f, "no decision is pending"),
+            Self::AnswerFromAnotherPlayer { player, decider } => write!(
+                f,
+                "Player {} answered, but the decision is Player {}'s",
+                player.0, decider.0
+            ),
+            Self::DecisionPending => write!(f, "a decision is pending: only its Answer applies"),
         }
     }
 }
@@ -301,6 +321,7 @@ impl GameState {
             cards: Vec::new(),
             random_state,
             outcome: None,
+            pending: None,
         }
     }
 
@@ -373,6 +394,18 @@ impl GameState {
         self.outcome.as_ref()
     }
 
+    /// The decision a Resolution is paused at; `None` when nothing is pending.
+    pub fn pending_decision(&self) -> Option<&PendingDecision> {
+        self.pending.as_ref()
+    }
+
+    /// The Player who acts next: the one asked while a decision is pending, else the Active Player.
+    pub fn deciding_player(&self) -> PlayerId {
+        self.pending
+            .as_ref()
+            .map_or(self.active_player, PendingDecision::decider)
+    }
+
     /// The single function through which a GameState changes.
     ///
     /// Atomic: the Event is fully checked first, so on `Err` the state is unchanged. Once the Game
@@ -381,6 +414,15 @@ impl GameState {
     pub fn apply(&mut self, event: &Event) -> Result<(), ApplyError> {
         if self.outcome.is_some() {
             return Err(ApplyError::GameAlreadyEnded);
+        }
+        // While a decision is pending the Resolution is paused: only its Answer, or the end of the
+        // Game, applies.
+        if self.pending.is_some() {
+            match event {
+                Event::DecisionAnswered { .. } | Event::GameEnded { .. } => {}
+                Event::DecisionPending { .. } => return Err(ApplyError::DecisionAlreadyPending),
+                _ => return Err(ApplyError::DecisionPending),
+            }
         }
         match event {
             Event::CardCreated {
@@ -510,6 +552,31 @@ impl GameState {
             }
             Event::GameEnded { losses } => {
                 self.outcome = Some(TerminalOutcome::of(&self.player_order, losses)?);
+                self.pending = None;
+                Ok(())
+            }
+            Event::DecisionPending {
+                decider,
+                kind,
+                paused,
+            } => {
+                if !self.player_order.contains(*decider) {
+                    return Err(ApplyError::UnknownPlayer { player: *decider });
+                }
+                self.pending = Some(PendingDecision::new(*decider, *kind, paused.clone()));
+                Ok(())
+            }
+            Event::DecisionAnswered { player, .. } => {
+                let Some(pending) = &self.pending else {
+                    return Err(ApplyError::NoDecisionPending);
+                };
+                if pending.decider() != *player {
+                    return Err(ApplyError::AnswerFromAnotherPlayer {
+                        player: *player,
+                        decider: pending.decider(),
+                    });
+                }
+                self.pending = None;
                 Ok(())
             }
         }

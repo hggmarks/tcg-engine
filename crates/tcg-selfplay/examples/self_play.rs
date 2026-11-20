@@ -17,7 +17,7 @@
 use std::time::Instant;
 
 use tcg_engine::deck_list::DeckList;
-use tcg_engine::declarative::{Argument, DeclarativeRuleset, Event, GameState};
+use tcg_engine::declarative::{Action, Answer, Argument, DeclarativeRuleset, Event, GameState};
 use tcg_engine::random::Seed;
 use tcg_loader::{load_card_catalog, load_deck_list, load_ruleset_definition};
 use tcg_selfplay::{self_play, Checks, SelfPlayGame};
@@ -136,18 +136,27 @@ fn print_game_log(loaded: &Loaded) {
     print_turn_header(&game.creation.opening.state);
     let mut state = game.creation.opening.state.clone();
     for (index, (action, trace)) in game.record.actions().iter().zip(&game.traces).enumerate() {
-        let cards: Vec<String> = action
-            .arguments
-            .iter()
-            .map(|argument| {
-                let Argument::Card(id) = argument;
-                card_name(&game, *id)
-            })
-            .collect();
+        let (name, cards): (String, Vec<String>) = match action {
+            Action::Declared {
+                action, arguments, ..
+            } => (
+                action.as_str().to_string(),
+                arguments
+                    .iter()
+                    .map(|argument| {
+                        let Argument::Card(id) = argument;
+                        card_name(&game, *id)
+                    })
+                    .collect(),
+            ),
+            Action::Answer {
+                answer: Answer::Option(option),
+                ..
+            } => (format!("answers option {option}"), Vec::new()),
+        };
         println!(
-            "  {index:>3}. Player {} {}{}",
-            action.player.0,
-            action.action.as_str(),
+            "  {index:>3}. Player {} {name}{}",
+            action.player().0,
             if cards.is_empty() {
                 String::new()
             } else {
@@ -237,6 +246,8 @@ fn describe(game: &SelfPlayGame, event: &Event) -> String {
         }
         Event::GameEnded { losses } => format!("the Game ends with {} loss(es)", losses.len()),
         Event::CardCreated { card, .. } => format!("{} is created", card_name(game, *card)),
+        Event::DecisionPending { decider, .. } => format!("Player {} is asked", decider.0),
+        Event::DecisionAnswered { player, .. } => format!("Player {} answers", player.0),
     }
 }
 
