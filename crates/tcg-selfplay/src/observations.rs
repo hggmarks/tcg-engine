@@ -244,18 +244,45 @@ pub(crate) fn relabel(
                         *card = map(*card);
                     }
                 }
+                // The Paused Resolution names cards too: its trigger, its queue and the Events it
+                // carries are relabelled through the same permutation.
+                Event::DecisionPending { paused, .. } => {
+                    paused.trigger.card = map(paused.trigger.card);
+                    for queued in &mut paused.queue {
+                        queued.card = map(queued.card);
+                    }
+                    for carried in &mut paused.unscanned {
+                        match carried {
+                            Event::CardMoved { card, .. }
+                            | Event::CardStateChanged { card, .. } => *card = map(*card),
+                            Event::ZoneShuffled { order, .. } => {
+                                for card in order.iter_mut() {
+                                    *card = map(*card);
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
                 _ => {}
             }
         }
     }
-    let action = action.map(|action| Action {
-        player: action.player,
-        action: action.action.clone(),
-        arguments: action
-            .arguments
-            .iter()
-            .map(|&Argument::Card(card)| Argument::Card(map(card)))
-            .collect(),
+    let action = action.map(|action| match action {
+        Action::Declared {
+            player,
+            action,
+            arguments,
+        } => Action::Declared {
+            player: *player,
+            action: action.clone(),
+            arguments: arguments
+                .iter()
+                .map(|&Argument::Card(card)| Argument::Card(map(card)))
+                .collect(),
+        },
+        // An Answer names no card.
+        Action::Answer { .. } => action.clone(),
     });
 
     // 3. The order of the zones the Viewer cannot see.
@@ -660,7 +687,10 @@ pub fn check_observed_actions(
             }
         }
     }
-    let expected: Vec<&Action> = legal.iter().filter(|action| action.player == me).collect();
+    let expected: Vec<&Action> = legal
+        .iter()
+        .filter(|action| action.player() == me)
+        .collect();
     for index in 0..translated.len().max(expected.len()) {
         match (translated.get(index), expected.get(index)) {
             (Some(back), Some(listed)) if back == *listed => {}

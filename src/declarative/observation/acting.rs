@@ -3,23 +3,31 @@
 //! Observer; legality stays with `transition`.
 
 use super::error::ObservationError;
+use super::observed_event::ObservedAnswer;
 use super::observer::{sees, Observer};
 use super::viewer::{ObservedCard, Viewer};
 use crate::declarative::action::{Action, Argument};
 use crate::declarative::creation::DeclarativeRuleset;
+use crate::declarative::decision::Answer;
 use crate::declarative::state::GameState;
 use crate::player::PlayerId;
 use crate::ruleset::LegalActions;
 use crate::ruleset_definition::ActionId;
 
 /// An Action as a Viewer expresses it (ADR-0030): the engine Action with an Observed Card for each
-/// card argument.
+/// card argument of a Declared Action, and the option index of an Answer (ADR-0033).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ObservedAction {
-    pub player: PlayerId,
-    pub action: ActionId,
-    /// One per param of the action, in param order.
-    pub arguments: Vec<ObservedArgument>,
+pub enum ObservedAction {
+    Declared {
+        player: PlayerId,
+        action: ActionId,
+        /// One per param of the action, in param order.
+        arguments: Vec<ObservedArgument>,
+    },
+    Answer {
+        player: PlayerId,
+        answer: ObservedAnswer,
+    },
 }
 
 /// The value an Observed Action supplies for one param.
@@ -30,10 +38,11 @@ pub enum ObservedArgument {
 }
 
 impl DeclarativeRuleset {
-    /// The Viewer's Legal Actions in Listing Order, each card argument as its Observed Card.
+    /// The Viewer's Legal Actions in Listing Order, each card argument as its Observed Card and
+    /// each Answer as its option index.
     ///
     /// It is `legal_actions(state)` filtered to the Actions whose Player is the Viewer, so the
-    /// engine's order is kept and a Player that is not the Active Player gets an empty list. The
+    /// engine's order is kept and a Player that is not the Deciding Player gets an empty list. The
     /// checks come in this order: the Viewer is a Player of `state` (`UnknownViewer`); then, per
     /// Legal Action in order and per argument in param order, a card in a zone the Viewer cannot
     /// see is `LegalActionNamesUnseenCard`, and a seen card the Observer holds no handle for, or a
@@ -50,29 +59,44 @@ impl DeclarativeRuleset {
         }
         let mut listed = Vec::new();
         for legal in self.legal_actions(state) {
-            if legal.player != me {
+            if legal.player() != me {
                 continue;
             }
-            let mut arguments = Vec::with_capacity(legal.arguments.len());
-            for &Argument::Card(id) in &legal.arguments {
+            let (player, action, arguments) = match legal {
+                Action::Answer {
+                    player,
+                    answer: Answer::Option(index),
+                } => {
+                    listed.push(ObservedAction::Answer {
+                        player,
+                        answer: ObservedAnswer::Option(index),
+                    });
+                    continue;
+                }
+                Action::Declared {
+                    player,
+                    action,
+                    arguments,
+                } => (player, action, arguments),
+            };
+            let mut observed = Vec::with_capacity(arguments.len());
+            for &Argument::Card(id) in &arguments {
                 let instance = state.card(id).ok_or(ObservationError::ObserverOutOfStep)?;
                 let zone = state
                     .zone_of(id)
                     .ok_or(ObservationError::ObserverOutOfStep)?;
                 if !sees(self, viewer, instance.owner(), zone)? {
-                    return Err(ObservationError::LegalActionNamesUnseenCard {
-                        action: legal.action,
-                    });
+                    return Err(ObservationError::LegalActionNamesUnseenCard { action });
                 }
                 let handle = observer
                     .observed_card(id)
                     .ok_or(ObservationError::ObserverOutOfStep)?;
-                arguments.push(ObservedArgument::Card(handle));
+                observed.push(ObservedArgument::Card(handle));
             }
-            listed.push(ObservedAction {
-                player: legal.player,
-                action: legal.action,
-                arguments,
+            listed.push(ObservedAction::Declared {
+                player,
+                action,
+                arguments: observed,
             });
         }
         Ok(listed)
@@ -80,30 +104,46 @@ impl DeclarativeRuleset {
 
     /// The engine Action an Observed Action stands for. The checks come in this order: the
     /// Observed Action's Player is the Viewer (`ActionOfAnotherPlayer`); then each argument in
-    /// order, a handle the Viewer does not hold is `UnknownObservedCard`. The action id, the arity
-    /// and the legality are not checked: `transition` decides them.
+    /// order, a handle the Viewer does not hold is `UnknownObservedCard`. The action id, the arity,
+    /// the option index and the legality are not checked: `transition` decides them.
     pub fn translate_action(
         &self,
         observer: &Observer,
         action: &ObservedAction,
     ) -> Result<Action, ObservationError> {
         let Viewer::Player(me) = observer.viewer();
-        if action.player != me {
-            return Err(ObservationError::ActionOfAnotherPlayer {
-                player: action.player,
-            });
+        match action {
+            ObservedAction::Answer { player, answer } => {
+                if *player != me {
+                    return Err(ObservationError::ActionOfAnotherPlayer { player: *player });
+                }
+                let ObservedAnswer::Option(index) = answer;
+                Ok(Action::Answer {
+                    player: *player,
+                    answer: Answer::Option(*index),
+                })
+            }
+            ObservedAction::Declared {
+                player,
+                action,
+                arguments,
+            } => {
+                if *player != me {
+                    return Err(ObservationError::ActionOfAnotherPlayer { player: *player });
+                }
+                let mut translated = Vec::with_capacity(arguments.len());
+                for &ObservedArgument::Card(card) in arguments {
+                    let id = observer
+                        .card_instance(card)
+                        .ok_or(ObservationError::UnknownObservedCard { card })?;
+                    translated.push(Argument::Card(id));
+                }
+                Ok(Action::Declared {
+                    player: *player,
+                    action: action.clone(),
+                    arguments: translated,
+                })
+            }
         }
-        let mut arguments = Vec::with_capacity(action.arguments.len());
-        for &ObservedArgument::Card(card) in &action.arguments {
-            let id = observer
-                .card_instance(card)
-                .ok_or(ObservationError::UnknownObservedCard { card })?;
-            arguments.push(Argument::Card(id));
-        }
-        Ok(Action {
-            player: action.player,
-            action: action.action.clone(),
-            arguments,
-        })
     }
 }

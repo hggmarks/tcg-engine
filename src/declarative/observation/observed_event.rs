@@ -9,6 +9,7 @@ use std::fmt;
 use super::observed_state::ObservedGameState;
 use super::viewer::ObservedCard;
 use crate::card_catalog::CardId;
+use crate::declarative::decision::DecisionKind;
 use crate::declarative::state::Loss;
 use crate::player::PlayerId;
 use crate::ruleset_definition::{ActionId, FieldValue, PhaseId, StateName, ZoneId};
@@ -85,17 +86,42 @@ pub enum ObservedEvent {
     DrawFromEmptyZone { player: PlayerId, zone: ZoneId },
     /// The Game ended: who lost and why.
     GameEnded { losses: Vec<Loss> },
+    /// A decision became pending: who is asked and what kind. Never the Paused Resolution.
+    DecisionPending {
+        decider: PlayerId,
+        kind: DecisionKind,
+    },
+    /// The Deciding Player answered the pending decision.
+    DecisionAnswered {
+        player: PlayerId,
+        answer: ObservedAnswer,
+    },
 }
 
-/// The Action as a Viewer observes it taken (ADR-0029): the acting Player, the declared action and
-/// each card argument as an Observed Card or hidden. It is the observed form of the `Action` of a
-/// transition, not an Action the Viewer can take.
+/// The Action as a Viewer observes it taken (ADR-0029): the acting Player and, for a Declared
+/// Action, the declared action and each card argument as an Observed Card or hidden; for an
+/// Answer, its option index. It is the observed form of the `Action` of a transition, not an
+/// Action the Viewer can take.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TakenAction {
-    pub player: PlayerId,
-    pub action: ActionId,
-    /// One per argument of the Action, in order.
-    pub arguments: Vec<TakenArgument>,
+pub enum TakenAction {
+    Declared {
+        player: PlayerId,
+        action: ActionId,
+        /// One per argument of the Action, in order.
+        arguments: Vec<TakenArgument>,
+    },
+    Answer {
+        player: PlayerId,
+        answer: ObservedAnswer,
+    },
+}
+
+/// An Answer as a Viewer observes it (ADR-0033): the index of the option picked. Every Viewer sees
+/// every Answer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ObservedAnswer {
+    /// The option at this index.
+    Option(u32),
 }
 
 /// One card argument of a Taken Action.

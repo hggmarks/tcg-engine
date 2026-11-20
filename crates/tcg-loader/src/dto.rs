@@ -461,6 +461,16 @@ pub(crate) enum EffectDto {
         then: Vec<EffectDto>,
         otherwise: Vec<EffectDto>,
     },
+    ChooseOne(ChooseOneDto),
+}
+
+/// `choose_one: { decider, options }`: each option is a list of effects. The engine checks the
+/// decider and that there are at least two options.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ChooseOneDto {
+    decider: String,
+    options: Vec<Vec<EffectDto>>,
 }
 
 #[derive(Deserialize)]
@@ -494,6 +504,7 @@ const EFFECT_KEYS: &[&str] = &[
     "set_state",
     "add_state",
     "draw",
+    "choose_one",
     "if",
     "then",
     "else",
@@ -528,6 +539,7 @@ impl<'de> Deserialize<'de> for EffectDto {
                         "set_state" => Some(EffectDto::SetState(map.next_value()?)),
                         "add_state" => Some(EffectDto::AddState(map.next_value()?)),
                         "draw" => Some(EffectDto::Draw(map.next_value()?)),
+                        "choose_one" => Some(EffectDto::ChooseOne(map.next_value()?)),
                         "if" => {
                             condition = Some(map.next_value()?);
                             None
@@ -980,6 +992,10 @@ impl EffectDto {
                 condition: condition.into_draft(),
                 then: Self::into_drafts(then),
                 otherwise: Self::into_drafts(otherwise),
+            },
+            Self::ChooseOne(choice) => EffectDraft::ChooseOne {
+                decider: choice.decider,
+                options: choice.options.into_iter().map(Self::into_drafts).collect(),
             },
         }
     }

@@ -10,6 +10,7 @@ mod action;
 mod action_effects;
 mod arguments;
 mod creation;
+mod decision;
 mod event;
 mod execution;
 mod expression;
@@ -24,11 +25,15 @@ mod turn_cycle;
 
 pub use action::{Action, Argument, Rejection};
 pub use creation::{DeclarativeRuleset, GameCreation, GameCreationError};
+pub use decision::{
+    Answer, Branch, BranchKind, DecisionKind, EffectPath, PausedResolution, PendingDecision,
+    QueuedTrigger,
+};
 pub use event::Event;
 pub use observation::{
-    ObservationError, ObservedAction, ObservedApplyError, ObservedArgument, ObservedCard,
-    ObservedEvent, ObservedGameState, ObservedTransition, ObservedZone, Observer, TakenAction,
-    TakenArgument, Viewer, VisibleCard,
+    ObservationError, ObservedAction, ObservedAnswer, ObservedApplyError, ObservedArgument,
+    ObservedCard, ObservedEvent, ObservedGameState, ObservedPendingDecision, ObservedTransition,
+    ObservedZone, Observer, TakenAction, TakenArgument, Viewer, VisibleCard,
 };
 pub use record::{GameRecord, Replay, ReplayError};
 pub use state::{

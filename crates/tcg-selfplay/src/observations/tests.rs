@@ -284,10 +284,16 @@ fn the_relabelling_of_one_stream_is_the_same_every_time_and_keeps_the_action_and
         .record
         .actions()
         .iter()
-        .position(|action| action.action == ActionId::new("play_creature"))
+        .position(|action| {
+            matches!(
+                action,
+                tcg_engine::declarative::Action::Declared { action, .. }
+                    if *action == ActionId::new("play_creature")
+            )
+        })
         .expect("the Game plays a creature");
     let action = &game.record.actions()[index];
-    let acting = action.player;
+    let acting = action.player();
     let prior = &folded[index].state;
     let hand: BTreeSet<CardInstanceId> = prior
         .zone(acting, &ZoneId::new("hand"))
@@ -311,7 +317,10 @@ fn the_relabelling_of_one_stream_is_the_same_every_time_and_keeps_the_action_and
     assert_eq!(relabel_with(5), relabel_with(5));
 
     let played_card = {
-        let tcg_engine::declarative::Argument::Card(card) = action.arguments[0];
+        let tcg_engine::declarative::Action::Declared { arguments, .. } = action else {
+            panic!("the play is a Declared Action");
+        };
+        let tcg_engine::declarative::Argument::Card(card) = arguments[0];
         card
     };
     let position = events.traces[index]
@@ -322,7 +331,10 @@ fn the_relabelling_of_one_stream_is_the_same_every_time_and_keeps_the_action_and
     for stream in 0..16 {
         let relabelled = relabel_with(stream);
         let relabelled_action = relabelled.action.as_ref().expect("the Action is kept");
-        let tcg_engine::declarative::Argument::Card(argument) = relabelled_action.arguments[0];
+        let tcg_engine::declarative::Action::Declared { arguments, .. } = relabelled_action else {
+            panic!("the relabelled play is a Declared Action");
+        };
+        let tcg_engine::declarative::Argument::Card(argument) = arguments[0];
         // The Action's card is mapped as the trace's: the same position moves the same card.
         assert!(
             matches!(

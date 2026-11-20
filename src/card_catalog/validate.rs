@@ -404,6 +404,14 @@ fn find_end_turn(effects: &[EffectDraft], list: &DefinitionPath) -> Option<Defin
                     return Some(found);
                 }
             }
+            EffectDraft::ChooseOne { options, .. } => {
+                let list = at.key("choose_one").key("options");
+                for (position, option) in options.iter().enumerate() {
+                    if let Some(found) = find_end_turn(option, &list.clone().index(position)) {
+                        return Some(found);
+                    }
+                }
+            }
             EffectDraft::Move { .. }
             | EffectDraft::SetState { .. }
             | EffectDraft::AddState { .. }

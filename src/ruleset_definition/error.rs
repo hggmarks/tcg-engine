@@ -162,6 +162,16 @@ pub enum DefinitionErrorKind {
     /// An action that no phase lists, such as `actions[idle]`; every action of a ruleset without a
     /// `turn` is one.
     UnlistedAction,
+    /// A `choose_one` outside a Triggered Card Effect's `do`, at its own path, such as
+    /// `actions[x].effects[0].choose_one` (also nested in an `if`): a Choice asks the Deciding
+    /// Player while a Resolution is paused, which only a Triggered Card Effect can be (ADR-0033).
+    ChoiceOutsideTriggeredEffect,
+    /// The `options` of a `choose_one`, such as `cards[owl].effects[0].do[0].choose_one.options`:
+    /// a Choice has at least 2 options, and `found` is how many it has.
+    TooFewOptions { found: u64 },
+    /// The `decider` of a `choose_one`, such as `cards[owl].effects[0].do[0].choose_one.decider`:
+    /// only `controller` and `opponent` exist.
+    UnknownDecider { decider: String },
 }
 
 impl fmt::Display for DefinitionErrorKind {
@@ -289,6 +299,17 @@ impl fmt::Display for DefinitionErrorKind {
                 "the action phase lists no action that ends the Turn, so the Game could not leave it"
             ),
             Self::UnlistedAction => write!(f, "no phase lists this action, so it could never be taken"),
+            Self::ChoiceOutsideTriggeredEffect => write!(
+                f,
+                "`choose_one` is only allowed in the `do` of a triggered Card Effect"
+            ),
+            Self::TooFewOptions { found } => {
+                write!(f, "a `choose_one` needs at least 2 options, found {found}")
+            }
+            Self::UnknownDecider { decider } => write!(
+                f,
+                "`{decider}` is not a decider; the deciders are `controller` and `opponent`"
+            ),
             Self::UnsupportedFieldType { field_type } => {
                 write!(f, "the field type {field_type:?} is not supported yet")
             }

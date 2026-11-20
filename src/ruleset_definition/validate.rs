@@ -14,10 +14,10 @@ use super::expression::{
     check_condition, fail, params_read, validate_card_ref, validate_value_ref, Refs, ScopedParam,
 };
 use super::model::{
-    ActionDefinition, ActionId, AutomaticStep, CardType, CardTypeId, Condition, Cost, DeckInput,
-    DeckInputId, Effect, EffectPlayer, Expression, FieldName, FieldSchema, FieldType, Initializer,
-    InstanceStateSchema, Loser, Meta, Param, ParamAlternative, ParamName, ParamOwner, Parameters,
-    Phase, PhaseId, PhaseKind, PlayerCount, PlayerPosition, PlayerSelector, Position,
+    ActionDefinition, ActionId, AutomaticStep, CardType, CardTypeId, Condition, Cost, Decider,
+    DeckInput, DeckInputId, Effect, EffectPlayer, Expression, FieldName, FieldSchema, FieldType,
+    Initializer, InstanceStateSchema, Loser, Meta, Param, ParamAlternative, ParamName, ParamOwner,
+    Parameters, Phase, PhaseId, PhaseKind, PlayerCount, PlayerPosition, PlayerSelector, Position,
     RulesetDefinition, RulesetId, RulesetVersion, SetupStep, StateName, TurnStructure,
     WinCondition, WinConditionId, WinConditionWhen, Zone, ZoneId,
 };
@@ -723,6 +723,40 @@ fn validate_effect(
                 then,
                 otherwise,
             })
+        }
+        EffectDraft::ChooseOne { decider, options } => {
+            let at = at.key("choose_one");
+            // Only a Card Effect, which has `self`, can pause for a decision (ADR-0033).
+            if !refs.has_self {
+                return fail(at, DefinitionErrorKind::ChoiceOutsideTriggeredEffect);
+            }
+            let decider = match decider.as_str() {
+                "controller" => Decider::Controller,
+                "opponent" => Decider::Opponent,
+                other => {
+                    return fail(
+                        at.key("decider"),
+                        DefinitionErrorKind::UnknownDecider {
+                            decider: other.to_string(),
+                        },
+                    )
+                }
+            };
+            let list = at.key("options");
+            if options.len() < 2 {
+                return fail(
+                    list,
+                    DefinitionErrorKind::TooFewOptions {
+                        found: u64::try_from(options.len()).unwrap_or(u64::MAX),
+                    },
+                );
+            }
+            let options = options
+                .iter()
+                .enumerate()
+                .map(|(index, option)| validate_effects(option, refs, list.clone().index(index)))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(Effect::ChooseOne { decider, options })
         }
     }
 }

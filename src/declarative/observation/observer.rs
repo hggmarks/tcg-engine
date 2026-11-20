@@ -120,7 +120,9 @@ impl Observer {
             | Event::TurnBegan { .. }
             | Event::PhaseBegan { .. }
             | Event::DrawFromEmptyZone { .. }
-            | Event::GameEnded { .. } => Ok(Sight::NoCard),
+            | Event::GameEnded { .. }
+            | Event::DecisionPending { .. }
+            | Event::DecisionAnswered { .. } => Ok(Sight::NoCard),
         }
     }
 

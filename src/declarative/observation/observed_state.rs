@@ -9,6 +9,7 @@ use super::observer::{sees, Observer};
 use super::viewer::{ObservedCard, Viewer};
 use crate::card_catalog::CardId;
 use crate::declarative::creation::DeclarativeRuleset;
+use crate::declarative::decision::DecisionKind;
 use crate::declarative::state::{GameState, TerminalOutcome};
 use crate::player::{PlayerId, PlayerOrder};
 use crate::ruleset_definition::{FieldValue, PhaseId, StateName, ZoneId};
@@ -24,8 +25,31 @@ pub struct ObservedGameState {
     turn_number: Option<TurnNumber>,
     phase: Option<PhaseId>,
     outcome: Option<TerminalOutcome>,
+    pending: Option<ObservedPendingDecision>,
     zones: Vec<(PlayerId, Vec<ObservedZone>)>,
     cards: Vec<VisibleCard>,
+}
+
+/// The decision a Resolution is paused at, as every Viewer sees it (ADR-0033): who is asked and
+/// what kind. Never the Paused Resolution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ObservedPendingDecision {
+    pub decider: PlayerId,
+    pub kind: DecisionKind,
+}
+
+impl ObservedGameState {
+    /// The decision a Resolution is paused at; `None` when nothing is pending.
+    pub fn pending_decision(&self) -> Option<&ObservedPendingDecision> {
+        self.pending.as_ref()
+    }
+
+    /// The Player who acts next: the one asked while a decision is pending, else the Active Player.
+    pub fn deciding_player(&self) -> PlayerId {
+        self.pending
+            .as_ref()
+            .map_or(self.active_player, |pending| pending.decider)
+    }
 }
 
 impl ObservedGameState {
@@ -106,6 +130,15 @@ impl ObservedGameState {
             return Err(ObservedApplyError::GameAlreadyEnded);
         }
         let misfit = ObservedApplyError::EventDoesNotFit;
+        // While a decision is pending only its Answer, or the end of the Game, applies.
+        if self.pending.is_some()
+            && !matches!(
+                event,
+                ObservedEvent::DecisionAnswered { .. } | ObservedEvent::GameEnded { .. }
+            )
+        {
+            return Err(misfit);
+        }
         match event {
             ObservedEvent::CardCreated {
                 card,
@@ -300,6 +333,25 @@ impl ObservedGameState {
                 let outcome =
                     TerminalOutcome::of(&self.player_order, losses).map_err(|_| misfit)?;
                 self.outcome = Some(outcome);
+                self.pending = None;
+                Ok(())
+            }
+            ObservedEvent::DecisionPending { decider, kind } => {
+                if !self.player_order.contains(*decider) {
+                    return Err(misfit);
+                }
+                self.pending = Some(ObservedPendingDecision {
+                    decider: *decider,
+                    kind: *kind,
+                });
+                Ok(())
+            }
+            ObservedEvent::DecisionAnswered { player, .. } => {
+                let pending = self.pending.as_ref().ok_or(misfit)?;
+                if pending.decider != *player {
+                    return Err(misfit);
+                }
+                self.pending = None;
                 Ok(())
             }
         }
@@ -527,6 +579,12 @@ pub(super) fn observe(
         turn_number: state.turn_number(),
         phase: state.phase().cloned(),
         outcome: state.outcome().cloned(),
+        pending: state
+            .pending_decision()
+            .map(|pending| ObservedPendingDecision {
+                decider: pending.decider(),
+                kind: pending.kind(),
+            }),
         zones,
         cards,
     })

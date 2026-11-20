@@ -1,6 +1,7 @@
 //! The Events of the declarative Ruleset. They are generic: they name cards, Players and zones, and
 //! know nothing about any particular game (ADR-0010).
 
+use super::decision::{Answer, DecisionKind, PausedResolution};
 use super::state::{CardInstanceId, Loss};
 use crate::card_catalog::CardId;
 use crate::player::PlayerId;
@@ -60,4 +61,15 @@ pub enum Event {
     /// sets the Terminal Outcome (the winners are the other Players), and no Event applies after
     /// it. It is the last Event of the trace that emits it (ADR-0014).
     GameEnded { losses: Vec<Loss> },
+    /// A Resolution paused for a decision: `decider` must answer. It is the last Event of the trace
+    /// that emits it, before `GameEnded` if the same transition ends the Game. While it is applied,
+    /// only `DecisionAnswered` and `GameEnded` apply (ADR-0033).
+    DecisionPending {
+        decider: PlayerId,
+        kind: DecisionKind,
+        paused: PausedResolution,
+    },
+    /// The Deciding Player answered the pending decision. It is the first Event of the trace of an
+    /// Answer.
+    DecisionAnswered { player: PlayerId, answer: Answer },
 }

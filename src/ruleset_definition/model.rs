@@ -579,6 +579,21 @@ pub enum Effect {
         then: Vec<Effect>,
         otherwise: Vec<Effect>,
     },
+    /// An Option Choice (ADR-0033): `decider` picks one of `options`, at least two effect lists
+    /// (any of them may be empty), and the chosen one runs. Only a Triggered Card Effect has it.
+    ChooseOne {
+        decider: Decider,
+        options: Vec<Vec<Effect>>,
+    },
+}
+
+/// The Player a Choice asks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Decider {
+    /// The owner of `self`, the carrying card.
+    Controller,
+    /// The other Player: the controller's opponent.
+    Opponent,
 }
 
 /// The player an effect acts for.
