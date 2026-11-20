@@ -21,6 +21,8 @@ The second half of the Observer (ticket [24], #64, of the Observations roadmap #
 | `CardStateChanged` | kept | `CardStateChanged`: handle, state, value |
 | `CardStateChanged` | unseen | none |
 | `TurnBegan`, `PhaseBegan`, `DrawFromEmptyZone`, `GameEnded` | | the same, always |
+| `DecisionPending` *(added by ADR-0033)* | | `DecisionPending`: decider and kind, always; never the Paused Resolution |
+| `DecisionAnswered` *(added by ADR-0033)* | | `DecisionAnswered`: the Player and the `ObservedAnswer` (the option index), always |
 
 A seen shuffle maps each id through the Observer; an id with no handle is `ObserverOutOfStep`.
 

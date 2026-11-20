@@ -1271,6 +1271,21 @@ fn a_choice_in_a_step_is_a_load_error() {
     );
     // The syntax stage reports it before any engine check.
     assert!(parse_ruleset_draft(&yaml).is_err());
+
+    // The same for a setup step.
+    let yaml = edit(
+        EFFECTS_RULESET,
+        "  - shuffle: { player: each, zone: deck }\n",
+        "  - choose_one: { decider: controller, options: [ [], [] ] }\n  - shuffle: { player: each, zone: deck }\n",
+    );
+    let error = yaml_error(&yaml);
+    assert_eq!(
+        error.kind,
+        YamlErrorKind::UnknownKey {
+            key: "choose_one".to_string()
+        }
+    );
+    assert_eq!(error.path, path_of().key("setup").index(0));
 }
 
 fn sage_yaml(effects: &str) -> String {
@@ -1400,6 +1415,87 @@ fn an_end_turn_inside_an_option_is_rejected_like_one_in_the_do() {
             kind: CatalogErrorKind::EndTurnInCardEffect,
         }
     );
+}
+
+/// The Effects Ruleset with `players` Players.
+fn effects_definition_of(players: u32) -> tcg_engine::ruleset_definition::RulesetDefinition {
+    load_ruleset_definition(&edit(
+        EFFECTS_RULESET,
+        "  players: 2",
+        &format!("  players: {players}"),
+    ))
+    .expect("the test-only ruleset loads")
+}
+
+#[test]
+fn an_opponent_decider_needs_exactly_two_players() {
+    use tcg_engine::ruleset_definition::RulesetDefinition;
+
+    let direct = format!(
+        "      - {{ on: {{ enter: field }}, do: [ {} ] }}\n",
+        choose("opponent", &[&[DRAW], &[]])
+    );
+    // Nested in an `if` and an option, the path is still the `decider` of that Choice.
+    let inner = choose("opponent", &[&[], &[]]);
+    let outer = choose("controller", &[&[inner.as_str()], &[]]);
+    let nested = format!(
+        "      - {{ on: {{ enter: field }}, do: [ {{ if: true, then: [ {outer} ] }} ] }}\n"
+    );
+    let error_of = |definition: &RulesetDefinition, effects: &str| match load_card_catalog(
+        definition,
+        &sage_yaml(effects),
+    ) {
+        Err(CatalogLoadError::Catalog(error)) => error,
+        other => panic!("expected a catalog error, got {other:?}"),
+    };
+    for players in [1, 3] {
+        let definition = effects_definition_of(players);
+        assert_eq!(
+            error_of(&definition, &direct),
+            invalid_card_effect(
+                sage_choice_path().key("decider"),
+                DefinitionErrorKind::OpponentDeciderNeedsTwoPlayers {
+                    players: u64::from(players)
+                }
+            ),
+            "{players} Players"
+        );
+        let at = path_of()
+            .key("cards")
+            .id("sage")
+            .key("effects")
+            .index(0)
+            .key("do")
+            .index(0)
+            .key("then")
+            .index(0)
+            .key("choose_one")
+            .key("options")
+            .index(0)
+            .index(0)
+            .key("choose_one")
+            .key("decider");
+        assert_eq!(
+            error_of(&definition, &nested),
+            invalid_card_effect(
+                at,
+                DefinitionErrorKind::OpponentDeciderNeedsTwoPlayers {
+                    players: u64::from(players)
+                }
+            ),
+            "{players} Players, nested"
+        );
+        // A controller decider needs no second Player.
+        let controller = format!(
+            "      - {{ on: {{ enter: field }}, do: [ {} ] }}\n",
+            choose("controller", &[&[DRAW], &[]])
+        );
+        load_card_catalog(&definition, &sage_yaml(&controller))
+            .expect("a controller decider loads whatever the player count");
+    }
+    // With exactly 2 Players it loads.
+    load_card_catalog(&effects_definition_of(2), &sage_yaml(&direct))
+        .expect("an opponent decider loads with 2 Players");
 }
 
 #[test]

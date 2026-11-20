@@ -425,11 +425,14 @@ fn ends_the_turn(action: &ActionDefinition) -> bool {
 /// effects of a Card Effect with the machinery of ADR-0015 and ADR-0016.
 pub(crate) struct SelfScope<'a> {
     refs: Refs<'a>,
+    /// The number of Players of the ruleset: `decider: opponent` is defined for exactly 2.
+    players: u32,
 }
 
 impl<'a> SelfScope<'a> {
     pub(crate) fn new(definition: &'a RulesetDefinition, card_type: &CardTypeId) -> Self {
         Self {
+            players: definition.parameters().player_count().get(),
             refs: Refs {
                 zones: definition.zones(),
                 card_types: definition.card_types(),
@@ -458,8 +461,59 @@ impl<'a> SelfScope<'a> {
         effects: &[EffectDraft],
         at: DefinitionPath,
     ) -> Result<Vec<Effect>, DefinitionError> {
-        validate_effects(effects, &self.refs, at)
+        let checked = validate_effects(effects, &self.refs, at.clone())?;
+        if self.players != 2 {
+            if let Some(decider) = first_opponent_decider(&checked, &at) {
+                return fail(
+                    decider,
+                    DefinitionErrorKind::OpponentDeciderNeedsTwoPlayers {
+                        players: u64::from(self.players),
+                    },
+                );
+            }
+        }
+        Ok(checked)
     }
+}
+
+/// The path of the `decider` of the first Choice with `decider: opponent` in `effects`, in document
+/// order (a Choice before its options, `then` before `else`). `list` is the path of `effects`.
+fn first_opponent_decider(effects: &[Effect], list: &DefinitionPath) -> Option<DefinitionPath> {
+    for (index, effect) in effects.iter().enumerate() {
+        let at = list.clone().index(index);
+        match effect {
+            Effect::If {
+                then, otherwise, ..
+            } => {
+                if let Some(found) = first_opponent_decider(then, &at.clone().key("then")) {
+                    return Some(found);
+                }
+                if let Some(found) = first_opponent_decider(otherwise, &at.key("else")) {
+                    return Some(found);
+                }
+            }
+            Effect::ChooseOne { decider, options } => {
+                let choice = at.key("choose_one");
+                if *decider == Decider::Opponent {
+                    return Some(choice.key("decider"));
+                }
+                let lists = choice.key("options");
+                for (position, option) in options.iter().enumerate() {
+                    if let Some(found) =
+                        first_opponent_decider(option, &lists.clone().index(position))
+                    {
+                        return Some(found);
+                    }
+                }
+            }
+            Effect::EndTurn
+            | Effect::Move { .. }
+            | Effect::SetState { .. }
+            | Effect::AddState { .. }
+            | Effect::Draw { .. } => {}
+        }
+    }
+    None
 }
 
 /// What a param is validated against: the zones, the card types and the params before it.

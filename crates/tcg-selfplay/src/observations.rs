@@ -235,36 +235,7 @@ pub(crate) fn relabel(
                         *state = own_state.clone();
                     }
                 }
-                Event::CardCreated { .. } => {}
-                Event::CardMoved { card, .. } | Event::CardStateChanged { card, .. } => {
-                    *card = map(*card);
-                }
-                Event::ZoneShuffled { order, .. } => {
-                    for card in order.iter_mut() {
-                        *card = map(*card);
-                    }
-                }
-                // The Paused Resolution names cards too: its trigger, its queue and the Events it
-                // carries are relabelled through the same permutation.
-                Event::DecisionPending { paused, .. } => {
-                    paused.trigger.card = map(paused.trigger.card);
-                    for queued in &mut paused.queue {
-                        queued.card = map(queued.card);
-                    }
-                    for carried in &mut paused.unscanned {
-                        match carried {
-                            Event::CardMoved { card, .. }
-                            | Event::CardStateChanged { card, .. } => *card = map(*card),
-                            Event::ZoneShuffled { order, .. } => {
-                                for card in order.iter_mut() {
-                                    *card = map(*card);
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-                _ => {}
+                other => relabel_ids(other, &map),
             }
         }
     }
@@ -314,6 +285,38 @@ pub(crate) fn relabel(
     Relabelled {
         events: out,
         action,
+    }
+}
+
+/// Maps every card id an Event names through `map`. The match is exhaustive, so a new Event must
+/// say whether it names cards. A `CardCreated` is relabelled by position, where it is created, not
+/// here. The Paused Resolution of a `DecisionPending` names cards too, its trigger, its queue and
+/// the Events it carries (ADR-0033), and they go through the same permutation.
+fn relabel_ids(event: &mut Event, map: &impl Fn(CardInstanceId) -> CardInstanceId) {
+    match event {
+        Event::CardMoved { card, .. } | Event::CardStateChanged { card, .. } => {
+            *card = map(*card);
+        }
+        Event::ZoneShuffled { order, .. } => {
+            for card in order.iter_mut() {
+                *card = map(*card);
+            }
+        }
+        Event::DecisionPending { paused, .. } => {
+            paused.trigger.card = map(paused.trigger.card);
+            for queued in &mut paused.queue {
+                queued.card = map(queued.card);
+            }
+            for carried in &mut paused.unscanned {
+                relabel_ids(carried, map);
+            }
+        }
+        Event::CardCreated { .. }
+        | Event::TurnBegan { .. }
+        | Event::PhaseBegan { .. }
+        | Event::DrawFromEmptyZone { .. }
+        | Event::GameEnded { .. }
+        | Event::DecisionAnswered { .. } => {}
     }
 }
 

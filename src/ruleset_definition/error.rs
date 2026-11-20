@@ -172,6 +172,10 @@ pub enum DefinitionErrorKind {
     /// The `decider` of a `choose_one`, such as `cards[owl].effects[0].do[0].choose_one.decider`:
     /// only `controller` and `opponent` exist.
     UnknownDecider { decider: String },
+    /// A `decider: opponent`, at its `decider`, such as `cards[owl].effects[0].do[0].choose_one.decider`,
+    /// in a ruleset that does not have exactly 2 Players: "the controller's opponent" is defined for
+    /// two Players only, and `players` is how many the ruleset has.
+    OpponentDeciderNeedsTwoPlayers { players: u64 },
 }
 
 impl fmt::Display for DefinitionErrorKind {
@@ -306,6 +310,10 @@ impl fmt::Display for DefinitionErrorKind {
             Self::TooFewOptions { found } => {
                 write!(f, "a `choose_one` needs at least 2 options, found {found}")
             }
+            Self::OpponentDeciderNeedsTwoPlayers { players } => write!(
+                f,
+                "`decider: opponent` needs exactly 2 players, the ruleset has {players}"
+            ),
             Self::UnknownDecider { decider } => write!(
                 f,
                 "`{decider}` is not a decider; the deciders are `controller` and `opponent`"
