@@ -223,6 +223,9 @@ fn state_difference(recomputed: &GameState, next: &GameState) -> Option<String> 
     if recomputed.outcome() != next.outcome() {
         return Some("the Terminal Outcome differs".to_string());
     }
+    if recomputed.pending_decision() != next.pending_decision() {
+        return Some("the Pending Decision differs".to_string());
+    }
     let (left, right) = (recomputed.cards(), next.cards());
     if left.len() != right.len() {
         return Some(format!(

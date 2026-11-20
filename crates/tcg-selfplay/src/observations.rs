@@ -559,6 +559,13 @@ fn observed_state_difference(
             other.outcome()
         ));
     }
+    if one.pending_decision() != other.pending_decision() {
+        return Some(format!(
+            "the Pending Decision is {:?} in {one_name} and {:?} in {other_name}",
+            one.pending_decision(),
+            other.pending_decision()
+        ));
+    }
     if one.players() != other.players() {
         return Some(format!(
             "the Players are {:?} in {one_name} and {:?} in {other_name}",
