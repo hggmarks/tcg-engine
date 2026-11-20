@@ -280,10 +280,10 @@ A declared action of the ruleset: an id, a list of Action Parameters, a list of 
 A card an Action supplies: a name unique within its action and one or more Param Alternatives. Written as `{ name, zone, card_type, owner?, where? }` (one alternative) or `{ name, one_of: [...] }`. Arguments bind to parameters by position; the card must fit one of the alternatives.
 
 **Param Alternative**:
-One way to fill an Action Parameter: `{ zone, card_type, owner?, where? }`. The card is an instance of that card type in that zone of its owner, who is the acting Player (`owner` absent) or an Opponent (`owner: opponent`), and the Where Condition holds. The first alternative the card fits binds it. A parameter's possible card types are those of its alternatives, in order, each once; a Ref to it must resolve on every one of them.
+One way to fill an Action Parameter: `{ zone, card_type, owner?, where? }`. The card is an instance of that card type in that zone of its owner, who is the acting Player (`owner` absent) or an Opponent (`owner: opponent`), and the Where Condition holds. The first alternative the card fits binds it; an alternative whose Where Condition overflows a derived read does not fit (ADR-0032). A parameter's possible card types are those of its alternatives, in order, each once; a Ref to it must resolve on every one of them.
 
 **Where Condition**:
-The bool Expression `where` of a Param Alternative. It reads its own parameter, typed as that alternative's card type alone, and the parameters declared before it, on the GameState before the costs are paid.
+The bool Expression `where` of a Param Alternative. It reads its own parameter, typed as that alternative's card type alone, and the parameters declared before it, on the GameState before the costs are paid. If it overflows a derived read, the alternative does not fit when the parameter has several alternatives, and the overflow itself (`DerivedValueOverflow`) is the Rejection when it has one (ADR-0032).
 
 **Opponent**:
 Any Player other than the acting Player. With two Players it is the other one; the engine does not assume two.
@@ -298,7 +298,7 @@ The card type an expression Win Condition is about: the first name of its Refs (
 The Action Effect `add_state: { card, state, amount }`. It adds the integer literal `amount` to an int instance state with checked arithmetic: an overflow in either direction is a State Overflow Rejection, and a sum equal to the current value emits no Event.
 
 **If Effect**:
-The Action Effect `if: <expression>`, `then: [effects]` and an optional `else: [effects]`, siblings of one list element, run by the Expression at the moment the effect runs. When the condition is exactly `is_card_type: [<param>, T]` it narrows the parameter's possible card types: to T in `then`, to the others in `else` (unchanged if removing T would leave none).
+The Action Effect `if: <expression>`, `then: [effects]` and an optional `else: [effects]`, siblings of one list element, run by the Expression at the moment the effect runs. When the condition is exactly `is_card_type: [<param>, T]` it narrows the parameter's possible card types: in `then` to those that are also T (an intersection, in the parameter's order; none is a load error, Impossible Card Type, ADR-0032), in `else` to the others (unchanged if removing T would leave none).
 
 **Argument**:
 The value an Action supplies for one Action Parameter; today only a Card Instance Id.
@@ -416,6 +416,9 @@ A Rejection: the card of an Argument has the owner, zone and card type of a para
 
 **No Alternative Matched**:
 A Rejection: the parameter has several alternatives and the card of the Argument fits none. For one alternative the Rejection is the first check that fails, in the order owner, zone, card type, where.
+
+**Impossible Card Type**:
+A load error (`ImpossibleCardType`), not a Rejection: the `is_card_type` of an `if` condition tests a Ref for a card type none of the Ref's possible card types is, so narrowing would leave it none. It is reported at the test, `...if.is_card_type` (ADR-0032).
 
 **State Overflow**:
 A Rejection: an Add State would take an int instance state beyond what an int can hold, in either direction. The GameState is unchanged.

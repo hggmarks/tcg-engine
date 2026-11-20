@@ -616,6 +616,78 @@ fn is_card_type_narrows_the_possible_card_types_of_an_if_effect() {
     )]));
 }
 
+#[test]
+fn a_state_only_an_excluded_card_type_declares_is_a_load_error_after_narrowing() {
+    // `target` is a creature or a Leader. Inside `is_card_type: [target, leader]` it can only be a
+    // Leader, and `recently_played` is a state only creatures declare.
+    assert_invalid(
+        with_effects(vec![if_then(
+            is_card_type("target", "leader"),
+            vec![set_state("target", "recently_played", true)],
+            vec![],
+        )]),
+        in_attack()
+            .key("effects")
+            .index(0)
+            .key("then")
+            .index(0)
+            .key("set_state")
+            .key("state"),
+        dangling(ReferenceTarget::InstanceState, "recently_played"),
+    );
+}
+
+#[test]
+fn narrowing_to_a_card_type_the_param_can_never_have_is_a_load_error() {
+    // `attacker` is only ever a creature: testing it for a Leader leaves no card type, which is an
+    // error at the test, never a silent retype that would make `current_life` readable on it.
+    let impossible = DefinitionErrorKind::ImpossibleCardType {
+        param: "attacker".to_string(),
+        card_type: "leader".to_string(),
+    };
+    assert_invalid(
+        with_effects(vec![if_then(
+            is_card_type("attacker", "leader"),
+            vec![add_state("attacker", "current_life", -1)],
+            vec![],
+        )]),
+        in_attack()
+            .key("effects")
+            .index(0)
+            .key("if")
+            .key("is_card_type"),
+        impossible.clone(),
+    );
+    // Nested, at the path of the nested test.
+    assert_invalid(
+        with_effects(vec![if_then(
+            boolean(true),
+            vec![],
+            vec![if_then(is_card_type("attacker", "leader"), vec![], vec![])],
+        )]),
+        in_attack()
+            .key("effects")
+            .index(0)
+            .key("else")
+            .index(0)
+            .key("if")
+            .key("is_card_type"),
+        impossible,
+    );
+    // A card type the param can have is fine, as is a test that is not an `if` condition: there an
+    // impossible type is simply false.
+    loaded(with_effects(vec![if_then(
+        is_card_type("target", "leader"),
+        vec![],
+        vec![],
+    )]));
+    loaded(with_effects(vec![if_then(
+        ExpressionDraft::And(vec![is_card_type("attacker", "leader")]),
+        vec![],
+        vec![],
+    )]));
+}
+
 // ---- types of expressions
 
 #[test]
@@ -1245,6 +1317,14 @@ fn the_new_rejections_and_definition_errors_have_a_display() {
         }
         .to_string(),
         &["attacker", "card"],
+    );
+    shown_contains(
+        DefinitionErrorKind::ImpossibleCardType {
+            param: "attacker".to_string(),
+            card_type: "leader".to_string(),
+        }
+        .to_string(),
+        &["attacker", "leader"],
     );
     shown_contains(
         DefinitionErrorKind::InconsistentReference {

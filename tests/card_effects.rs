@@ -490,6 +490,35 @@ fn end_turn_in_card_effect_is_rejected() {
     );
 }
 
+#[test]
+fn narrowing_self_to_a_card_type_the_card_can_never_have_is_a_load_error() {
+    // A goblin is a creature: `self` can never be a leader, so the test is an error at its own path
+    // and not a retype of `self`.
+    let mut effect = triggered();
+    effect.body = Some(vec![EffectDraft::If {
+        condition: ExpressionDraft::IsCardType {
+            card: self_ref("self"),
+            card_type: "leader".to_string(),
+        },
+        then: vec![move_self_to_trash()],
+        otherwise: vec![],
+    }]);
+    assert_eq!(
+        effects_error_of(vec![effect]),
+        invalid_card_effect(
+            effect_path()
+                .key("do")
+                .index(0)
+                .key("if")
+                .key("is_card_type"),
+            DefinitionErrorKind::ImpossibleCardType {
+                param: "self".to_string(),
+                card_type: "leader".to_string(),
+            },
+        )
+    );
+}
+
 // ---- modify
 
 #[test]
