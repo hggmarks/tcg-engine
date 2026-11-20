@@ -25,7 +25,9 @@ pub(super) fn fail<T>(
 #[derive(Debug, Clone)]
 pub(super) struct ScopedParam {
     pub(super) name: ParamName,
-    /// The possible card types, in declaration order, without repeats. Never empty.
+    /// The possible card types, in declaration order, without repeats. Never empty when the scope
+    /// is built; `Refs::narrowed` may leave it empty, and the caller rejects that as
+    /// `ImpossibleCardType` before the scope is used.
     pub(super) types: Vec<CardTypeId>,
 }
 
