@@ -645,3 +645,74 @@ fn an_observer_holding_a_handle_for_a_card_now_unseen_still_gets_the_unseen_card
         })
     );
 }
+
+/// The Effects Ruleset with its `trash` hidden. Test-only: nothing under `rulesets/` changes.
+fn effects_with_a_hidden_trash() -> DeclarativeRuleset {
+    ruleset_from(
+        &edit(
+            EFFECTS_RULESET,
+            "{ id: trash,       visibility: public, ordered: true }",
+            "{ id: trash,       visibility: hidden, ordered: true }",
+        ),
+        EFFECTS_CATALOG,
+    )
+}
+
+#[test]
+fn translating_a_handle_whose_card_left_sight_is_an_unknown_observed_card() {
+    // A `pyre_imp` enters the field, where its own `enter` trigger sends it on to the trash. With
+    // the trash hidden the card leaves the Viewer's sight in the same transition, and the handle
+    // it held in hand is retired (ADR-0028).
+    let ruleset = effects_with_a_hidden_trash();
+    let (creation, imp, seed) = (0..64)
+        .find_map(|seed| {
+            let creation = create(&ruleset, [EFFECTS_DECK_A, EFFECTS_DECK_B], seed);
+            let hand = creation.opening.state.zone(p(0), &zone("hand"))?.to_vec();
+            let imp = hand.into_iter().find(|card| {
+                creation
+                    .opening
+                    .state
+                    .card(*card)
+                    .is_some_and(|instance| instance.definition().as_str() == "pyre_imp")
+            })?;
+            Some((creation, imp, seed))
+        })
+        .expect("some Seed deals seat 0 a pyre_imp");
+    let state = creation.opening.state.clone();
+    let mut observer = ruleset
+        .observer(viewer(0), &creation.empty, creation.opening.trace.events())
+        .expect("the Observer is built");
+    let handle = observer
+        .observed_card(imp)
+        .unwrap_or_else(|| panic!("seed {seed}: seat 0 sees the pyre_imp in its hand"));
+
+    // Seat 0 lists `play_creature(h)` for the imp, and the listing translates back.
+    let listed = ruleset
+        .observed_legal_actions(&observer, &state)
+        .expect("the Observed Legal Actions are listed");
+    let old = observed_action(0, "play_creature", &[handle]);
+    assert!(listed.contains(&old), "seed {seed}: the imp can be played");
+    let play = action(0, "play_creature", &[imp]);
+    assert_eq!(ruleset.translate_action(&observer, &old), Ok(play.clone()));
+
+    // Take it: the card goes to the field and then to the (hidden) trash.
+    let transition = ruleset
+        .transition(&state, &play)
+        .expect("the play is accepted");
+    ruleset
+        .follow_transition(&mut observer, &state, &play, &transition)
+        .expect("the transition is followed");
+    assert_eq!(transition.state.zone_of(imp), Some(&zone("trash")));
+    assert_eq!(observer.observed_card(imp), None, "the card left sight");
+    assert_eq!(
+        observer.card_instance(handle),
+        None,
+        "the handle is retired"
+    );
+
+    // Translating the old Observed Action is a typed error naming the handle.
+    assert_eq!(
+        ruleset.translate_action(&observer, &old),
+        Err(ObservationError::UnknownObservedCard { card: handle })
+    );
+}

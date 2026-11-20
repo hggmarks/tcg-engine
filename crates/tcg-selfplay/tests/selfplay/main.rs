@@ -4,5 +4,6 @@
 mod common;
 mod effects_games;
 mod invariant_checks;
+mod observation_checks;
 mod record_and_replay;
 mod self_play_games;

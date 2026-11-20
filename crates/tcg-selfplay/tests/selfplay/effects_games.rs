@@ -811,3 +811,24 @@ fn the_small_ruleset_is_frozen_since_phase_c() {
     assert_ne!(EFFECTS_DECK_A, DECK_A);
     assert_ne!(EFFECTS_DECK_B, DECK_B);
 }
+
+#[test]
+fn effects_observing_never_changes_a_game() {
+    // The same Seed gives the same Game with every check on, with the engine's checks only, and
+    // with none. `EngineOnly` lists with rejections as `On` does, so even the count of Trigger Cap
+    // Rejections is the same; `Off` lists through `legal_actions` and sees none (ADR-0026).
+    let ruleset = effects();
+    let decks = effects_decks(&ruleset);
+    for seed in [7, 8, 9, 10, 11] {
+        let on = self_play(&ruleset, &decks, Seed(seed), MAX_STEPS, Checks::On).expect("played");
+        let engine_only =
+            self_play(&ruleset, &decks, Seed(seed), MAX_STEPS, Checks::EngineOnly).expect("played");
+        let off = self_play(&ruleset, &decks, Seed(seed), MAX_STEPS, Checks::Off).expect("played");
+        assert!(on == engine_only, "seed {seed}: On and EngineOnly");
+        assert!(on.record == off.record, "seed {seed}: records");
+        assert!(on.creation == off.creation, "seed {seed}: creation");
+        assert!(on.traces == off.traces, "seed {seed}: Event Traces");
+        assert!(on.state == off.state, "seed {seed}: final GameState");
+        assert_eq!(off.trigger_cap_rejections, 0);
+    }
+}

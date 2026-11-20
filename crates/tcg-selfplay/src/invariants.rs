@@ -17,7 +17,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use tcg_engine::card_catalog::CardId;
 use tcg_engine::deck_list::DeckList;
 use tcg_engine::declarative::{
-    Action, CardInstanceId, DeclarativeRuleset, Event, GameCreation, GameState, Rejection,
+    Action, CardInstanceId, DeclarativeRuleset, Event, GameCreation, GameState, Rejection, Viewer,
 };
 use tcg_engine::player::PlayerId;
 use tcg_engine::ruleset::{EventTrace, LegalActions, Ruleset};
@@ -56,12 +56,24 @@ pub enum Invariant {
     /// A rejected Action leaves the GameState it was offered untouched, emits no Event, and is
     /// rejected the same way when it is run again.
     RejectionLeavesStateIntact,
+    /// Observations stay consistent: applying the Observed Events of a transition to the previous
+    /// Observed GameState of a Viewer gives its next Observed GameState (ADR-0031).
+    ObservationsStayConsistent,
+    /// Observations ignore hidden cards: the Observed Step of a Viewer does not change when the
+    /// cards it cannot see are relabelled in the GameState and the trace alike (ADR-0031).
+    ObservationsIgnoreHiddenCards,
+    /// Observed Actions round-trip: translating a Viewer's Observed Legal Actions back gives
+    /// exactly its Actions from `legal_actions`, in the same order (ADR-0031).
+    ObservedActionsRoundTrip,
 }
 
 /// One violated [`Invariant`], with a human-readable account of the first offender.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InvariantViolation {
     pub invariant: Invariant,
+    /// The Viewer whose Observations violate the Invariant; `None` for the nine engine
+    /// Invariants, which no Viewer is involved in (ADR-0031).
+    pub viewer: Option<Viewer>,
     pub detail: String,
 }
 
@@ -151,6 +163,7 @@ pub fn check_recomputation(recomputed: &GameState, next: &GameState) -> Vec<Inva
     state_difference(recomputed, next)
         .map(|detail| InvariantViolation {
             invariant: Invariant::DerivedReadsDoNotLeak,
+            viewer: None,
             detail,
         })
         .into_iter()
@@ -181,6 +194,7 @@ pub fn check_rejection(
     detail
         .map(|detail| InvariantViolation {
             invariant: Invariant::RejectionLeavesStateIntact,
+            viewer: None,
             detail,
         })
         .into_iter()
@@ -268,7 +282,11 @@ fn collect(results: [(Invariant, Option<String>); 7]) -> Vec<InvariantViolation>
     results
         .into_iter()
         .filter_map(|(invariant, detail)| {
-            detail.map(|detail| InvariantViolation { invariant, detail })
+            detail.map(|detail| InvariantViolation {
+                invariant,
+                viewer: None,
+                detail,
+            })
         })
         .collect()
 }

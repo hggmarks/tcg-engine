@@ -1,6 +1,7 @@
 //! Plays one seeded Game of the Small Ruleset and one of the Effects Ruleset, prints a readable
 //! Game log of each, then reports the throughput of self-play in Games per second on both
-//! rulesets, with the invariant checks on and off.
+//! rulesets, with the checks off, with the nine engine Invariants only, and with all twelve (the
+//! three over Observations too): the difference is the cost of observing (ADR-0031).
 //!
 //! The log has one line per Action and, under it, one line per Event the Action caused. A trigger
 //! resolution is visible there: the Events of a triggered effect (a draw, a move) come after the
@@ -87,12 +88,13 @@ fn main() {
 
     for loaded in &rulesets {
         for (label, checks) in [
-            ("invariant checks on ", Checks::On),
-            ("invariant checks off", Checks::Off),
+            ("checks off", Checks::Off),
+            ("engine checks only", Checks::EngineOnly),
+            ("all checks", Checks::On),
         ] {
             let measured = measure(loaded, checks);
             println!(
-                "{:<15} {label}: {} Games, {} Actions (longest {}) in {:.3} s = {:.0} Games/s, {:.0} Actions/s",
+                "{:<15} {label:<18}: {} Games, {} Actions (longest {}) in {:.3} s = {:.0} Games/s, {:.0} Actions/s",
                 loaded.name,
                 measured.games,
                 measured.actions,

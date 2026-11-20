@@ -32,3 +32,12 @@ overflow-checks = true
 
 [profile.bench]
 overflow-checks = true
+
+# The observation checks of tcg-selfplay (ADR-0031) replay the whole Game at every step, which made
+# the debug test run slow. Only the optimisation level of the two crates changes, and only under
+# `cargo test`; overflow-checks stays on at the profile level.
+[profile.test.package.tcg-engine]
+opt-level = 2
+
+[profile.test.package.tcg-selfplay]
+opt-level = 2

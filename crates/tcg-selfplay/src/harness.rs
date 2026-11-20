@@ -10,14 +10,22 @@ use std::num::NonZeroU64;
 use tcg_engine::deck_list::DeckList;
 use tcg_engine::declarative::{
     Action, DeclarativeRuleset, Event, GameCreation, GameCreationError, GameRecord, GameState,
-    Rejection, Replay, ReplayError,
+    ObservedEvent, ObservedGameState, Observer, Rejection, Replay, ReplayError, Viewer,
 };
 use tcg_engine::random::{RandomState, Seed};
-use tcg_engine::ruleset::{EventTrace, LegalActions, Ruleset};
+use tcg_engine::ruleset::{EventTrace, LegalActions, Ruleset, Transition};
+
+mod observing;
+
+use observing::Observing;
 
 use crate::invariants::{
     check_opening, check_recomputation, check_rejection, check_transition, Invariant,
     InvariantViolation,
+};
+use crate::observations::{
+    check_hidden_cards_ignored, check_observed_actions, check_observed_consistency, ObservedStep,
+    ReplayedStep,
 };
 
 /// The constant the policy's generator is derived with: the policy draws from
@@ -30,7 +38,11 @@ pub const POLICY_STREAM: u64 = 0x706f_6c69_6379_5f31;
 /// throughput of the engine alone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Checks {
+    /// All twelve Invariants: the nine engine ones and the three over Observations (ADR-0031).
     On,
+    /// The nine engine Invariants without the observation checks. It exists so that the example
+    /// can measure the cost of observing.
+    EngineOnly,
     Off,
 }
 
@@ -125,6 +137,7 @@ pub fn self_play(
 ) -> Result<SelfPlayGame, Box<SelfPlayFailure>> {
     let checker = match checks {
         Checks::On => Some(&REAL_CHECKS),
+        Checks::EngineOnly => Some(&ENGINE_ONLY_CHECKS),
         Checks::Off => None,
     };
     play(ruleset, decks, seed, max_steps, checker)
@@ -138,6 +151,11 @@ pub(crate) struct Checker<'a> {
     pub(crate) transition: &'a TransitionCheck<'a>,
     pub(crate) recomputation: &'a RecomputationCheck<'a>,
     pub(crate) rejection: &'a RejectionCheck<'a>,
+    /// The three checks over Observations. A `None` is not run, and when all three are `None` the
+    /// harness observes nothing (`Checks::EngineOnly`).
+    pub(crate) consistency: Option<&'a ConsistencyCheck<'a>>,
+    pub(crate) hidden_cards: Option<&'a HiddenCardsCheck<'a>>,
+    pub(crate) observed_actions: Option<&'a ObservedActionsCheck<'a>>,
 }
 
 /// The shape of [`check_opening`].
@@ -156,11 +174,37 @@ pub(crate) type RecomputationCheck<'a> =
 pub(crate) type RejectionCheck<'a> =
     dyn Fn(&DeclarativeRuleset, &GameState, &Action, &Rejection) -> Vec<InvariantViolation> + 'a;
 
+/// The shape of [`check_observed_consistency`].
+pub(crate) type ConsistencyCheck<'a> = dyn Fn(Viewer, &ObservedGameState, &[ObservedEvent], &ObservedGameState) -> Vec<InvariantViolation>
+    + 'a;
+
+/// The shape of [`check_hidden_cards_ignored`]: the real Observed Step, and the Relabelled Game
+/// with the GameState it was folded to and the relabelled Observed Step.
+pub(crate) type HiddenCardsCheck<'a> =
+    dyn Fn(&ObservedStep, &ReplayedStep) -> Vec<InvariantViolation> + 'a;
+
+/// The shape of [`check_observed_actions`].
+pub(crate) type ObservedActionsCheck<'a> =
+    dyn Fn(&DeclarativeRuleset, &Observer, &GameState, &[Action]) -> Vec<InvariantViolation> + 'a;
+
 pub(crate) const REAL_CHECKS: Checker<'static> = Checker {
     opening: &check_opening,
     transition: &check_transition,
     recomputation: &check_recomputation,
     rejection: &check_rejection,
+    consistency: Some(&check_observed_consistency),
+    hidden_cards: Some(&|observed, relabelled| {
+        check_hidden_cards_ignored(observed, &relabelled.step)
+    }),
+    observed_actions: Some(&check_observed_actions),
+};
+
+/// The nine engine Invariants only: the checks over Observations are not run.
+pub(crate) const ENGINE_ONLY_CHECKS: Checker<'static> = Checker {
+    consistency: None,
+    hidden_cards: None,
+    observed_actions: None,
+    ..REAL_CHECKS
 };
 
 /// The Recomputed GameState: the Empty GameState with every Event of the Game so far applied, in
@@ -170,56 +214,69 @@ fn fold(recomputed: &GameState, events: &[Event]) -> Result<GameState, Vec<Invar
     recomputed.apply_trace(events).map_err(|error| {
         vec![InvariantViolation {
             invariant: Invariant::DerivedReadsDoNotLeak,
+            viewer: None,
             detail: format!("the Events of the Game do not apply to the Empty GameState: {error}"),
         }]
     })
 }
 
-/// The Opening Position's Recomputed GameState, and the violations of the Opening Position: the
-/// opening check's, then the recomputation's.
+/// The Opening Position's Recomputed GameState, the Viewers' Observers, and the violations of the
+/// Opening Position: the opening check's, then the recomputation's, then the checks over
+/// Observations.
 fn open(
     checker: &Checker<'_>,
     ruleset: &DeclarativeRuleset,
     decks: &[DeckList],
     creation: &GameCreation,
-) -> (GameState, Vec<InvariantViolation>) {
+    seed: Seed,
+) -> (GameState, Option<Observing>, Vec<InvariantViolation>) {
     let mut violations = (checker.opening)(ruleset, decks, creation);
-    match fold(&creation.empty, creation.opening.trace.events()) {
+    let recomputed = match fold(&creation.empty, creation.opening.trace.events()) {
         Ok(recomputed) => {
             violations.extend((checker.recomputation)(
                 &recomputed,
                 &creation.opening.state,
             ));
-            (recomputed, violations)
+            recomputed
         }
         Err(found) => {
             violations.extend(found);
-            (creation.empty.clone(), violations)
+            creation.empty.clone()
         }
-    }
+    };
+    let (observing, observed) = Observing::open(checker, ruleset, seed, creation);
+    violations.extend(observed);
+    (recomputed, observing, violations)
 }
 
 /// The violations of one accepted transition, and the Recomputed GameState after it: the
-/// transition check's, then the recomputation's.
+/// transition check's, then the recomputation's, then the checks over Observations (consistency
+/// for each Viewer, then the leak check for each Viewer).
 fn step_checks(
     checker: &Checker<'_>,
     ruleset: &DeclarativeRuleset,
     prior: &GameState,
-    trace: &EventTrace<Event>,
-    next: &GameState,
+    action: &Action,
+    transition: &Transition<GameState, Event>,
     recomputed: &GameState,
+    observing: Option<&mut Observing>,
 ) -> (GameState, Vec<InvariantViolation>) {
+    let (trace, next) = (&transition.trace, &transition.state);
     let mut violations = (checker.transition)(ruleset, prior, trace, next);
-    match fold(recomputed, trace.events()) {
+    let folded = match fold(recomputed, trace.events()) {
         Ok(folded) => {
             violations.extend((checker.recomputation)(&folded, next));
-            (folded, violations)
+            folded
         }
         Err(found) => {
             violations.extend(found);
-            (recomputed.clone(), violations)
+            recomputed.clone()
         }
+    };
+    if let Some(observing) = observing {
+        violations.extend(observing.step(checker, ruleset, prior, action, transition));
     }
+    (folded, violations)
 }
 
 /// What the policy draws from in one GameState, and what the listing refused.
@@ -271,12 +328,14 @@ fn play(
         Err(error) => return Err(failure(record, FailureKind::Creation(error))),
     };
     let mut recomputed = None;
+    let mut observing = None;
     if let Some(checker) = checker {
-        let (folded, violations) = open(checker, ruleset, decks, &creation);
+        let (folded, viewers, violations) = open(checker, ruleset, decks, &creation, seed);
         if !violations.is_empty() {
             return Err(failure(record, FailureKind::InvariantViolated(violations)));
         }
         recomputed = Some(folded);
+        observing = viewers;
     }
 
     let mut policy = RandomState::from_seed(Seed(seed.0 ^ POLICY_STREAM));
@@ -299,6 +358,12 @@ fn play(
                     return Err(failure(record, FailureKind::InvariantViolated(violations)));
                 }
             }
+            if let Some(observing) = &observing {
+                let violations = observing.round_trip(checker, ruleset, &state, &legal);
+                if !violations.is_empty() {
+                    return Err(failure(record, FailureKind::InvariantViolated(violations)));
+                }
+            }
         }
         let chosen = u64::try_from(legal.len())
             .ok()
@@ -317,15 +382,16 @@ fn play(
                 ));
             }
         };
-        record.push_accepted(action);
+        record.push_accepted(action.clone());
         if let (Some(checker), Some(folded)) = (checker, recomputed.as_ref()) {
             let (next, violations) = step_checks(
                 checker,
                 ruleset,
                 &state,
-                &transition.trace,
-                &transition.state,
+                &action,
+                &transition,
                 folded,
+                observing.as_mut(),
             );
             if !violations.is_empty() {
                 return Err(failure(record, FailureKind::InvariantViolated(violations)));
@@ -334,6 +400,14 @@ fn play(
         }
         traces.push(transition.trace);
         state = transition.state;
+    }
+    // The ended GameState has no Legal Action, and the Viewers' Observed Legal Actions agree.
+    if let (Some(checker), Some(observing)) = (checker, &observing) {
+        let violations =
+            observing.round_trip(checker, ruleset, &state, &ruleset.legal_actions(&state));
+        if !violations.is_empty() {
+            return Err(failure(record, FailureKind::InvariantViolated(violations)));
+        }
     }
     Ok(SelfPlayGame {
         record,
@@ -381,11 +455,15 @@ fn verify(
         .create_game(record.decks(), record.seed())
         .map_err(|error| replay_failure(0, ReplayError::Creation(error)))?;
 
-    let (mut recomputed, violations) = open(checker, ruleset, record.decks(), &creation);
+    let (mut recomputed, mut observing, violations) =
+        open(checker, ruleset, record.decks(), &creation, record.seed());
     if !violations.is_empty() {
         return Err(cut(ruleset, record, 0, violations));
     }
     let mut state = creation.opening.state.clone();
+    if let Some(violations) = verify_round_trip(checker, ruleset, observing.as_ref(), &state) {
+        return Err(cut(ruleset, record, 0, violations));
+    }
     let mut traces = Vec::with_capacity(record.actions().len());
     for (index, action) in record.actions().iter().enumerate() {
         let transition = ruleset.transition(&state, action).map_err(|rejection| {
@@ -395,9 +473,10 @@ fn verify(
             checker,
             ruleset,
             &state,
-            &transition.trace,
-            &transition.state,
+            action,
+            &transition,
             &recomputed,
+            observing.as_mut(),
         );
         if !violations.is_empty() {
             return Err(cut(ruleset, record, index.saturating_add(1), violations));
@@ -405,12 +484,27 @@ fn verify(
         recomputed = folded;
         state = transition.state;
         traces.push(transition.trace);
+        if let Some(violations) = verify_round_trip(checker, ruleset, observing.as_ref(), &state) {
+            return Err(cut(ruleset, record, index.saturating_add(1), violations));
+        }
     }
     Ok(Replay {
         creation,
         traces,
         state,
     })
+}
+
+/// The round-trip violations of `state` when Viewers are observed; it lists `state` itself, once,
+/// as the policy does in self-play. `None` when there are none, or no Viewers.
+fn verify_round_trip(
+    checker: &Checker<'_>,
+    ruleset: &DeclarativeRuleset,
+    observing: Option<&Observing>,
+    state: &GameState,
+) -> Option<Vec<InvariantViolation>> {
+    let violations = observing?.round_trip(checker, ruleset, state, &ruleset.legal_actions(state));
+    (!violations.is_empty()).then_some(violations)
 }
 
 /// The failure of an invariant violation after the first `actions` Actions of `record`.
@@ -427,5 +521,7 @@ fn cut(
     failure(prefix, FailureKind::InvariantViolated(violations))
 }
 
+#[cfg(test)]
+mod observation_tests;
 #[cfg(test)]
 mod tests;
