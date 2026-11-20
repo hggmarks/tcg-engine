@@ -6,7 +6,9 @@
 //! acting Player (or, for `owner: opponent`, another Player), it is in the alternative's zone of
 //! its owner, its card type is the alternative's, and its `where` condition holds. A param with
 //! one alternative reports the first check that fails; a param with several binds the first
-//! alternative the card fits, and reports that none did.
+//! alternative the card fits, and reports that none did. A `where` that overflows a derived read
+//! means its alternative does not fit when the param has several, and is the Rejection when it has
+//! one (ADR-0032).
 
 use super::action::{Argument, Rejection};
 use super::creation::DeclarativeRuleset;
@@ -91,11 +93,18 @@ fn bind_param(
     let alternatives = param.alternatives();
     let mut failure = None;
     for alternative in alternatives {
-        match check_alternative(ruleset, state, actor, bound, param, alternative, card)? {
-            None => return Ok(bound.with(param.name().clone(), card)),
-            Some(rejection) => {
+        match check_alternative(ruleset, state, actor, bound, param, alternative, card) {
+            Ok(None) => return Ok(bound.with(param.name().clone(), card)),
+            Ok(Some(rejection)) => {
                 failure.get_or_insert(rejection);
             }
+            // With several alternatives, one whose `where` overflows does not fit (ADR-0032); a
+            // lone alternative keeps the overflow as its Rejection. Any other `Err` is an
+            // inconsistency and aborts the binding.
+            Err(rejection @ Rejection::DerivedValueOverflow { .. }) if alternatives.len() > 1 => {
+                failure.get_or_insert(rejection);
+            }
+            Err(rejection) => return Err(rejection),
         }
     }
     // The first failure of a lone alternative is its own Rejection; with several, none fit.

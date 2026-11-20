@@ -176,6 +176,10 @@ pub enum DefinitionErrorKind {
     /// in a ruleset that does not have exactly 2 Players: "the controller's opponent" is defined for
     /// two Players only, and `players` is how many the ruleset has.
     OpponentDeciderNeedsTwoPlayers { players: u64 },
+    /// The `is_card_type` of an `if` condition, such as `actions[x].effects[0].if.is_card_type`:
+    /// the card type `card_type` is none that `param` can have, so `then` could never run and the
+    /// test would retype the param (ADR-0032).
+    ImpossibleCardType { param: String, card_type: String },
 }
 
 impl fmt::Display for DefinitionErrorKind {
@@ -317,6 +321,10 @@ impl fmt::Display for DefinitionErrorKind {
             Self::UnknownDecider { decider } => write!(
                 f,
                 "`{decider}` is not a decider; the deciders are `controller` and `opponent`"
+            ),
+            Self::ImpossibleCardType { param, card_type } => write!(
+                f,
+                "`{param}` can never be a `{card_type}`: testing for it would retype the param"
             ),
             Self::UnsupportedFieldType { field_type } => {
                 write!(f, "the field type {field_type:?} is not supported yet")
