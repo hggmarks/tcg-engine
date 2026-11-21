@@ -1,6 +1,7 @@
 //! Acceptance tests for ticket #28: Game Records, exact Replay, seeded self-play and the engine
 //! invariants, on the real Small Ruleset, the real catalog and the real sample decks.
 
+mod card_choice;
 mod common;
 mod effects_games;
 mod invariant_checks;
