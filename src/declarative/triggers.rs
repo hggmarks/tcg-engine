@@ -16,15 +16,16 @@ use std::collections::VecDeque;
 
 use super::action::Rejection;
 use super::action_effects::{self, Flow};
-use super::arguments::BoundCards;
+use super::arguments::{self, BoundCards};
 use super::creation::DeclarativeRuleset;
-use super::decision::{DecisionKind, PausedResolution, QueuedTrigger};
+use super::decision::{Answer, BoundName, DecisionKind, PausedResolution, QueuedTrigger};
 use super::event::Event;
 use super::execution::Execution;
 use super::expression;
 use super::state::{CardInstance, CardInstanceId, GameState};
 use crate::card_catalog::{CardEffect, TriggerMatcher, TriggeredCardEffect};
 use crate::player::PlayerId;
+use crate::ruleset_definition::Effect;
 use crate::ruleset_definition::ParamName;
 
 /// The Trigger Cap: the hard limit of trigger resolutions in one Resolution, which spans the pauses
@@ -71,15 +72,16 @@ pub(super) fn resolve(
     )
 }
 
-/// Goes on with a paused Resolution after the decision was answered with `option`. The first Event
+/// Goes on with a paused Resolution after the decision was answered with `answer`. The first Event
 /// of `execution` is the `DecisionAnswered` that was applied: the scan skips it. The rest of the
-/// `do` runs first, then the carried Events are scanned, then those of this trace, with the queue
-/// and the Trigger Cap count of the pause. It may pause again.
+/// `do` runs first (a `do` that ends early at a Card Choice with no Candidate is a `do` that
+/// completed), then the carried Events are scanned, then those of this trace, with the queue and
+/// the Trigger Cap count of the pause. It may pause again.
 pub(super) fn resume(
     ruleset: &DeclarativeRuleset,
     execution: &mut Execution,
     paused: &PausedResolution,
-    option: u32,
+    answer: Answer,
 ) -> Result<Option<Pause>, Rejection> {
     let triggered = triggered_of(ruleset, &execution.state, paused.trigger)?;
     let bound = BoundCards::of(ParamName::new("self"), paused.trigger.card);
@@ -89,7 +91,8 @@ pub(super) fn resume(
         &bound,
         triggered.body(),
         &paused.at,
-        option,
+        answer,
+        &paused.bound,
     )?;
     if let Flow::Paused(pause) = flow {
         // Paused again before anything was scanned: everything not scanned is carried on, in
@@ -105,6 +108,7 @@ pub(super) fn resume(
                 queue: paused.queue.clone(),
                 unscanned,
                 resolutions: paused.resolutions,
+                bound: pause.bound,
             },
         }));
     }
@@ -149,6 +153,7 @@ fn run(
             return Err(Rejection::TriggerCapExceeded { cap: TRIGGER_CAP });
         }
         let before = execution.events.len();
+        // A `do` that ended early at a Card Choice with no Candidate is a `do` that completed.
         if let Flow::Paused(pause) = fire(ruleset, execution, trigger)? {
             return Ok(Some(Pause {
                 decider: pause.decider,
@@ -159,6 +164,7 @@ fn run(
                     queue: queue.into_iter().collect(),
                     unscanned: execution.events.iter().skip(before).cloned().collect(),
                     resolutions,
+                    bound: pause.bound,
                 },
             }));
         }
@@ -271,17 +277,41 @@ fn triggered_of<'a>(
     }
 }
 
-/// How many options the Choice a Paused Resolution is paused at has, read from the catalog through
-/// its path. A path that does not lead to a Choice is a data mismatch.
-pub(super) fn option_count(
+/// What the Choice a Paused Resolution is paused at asks, read from the catalog through its path.
+pub(super) enum Asked {
+    /// An Option Choice with this many options.
+    Options(u32),
+    /// A Card Choice with these Candidates, in ascending Card Instance Id: recomputed now, on the
+    /// GameState the Choice was reached in, with `self` and the names the pause kept (ADR-0034).
+    Candidates(Vec<CardInstanceId>),
+}
+
+/// What the Choice `paused` is paused at asks. A path that does not lead to a Choice is a data
+/// mismatch.
+pub(super) fn asked(
     ruleset: &DeclarativeRuleset,
     state: &GameState,
     paused: &PausedResolution,
-) -> Result<u32, Rejection> {
+) -> Result<Asked, Rejection> {
+    let card = paused.trigger.card;
+    let mismatch = || Rejection::CardDataMismatch { card };
     let triggered = triggered_of(ruleset, state, paused.trigger)?;
-    action_effects::option_count(triggered.body(), &paused.at).ok_or(Rejection::CardDataMismatch {
-        card: paused.trigger.card,
-    })
+    match action_effects::choice_at(triggered.body(), &paused.at) {
+        Some(Effect::ChooseOne { options, .. }) => Ok(Asked::Options(
+            u32::try_from(options.len()).map_err(|_| mismatch())?,
+        )),
+        Some(Effect::ChooseCard { param, .. }) => {
+            let controller = state.card(card).ok_or_else(mismatch)?.owner();
+            let mut scope = BoundCards::of(ParamName::new("self"), card);
+            for BoundName { name, card } in &paused.bound {
+                scope = scope.with(name.clone(), *card);
+            }
+            Ok(Asked::Candidates(arguments::candidates(
+                ruleset, state, controller, &scope, param,
+            )))
+        }
+        _ => Err(mismatch()),
+    }
 }
 
 /// Fires one trigger: its `if` reads the carrying card as `self` in the state as it is now, and a

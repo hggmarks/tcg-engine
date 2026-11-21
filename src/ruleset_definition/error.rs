@@ -162,7 +162,7 @@ pub enum DefinitionErrorKind {
     /// An action that no phase lists, such as `actions[idle]`; every action of a ruleset without a
     /// `turn` is one.
     UnlistedAction,
-    /// A `choose_one` outside a Triggered Card Effect's `do`, at its own path, such as
+    /// A `choose_one` or `choose_card` outside a Triggered Card Effect's `do`, at its own path, such as
     /// `actions[x].effects[0].choose_one` (also nested in an `if`): a Choice asks the Deciding
     /// Player while a Resolution is paused, which only a Triggered Card Effect can be (ADR-0033).
     ChoiceOutsideTriggeredEffect,
@@ -176,6 +176,14 @@ pub enum DefinitionErrorKind {
     /// in a ruleset that does not have exactly 2 Players: "the controller's opponent" is defined for
     /// two Players only, and `players` is how many the ruleset has.
     OpponentDeciderNeedsTwoPlayers { players: u64 },
+    /// A zone of a `choose_card`, at its `zone` (`choose_card.zone`, or `choose_card.one_of[i].zone`):
+    /// the decider cannot see every candidate there. A zone is seen when it is `public`, or `owner`
+    /// and the decider is its owner; choosing from an unseen zone is a peek, which the Card Choice
+    /// does not do (ADR-0034).
+    DeciderCannotSeeZone { zone: String },
+    /// The `name` of a `choose_card`, at `choose_card.name`: a name already in scope, `self`
+    /// included, is not bound again (ADR-0034).
+    DuplicateChoiceName { name: String },
     /// The `is_card_type` of an `if` condition, such as `actions[x].effects[0].if.is_card_type`:
     /// the card type `card_type` is none that `param` can have, so `then` could never run and the
     /// test would retype the param (ADR-0032).
@@ -309,7 +317,7 @@ impl fmt::Display for DefinitionErrorKind {
             Self::UnlistedAction => write!(f, "no phase lists this action, so it could never be taken"),
             Self::ChoiceOutsideTriggeredEffect => write!(
                 f,
-                "`choose_one` is only allowed in the `do` of a triggered Card Effect"
+                "`choose_one` and `choose_card` are only allowed in the `do` of a triggered Card Effect"
             ),
             Self::TooFewOptions { found } => {
                 write!(f, "a `choose_one` needs at least 2 options, found {found}")
@@ -318,6 +326,13 @@ impl fmt::Display for DefinitionErrorKind {
                 f,
                 "`decider: opponent` needs exactly 2 players, the ruleset has {players}"
             ),
+            Self::DeciderCannotSeeZone { zone } => write!(
+                f,
+                "the decider cannot see the zone `{zone}`: choosing from it would be a peek"
+            ),
+            Self::DuplicateChoiceName { name } => {
+                write!(f, "`{name}` is already a name in scope of this effect")
+            }
             Self::UnknownDecider { decider } => write!(
                 f,
                 "`{decider}` is not a decider; the deciders are `controller` and `opponent`"

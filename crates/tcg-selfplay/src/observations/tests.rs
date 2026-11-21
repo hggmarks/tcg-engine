@@ -447,6 +447,7 @@ fn the_relabelling_maps_every_card_a_paused_resolution_names() {
                 branches: Vec::new(),
                 choice: 0,
             },
+            bound: Vec::new(),
             queue: queue
                 .iter()
                 .map(|&card| QueuedTrigger {

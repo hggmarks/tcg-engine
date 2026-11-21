@@ -43,11 +43,17 @@ impl DeclarativeRuleset {
         if let Some(pending) = state.pending_decision() {
             // A path that does not lead to a Choice lists nothing: `transition` would refuse every
             // Answer as a data mismatch.
-            let options = triggers::option_count(self, state, pending.paused()).unwrap_or(0);
-            for index in 0..options {
+            let answers: Vec<Answer> = match triggers::asked(self, state, pending.paused()) {
+                Ok(triggers::Asked::Options(options)) => (0..options).map(Answer::Option).collect(),
+                Ok(triggers::Asked::Candidates(cards)) => {
+                    cards.into_iter().map(Answer::Card).collect()
+                }
+                Err(_) => Vec::new(),
+            };
+            for answer in answers {
                 consider(Action::Answer {
                     player: pending.decider(),
-                    answer: Answer::Option(index),
+                    answer,
                 });
             }
             return walked;

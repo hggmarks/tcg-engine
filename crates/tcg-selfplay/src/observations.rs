@@ -17,8 +17,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use tcg_engine::card_catalog::CardId;
 use tcg_engine::declarative::{
-    Action, Argument, CardInstanceId, DeclarativeRuleset, Event, GameState, ObservationError,
-    ObservedCard, ObservedEvent, ObservedGameState, Observer, TakenAction, Viewer,
+    Action, Answer, Argument, CardInstanceId, DeclarativeRuleset, Event, GameState,
+    ObservationError, ObservedCard, ObservedEvent, ObservedGameState, Observer, TakenAction,
+    Viewer,
 };
 use tcg_engine::player::PlayerId;
 use tcg_engine::random::RandomState;
@@ -252,8 +253,18 @@ pub(crate) fn relabel(
                 .map(|&Argument::Card(card)| Argument::Card(map(card)))
                 .collect(),
         },
-        // An Answer names no card.
-        Action::Answer { .. } => action.clone(),
+        // An option Answer names no card; a card Answer names one, through the same permutation.
+        Action::Answer {
+            player,
+            answer: Answer::Card(card),
+        } => Action::Answer {
+            player: *player,
+            answer: Answer::Card(map(*card)),
+        },
+        Action::Answer {
+            answer: Answer::Option(_),
+            ..
+        } => action.clone(),
     });
 
     // 3. The order of the zones the Viewer cannot see.
@@ -290,8 +301,9 @@ pub(crate) fn relabel(
 
 /// Maps every card id an Event names through `map`. The match is exhaustive, so a new Event must
 /// say whether it names cards. A `CardCreated` is relabelled by position, where it is created, not
-/// here. The Paused Resolution of a `DecisionPending` names cards too, its trigger, its queue and
-/// the Events it carries (ADR-0033), and they go through the same permutation.
+/// here. The Paused Resolution of a `DecisionPending` names cards too, its trigger, its queue, the
+/// Events it carries (ADR-0033) and the cards of its bound names, and so does the card of a Card
+/// Answer (ADR-0034): they go through the same permutation.
 fn relabel_ids(event: &mut Event, map: &impl Fn(CardInstanceId) -> CardInstanceId) {
     match event {
         Event::CardMoved { card, .. } | Event::CardStateChanged { card, .. } => {
@@ -310,13 +322,25 @@ fn relabel_ids(event: &mut Event, map: &impl Fn(CardInstanceId) -> CardInstanceI
             for carried in &mut paused.unscanned {
                 relabel_ids(carried, map);
             }
+            for bound in &mut paused.bound {
+                bound.card = map(bound.card);
+            }
+        }
+        Event::DecisionAnswered {
+            answer: Answer::Card(card),
+            ..
+        } => {
+            *card = map(*card);
         }
         Event::CardCreated { .. }
         | Event::TurnBegan { .. }
         | Event::PhaseBegan { .. }
         | Event::DrawFromEmptyZone { .. }
         | Event::GameEnded { .. }
-        | Event::DecisionAnswered { .. } => {}
+        | Event::DecisionAnswered {
+            answer: Answer::Option(_),
+            ..
+        } => {}
     }
 }
 

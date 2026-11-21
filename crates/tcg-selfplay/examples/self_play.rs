@@ -153,6 +153,10 @@ fn print_game_log(loaded: &Loaded) {
                 answer: Answer::Option(option),
                 ..
             } => (format!("answers option {option}"), Vec::new()),
+            Action::Answer {
+                answer: Answer::Card(card),
+                ..
+            } => ("answers card".to_string(), vec![card_name(&game, *card)]),
         };
         println!(
             "  {index:>3}. Player {} {name}{}",

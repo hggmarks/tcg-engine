@@ -3,7 +3,7 @@
 //! Observer; legality stays with `transition`.
 
 use super::error::ObservationError;
-use super::observed_event::ObservedAnswer;
+use super::observed_event::{ObservedAnswer, TakenArgument};
 use super::observer::{sees, Observer};
 use super::viewer::{ObservedCard, Viewer};
 use crate::declarative::action::{Action, Argument};
@@ -73,6 +73,21 @@ impl DeclarativeRuleset {
                     });
                     continue;
                 }
+                // The decider sees every candidate (checked when the ruleset loads), so it holds a
+                // handle for each; a missing one is an inconsistency, not a leak.
+                Action::Answer {
+                    player,
+                    answer: Answer::Card(id),
+                } => {
+                    let handle = observer
+                        .observed_card(id)
+                        .ok_or(ObservationError::ObserverOutOfStep)?;
+                    listed.push(ObservedAction::Answer {
+                        player,
+                        answer: ObservedAnswer::Card(TakenArgument::Card(handle)),
+                    });
+                    continue;
+                }
                 Action::Declared {
                     player,
                     action,
@@ -104,8 +119,9 @@ impl DeclarativeRuleset {
 
     /// The engine Action an Observed Action stands for. The checks come in this order: the
     /// Observed Action's Player is the Viewer (`ActionOfAnotherPlayer`); then each argument in
-    /// order, a handle the Viewer does not hold is `UnknownObservedCard`. The action id, the arity,
-    /// the option index and the legality are not checked: `transition` decides them.
+    /// order, a handle the Viewer does not hold is `UnknownObservedCard`; an Answer that names a
+    /// hidden card is `AnswerNamesHiddenCard`. The action id, the arity, the option index and the
+    /// legality are not checked: `transition` decides them.
     pub fn translate_action(
         &self,
         observer: &Observer,
@@ -117,10 +133,21 @@ impl DeclarativeRuleset {
                 if *player != me {
                     return Err(ObservationError::ActionOfAnotherPlayer { player: *player });
                 }
-                let ObservedAnswer::Option(index) = answer;
+                let answer = match answer {
+                    ObservedAnswer::Option(index) => Answer::Option(*index),
+                    ObservedAnswer::Card(TakenArgument::Card(card)) => {
+                        let id = observer
+                            .card_instance(*card)
+                            .ok_or(ObservationError::UnknownObservedCard { card: *card })?;
+                        Answer::Card(id)
+                    }
+                    ObservedAnswer::Card(TakenArgument::HiddenCard) => {
+                        return Err(ObservationError::AnswerNamesHiddenCard)
+                    }
+                };
                 Ok(Action::Answer {
                     player: *player,
-                    answer: Answer::Option(*index),
+                    answer,
                 })
             }
             ObservedAction::Declared {

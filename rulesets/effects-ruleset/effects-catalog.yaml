@@ -1,8 +1,9 @@
 # Starter card catalog for the Effects Ruleset (rulesets/effects-ruleset/effects-ruleset.yaml): the
 # cards of the Small Ruleset catalog, then seven creatures that carry a triggered Card Effect, two that
 # carry a continuous one and three auras, which carry a continuous one over a matched set. The sample
-# decks list all the effect cards but restless_shade, which exists only to reach the Trigger Cap, and
-# curious_owl, whose Option Choice is not in a shipped deck yet.
+# decks list all the effect cards but restless_shade, which exists only to reach the Trigger Cap,
+# curious_owl, whose Option Choice is not in a shipped deck yet, and snare_vine and mind_leech, whose
+# Card Choices are not either.
 # Format: rulesets/formats.md.
 
 meta: { ruleset: effects, ruleset_version: 1 }
@@ -99,6 +100,30 @@ cards:
               options:
                 - [ { draw: { player: controller, from: deck, to: hand, count: 1 } } ]
                 - []
+
+  # A Card Choice (ADR-0034): when it enters the field its controller picks a creature in an
+  # opponent's field, which becomes `target` for the rest of the `do`, and taps it. With no such
+  # creature nothing is asked and the rest of the `do` is skipped. Not in the shipped sample decks.
+  - id: snare_vine
+    type: creature
+    fields: { name: "Snare Vine", cost: 2, power: 1 }
+    effects:
+      - on: { enter: field }
+        do:
+          - choose_card: { name: target, decider: controller, zone: field, card_type: creature, owner: opponent }
+          - set_state: { card: { ref: target }, state: tapped, value: true }
+  # A Card Choice decided by the controller's opponent: when it enters the field the opponent
+  # picks a creature from its own hand, which goes to its trash. `owner: opponent` is the
+  # controller's opponent whoever decides, and the opponent sees its own hand. Not in the shipped
+  # sample decks.
+  - id: mind_leech
+    type: creature
+    fields: { name: "Mind Leech", cost: 2, power: 2 }
+    effects:
+      - on: { enter: field }
+        do:
+          - choose_card: { name: victim, decider: opponent, zone: hand, card_type: creature, owner: opponent }
+          - move: { card: { ref: victim }, to: trash }
 
   # Creatures with a continuous Card Effect (ADR-0024). A creature taps when it attacks, before the
   # combat compares powers, so while it is tapped it fights with the modified power.

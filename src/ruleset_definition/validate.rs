@@ -18,7 +18,7 @@ use super::model::{
     DeckInput, DeckInputId, Effect, EffectPlayer, Expression, FieldName, FieldSchema, FieldType,
     Initializer, InstanceStateSchema, Loser, Meta, Param, ParamAlternative, ParamName, ParamOwner,
     Parameters, Phase, PhaseId, PhaseKind, PlayerCount, PlayerPosition, PlayerSelector, Position,
-    RulesetDefinition, RulesetId, RulesetVersion, SetupStep, StateName, TurnStructure,
+    RulesetDefinition, RulesetId, RulesetVersion, SetupStep, StateName, TurnStructure, Visibility,
     WinCondition, WinConditionId, WinConditionWhen, Zone, ZoneId,
 };
 use crate::definition_path::DefinitionPath;
@@ -506,6 +506,11 @@ fn first_opponent_decider(effects: &[Effect], list: &DefinitionPath) -> Option<D
                     }
                 }
             }
+            Effect::ChooseCard { decider, .. } => {
+                if *decider == Decider::Opponent {
+                    return Some(at.key("choose_card").key("decider"));
+                }
+            }
             Effect::EndTurn
             | Effect::Move { .. }
             | Effect::SetState { .. }
@@ -639,17 +644,44 @@ fn validate_cost(
     }
 }
 
-/// The effects of the list at `list`, in order.
-fn validate_effects(
+/// The effects of the list at `list`, in order. A Card Choice binds its name for the effects after
+/// it in the list, and so for everything nested in them: the scope of each effect is the scope of
+/// the list plus the names the Choices before it bound (ADR-0034). The names do not leave the
+/// list.
+fn validate_effects<'a>(
     effects: &[EffectDraft],
-    refs: &Refs<'_>,
+    refs: &Refs<'a>,
     list: DefinitionPath,
 ) -> Result<Vec<Effect>, DefinitionError> {
-    effects
-        .iter()
-        .enumerate()
-        .map(|(index, effect)| validate_effect(effect, refs, list.clone().index(index)))
-        .collect()
+    let mut checked = Vec::with_capacity(effects.len());
+    let mut widened: Option<Refs<'a>> = None;
+    for (index, effect) in effects.iter().enumerate() {
+        let scope = widened.as_ref().unwrap_or(refs);
+        let effect = validate_effect(effect, scope, list.clone().index(index))?;
+        if let Effect::ChooseCard { param, .. } = &effect {
+            let mut next = scope.clone();
+            next.params.push(ScopedParam::of_alternatives(
+                param.name.clone(),
+                &param.alternatives,
+            ));
+            widened = Some(next);
+        }
+        checked.push(effect);
+    }
+    Ok(checked)
+}
+
+/// Whether `decider` sees every card of `zone`, among those of the Players an alternative with
+/// this `owner` takes from: the zone is `public`, or `owner` and it is the decider's own.
+fn decider_sees(visibility: Visibility, owner: ParamOwner, decider: Decider) -> bool {
+    match visibility {
+        Visibility::Public => true,
+        Visibility::Owner => matches!(
+            (owner, decider),
+            (ParamOwner::Actor, Decider::Controller) | (ParamOwner::Opponent, Decider::Opponent)
+        ),
+        Visibility::Hidden => false,
+    }
 }
 
 fn validate_effect(
@@ -818,6 +850,75 @@ fn validate_effect(
                 .map(|(index, option)| validate_effects(option, refs, list.clone().index(index)))
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(Effect::ChooseOne { decider, options })
+        }
+        EffectDraft::ChooseCard { decider, param } => {
+            let at = at.key("choose_card");
+            // Only a Card Effect, which has `self`, can pause for a decision (ADR-0033).
+            if !refs.has_self {
+                return fail(at, DefinitionErrorKind::ChoiceOutsideTriggeredEffect);
+            }
+            let name_at = at.clone().key("name");
+            if !is_valid_id(&param.name) {
+                return fail(
+                    name_at,
+                    DefinitionErrorKind::InvalidId {
+                        id: param.name.clone(),
+                    },
+                );
+            }
+            if refs
+                .params
+                .iter()
+                .any(|scoped| scoped.name.as_str() == param.name)
+            {
+                return fail(
+                    name_at,
+                    DefinitionErrorKind::DuplicateChoiceName {
+                        name: param.name.clone(),
+                    },
+                );
+            }
+            let decider = match decider.as_str() {
+                "controller" => Decider::Controller,
+                "opponent" => Decider::Opponent,
+                other => {
+                    return fail(
+                        at.key("decider"),
+                        DefinitionErrorKind::UnknownDecider {
+                            decider: other.to_string(),
+                        },
+                    )
+                }
+            };
+            // The candidates are those of an Action Param, so it is validated as one: its `where`
+            // reads `self`, the names before it and its own candidate.
+            let validated =
+                validate_param(param, refs.zones, refs.card_types, &refs.params, at.clone())?;
+            // The decider must see every candidate, alternative by alternative in order: choosing
+            // from a zone it cannot see would be a peek (ADR-0034).
+            for (index, alternative) in validated.alternatives.iter().enumerate() {
+                let visibility = refs
+                    .zones
+                    .iter()
+                    .find(|zone| zone.id == alternative.zone)
+                    .map(|zone| zone.visibility);
+                if visibility.is_some_and(|seen| !decider_sees(seen, alternative.owner, decider)) {
+                    let alternative_at = match &param.cards {
+                        ParamCardsDraft::Single(_) => at.clone(),
+                        ParamCardsDraft::OneOf(_) => at.clone().key("one_of").index(index),
+                    };
+                    return fail(
+                        alternative_at.key("zone"),
+                        DefinitionErrorKind::DeciderCannotSeeZone {
+                            zone: alternative.zone.as_str().to_string(),
+                        },
+                    );
+                }
+            }
+            Ok(Effect::ChooseCard {
+                decider,
+                param: validated,
+            })
         }
     }
 }

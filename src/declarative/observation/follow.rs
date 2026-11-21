@@ -16,7 +16,7 @@ use crate::declarative::action::{Action, Argument};
 use crate::declarative::creation::DeclarativeRuleset;
 use crate::declarative::decision::Answer;
 use crate::declarative::event::Event;
-use crate::declarative::state::GameState;
+use crate::declarative::state::{CardInstanceId, GameState};
 use crate::ruleset::Transition;
 
 impl DeclarativeRuleset {
@@ -34,7 +34,7 @@ impl DeclarativeRuleset {
         events: &[Event],
     ) -> Result<Vec<ObservedEvent>, ObservationError> {
         let mut folded = observer.clone();
-        let observed = self.project(&mut folded, &mut previous.clone(), events)?;
+        let observed = self.project(&mut folded, observer, &mut previous.clone(), events)?;
         *observer = folded;
         Ok(observed)
     }
@@ -57,7 +57,12 @@ impl DeclarativeRuleset {
     ) -> Result<ObservedTransition, ObservationError> {
         let mut folded = observer.clone();
         let mut working = previous.clone();
-        let events = self.project(&mut folded, &mut working, transition.trace.events())?;
+        let events = self.project(
+            &mut folded,
+            observer,
+            &mut working,
+            transition.trace.events(),
+        )?;
         if working != transition.state {
             return Err(ObservationError::ObserverOutOfStep);
         }
@@ -71,13 +76,7 @@ impl DeclarativeRuleset {
                     .iter()
                     .map(|argument| {
                         let Argument::Card(card) = argument;
-                        match folded
-                            .observed_card(*card)
-                            .or(observer.observed_card(*card))
-                        {
-                            Some(handle) => TakenArgument::Card(handle),
-                            None => TakenArgument::HiddenCard,
-                        }
+                        taken_argument(&folded, observer, *card)
                     })
                     .collect();
                 TakenAction::Declared {
@@ -86,12 +85,14 @@ impl DeclarativeRuleset {
                     arguments,
                 }
             }
-            Action::Answer {
-                player,
-                answer: Answer::Option(index),
-            } => TakenAction::Answer {
+            Action::Answer { player, answer } => TakenAction::Answer {
                 player: *player,
-                answer: ObservedAnswer::Option(*index),
+                answer: match answer {
+                    Answer::Option(index) => ObservedAnswer::Option(*index),
+                    Answer::Card(card) => {
+                        ObservedAnswer::Card(taken_argument(&folded, observer, *card))
+                    }
+                },
             },
         };
         let state = observed_state::observe(self, &folded, &transition.state)?;
@@ -103,21 +104,38 @@ impl DeclarativeRuleset {
         })
     }
 
-    /// Applies each Event to `working`, folds it into `observer` and projects it.
+    /// Applies each Event to `working`, folds it into `observer` (which `before` is the state of,
+    /// unfolded) and projects it. The card an Answer names is read once the whole trace is folded,
+    /// as the Taken Action rule reads it, so the handle may be one issued later in the trace
+    /// (ADR-0034).
     fn project(
         &self,
         observer: &mut Observer,
+        before: &Observer,
         working: &mut GameState,
         events: &[Event],
     ) -> Result<Vec<ObservedEvent>, ObservationError> {
         let mut observed = Vec::new();
+        let mut named = Vec::new();
         for event in events {
             working
                 .apply(event)
                 .map_err(|_| ObservationError::ObserverOutOfStep)?;
             let sight = observer.follow(self, event)?;
             if let Some(projected) = self.project_event(observer, working, event, sight)? {
+                if let Event::DecisionAnswered {
+                    answer: Answer::Card(card),
+                    ..
+                } = event
+                {
+                    named.push((observed.len(), *card));
+                }
                 observed.push(projected);
+            }
+        }
+        for (index, card) in named {
+            if let Some(ObservedEvent::DecisionAnswered { answer, .. }) = observed.get_mut(index) {
+                *answer = ObservedAnswer::Card(taken_argument(observer, before, card));
             }
         }
         Ok(observed)
@@ -263,19 +281,31 @@ impl DeclarativeRuleset {
                     kind: *kind,
                 }
             }
-            (
-                Event::DecisionAnswered {
-                    player,
-                    answer: Answer::Option(index),
-                },
-                Sight::NoCard,
-            ) => ObservedEvent::DecisionAnswered {
-                player: *player,
-                answer: ObservedAnswer::Option(*index),
-            },
+            (Event::DecisionAnswered { player, answer }, Sight::NoCard) => {
+                ObservedEvent::DecisionAnswered {
+                    player: *player,
+                    answer: match answer {
+                        Answer::Option(index) => ObservedAnswer::Option(*index),
+                        // The card is named once the trace is folded: see `project`.
+                        Answer::Card(_) => ObservedAnswer::Card(TakenArgument::HiddenCard),
+                    },
+                }
+            }
             _ => return Err(out_of_step()),
         };
         Ok(Some(projected))
+    }
+}
+
+/// A card as the Taken Action rule names it: the Observed Card the Viewer holds `after`, else the
+/// one it held `before` (now retired), else hidden.
+fn taken_argument(after: &Observer, before: &Observer, card: CardInstanceId) -> TakenArgument {
+    match after
+        .observed_card(card)
+        .or_else(|| before.observed_card(card))
+    {
+        Some(handle) => TakenArgument::Card(handle),
+        None => TakenArgument::HiddenCard,
     }
 }
 

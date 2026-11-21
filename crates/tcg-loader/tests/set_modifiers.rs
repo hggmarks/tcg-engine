@@ -1396,6 +1396,18 @@ fn a_carrier_leaving_the_active_zone_changes_a_read_in_the_same_transition() {
     assert_eq!(draws(played.events(7)), 1);
 }
 
+/// The catalog text without the card `mind_leech`, whose `decider: opponent` is defined for exactly
+/// 2 Players (ADR-0033, ADR-0034) and so does not load in the 3-Player ruleset of the test below.
+fn without_mind_leech(yaml: &str) -> String {
+    let start = yaml
+        .find("  - id: mind_leech\n")
+        .expect("the real catalog defines `mind_leech`");
+    let end = yaml[start..]
+        .find("\n\n")
+        .map_or(yaml.len(), |length| start + length + 1);
+    format!("{}{}", &yaml[..start], &yaml[end..])
+}
+
 #[test]
 fn owner_opponent_reaches_every_player_other_than_the_carriers_owner() {
     // Three Players: seat 0's `dread_herald` lowers the creatures of seat 1 and of seat 2, not only
@@ -1404,7 +1416,7 @@ fn owner_opponent_reaches_every_player_other_than_the_carriers_owner() {
     let three_players = RULESET.replace("players: 2", "players: 3");
     assert_ne!(three_players, RULESET);
     let run = |catalog_yaml: &str| {
-        let ruleset = ruleset_with(&three_players, catalog_yaml);
+        let ruleset = ruleset_with(&three_players, &without_mind_leech(catalog_yaml));
         let deck = load_deck_list(
             ruleset.definition(),
             ruleset.catalog(),
