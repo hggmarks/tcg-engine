@@ -1,5 +1,7 @@
 # The correctness net over Observations
 
+Amended by ADR-0039: the Response Golden Game also has an observed snapshot per Player, and the throughput table has a Response row (ADR-0039's).
+
 Amended by ADR-0038: the Relabelling also renames the card of an `Ability` source and the card of an `Activate`.
 
 Amended by ADR-0037: the Relabelling maps the cards of Stack Items and of the three item Events, and the Recomputed GameState difference has a Stack branch.
@@ -36,6 +38,8 @@ The harness of ADR-0020 and ADR-0026 now also checks what each Viewer observes (
 
 **Observed Golden Games.** The Effects Leader-kill Golden Game as observed by each Player: `crates/tcg-loader/tests/golden/effects-leader-kill.observed-by-player-0.trace` and `-1.trace`, in ADR-0017's layout with Observed Events: a header, `== creation` and one `Debug` line per Observed Event of the creation trace, then per transition `== action N`, the `Debug` line of its Taken Action *(Amended by ADR-0033: written by `taken_line`, which renders a Taken Declared Action as the `Debug` line of the struct `TakenAction` was, so the snapshots are unchanged)* and one line per Observed Event, then `== outcome`. They are compared byte for byte, reporting the first differing line, and differ from each other; they are written only by the new ignored `regenerate_observed_golden_snapshots`. The existing snapshots and their regenerator are untouched. *(Amended by ADR-0035: the shipped Effects decks changed, so `effects-leader-kill.observed-by-player-1.trace` was regenerated, one line, the definition of a card seat 1 drew; the player-0 file is unchanged. A pausing pair, `effects-pausing.observed-by-player-0.trace` and `-1.trace`, joins them, written by the ignored `regenerate_pausing_golden_snapshots`.)*
 
+*(Amended by ADR-0039: the Response Golden Game's observed snapshots, `response-fizzle.observed-by-player-0.trace` and `-1.trace`, are in the same layout and are written, with its Event Trace snapshot, by `regenerate_response_golden_snapshots`; the observed snapshots hold Taken Passes and Taken Activates.)*
+
 **A handle that left sight.** `translate_action` of an Observed Action naming a handle the Viewer held for a card that has since left its sight is `UnknownObservedCard { card }`, pinned on a test-only Effects ruleset with `trash` hidden (a `pyre_imp` played, which its own trigger sends to the trash).
 
 **Throughput, measured.** Release, `cargo run --release -p tcg-selfplay --example self_play`, 1,000 Games per cell, Games per second (Actions per second):
@@ -44,6 +48,8 @@ The harness of ADR-0020 and ADR-0026 now also checks what each Viewer observes (
 |---|---|---|---|
 | Small | 195 (7,644) | 153 (6,024) | 19 (736) |
 | Effects | 128 (5,886) | 107 (4,930) | 13 (603) |
+
+*(Amended by ADR-0039: the Response Ruleset's row is in ADR-0039's table.)*
 
 Observing every Viewer at every step costs about 8 times the nine engine checks, the O(steps squared) Relabelled Game. It is a self-play and CI cost, never an engine cost; it is not optimised here (an incremental Relabelled Game is a later ticket if a measurement asks for it).
 

@@ -11,21 +11,26 @@
 use tcg_engine::card_catalog::{
     CardEffectDraft, CatalogError, CatalogErrorKind, ModifyDraft, ScopeDraft, TriggerMatcherDraft,
 };
-use tcg_engine::deck_list::DeckList;
 use tcg_engine::declarative::{
-    Action, Answer, Argument, CardInstanceId, DecisionKind, DeclarativeRuleset, Event, GameRecord,
-    GameState, TakenAction,
+    Action, Answer, CardInstanceId, DecisionKind, DeclarativeRuleset, Event,
 };
 use tcg_engine::definition_path::DefinitionPath;
 use tcg_engine::player::PlayerId;
 use tcg_engine::random::Seed;
 use tcg_engine::ruleset::Ruleset;
 use tcg_engine::ruleset_definition::{
-    ActionId, EffectDraft, ExpressionDraft, FieldValue, RefDraft, RulesetDefinition,
+    EffectDraft, ExpressionDraft, FieldValue, RefDraft, RulesetDefinition,
 };
 use tcg_loader::{
     load_card_catalog, load_deck_list, load_ruleset_definition, parse_card_catalog_draft,
     CatalogLoadError, YamlError, YamlErrorKind,
+};
+
+mod common;
+
+use common::golden::{
+    action, assert_matches_snapshot, assert_replaying_the_record_reproduces, attack, decks, pass,
+    play_game, render, render_observed, GoldenGame, Played,
 };
 
 const SMALL_RULESET: &str = include_str!("../../../rulesets/small-ruleset/small-ruleset.yaml");
@@ -99,34 +104,8 @@ fn effects() -> DeclarativeRuleset {
     DeclarativeRuleset::new(definition, catalog)
 }
 
-fn decks(ruleset: &DeclarativeRuleset, yamls: [&str; 2]) -> Vec<DeckList> {
-    yamls
-        .iter()
-        .map(|yaml| {
-            load_deck_list(ruleset.definition(), ruleset.catalog(), yaml)
-                .expect("the sample deck is legal")
-        })
-        .collect()
-}
-
-fn action(player: u32, id: &str, cards: &[CardInstanceId]) -> Action {
-    Action::Declared {
-        player: PlayerId(player),
-        action: ActionId::new(id),
-        arguments: cards.iter().copied().map(Argument::Card).collect(),
-    }
-}
-
 fn play(player: u32, card: CardInstanceId) -> Action {
     action(player, "play_creature", &[card])
-}
-
-fn pass(player: u32) -> Action {
-    action(player, "pass_turn", &[])
-}
-
-fn attack(player: u32, attacker: CardInstanceId, target: CardInstanceId) -> Action {
-    action(player, "attack", &[attacker, target])
 }
 
 /// Seat 0 races seat 1's Leader (life 6) and seat 1 answers: the Small Ruleset's Leader-kill
@@ -262,55 +241,6 @@ fn effects_pausing_script() -> Vec<Action> {
     ]
 }
 
-/// A Golden Game before it is played: its name (the stem of its snapshots), its Seed and its literal
-/// script. The decks it is played with are the caller's.
-struct GoldenGame {
-    name: &'static str,
-    seed: u64,
-    script: Vec<Action>,
-}
-
-/// A Golden Game as it was played: the Event Trace of Game creation, each accepted Action with its
-/// Event Trace, and the final GameState.
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct Played {
-    name: &'static str,
-    seed: u64,
-    creation: Vec<Event>,
-    steps: Vec<(Action, Vec<Event>)>,
-    final_state: GameState,
-}
-
-/// Plays the literal script. Every Action must be accepted.
-fn play_game(ruleset: &DeclarativeRuleset, decks: &[DeckList], game: &GoldenGame) -> Played {
-    let name = game.name;
-    let created = ruleset
-        .create_game(decks, Seed(game.seed))
-        .expect("the sample decks create a game");
-    let creation = created.opening.trace.events().to_vec();
-    let mut state = created.opening.state;
-    let mut steps = Vec::new();
-    for (index, action) in game.script.iter().enumerate() {
-        let transition = ruleset
-            .transition(&state, action)
-            .unwrap_or_else(|rejection| {
-                panic!(
-                    "action {} of {name} ({action:?}) is rejected: {rejection:?}",
-                    index + 1
-                )
-            });
-        steps.push((action.clone(), transition.trace.events().to_vec()));
-        state = transition.state;
-    }
-    Played {
-        name,
-        seed: game.seed,
-        creation,
-        steps,
-        final_state: state,
-    }
-}
-
 /// The Effects Leader-kill Golden Game: the Effects sample decks, Seed 9.
 fn effects_leader_kill() -> GoldenGame {
     GoldenGame {
@@ -355,110 +285,6 @@ fn play_small_leader_kill() -> Played {
     let ruleset = small();
     let decks = decks(&ruleset, [SMALL_DECK_A, SMALL_DECK_B]);
     play_game(&ruleset, &decks, &small_leader_kill())
-}
-
-/// The text of a Golden Snapshot (ADR-0017), in the format of the Small Ruleset's snapshots.
-fn render(played: &Played) -> String {
-    let mut text = format!(
-        "# {} | seed {} | seat 0 deck-a, seat 1 deck-b\n== creation\n",
-        played.name, played.seed
-    );
-    for event in &played.creation {
-        text.push_str(&format!("{event:?}\n"));
-    }
-    for (index, (action, events)) in played.steps.iter().enumerate() {
-        match action {
-            Action::Declared {
-                player,
-                action: id,
-                arguments,
-            } => {
-                let cards: Vec<String> = arguments
-                    .iter()
-                    .map(|argument| match argument {
-                        Argument::Card(card) => card.0.to_string(),
-                    })
-                    .collect();
-                text.push_str(&format!(
-                    "== action {}: player {} {} [{}]\n",
-                    index + 1,
-                    player.0,
-                    id.as_str(),
-                    cards.join(", ")
-                ));
-            }
-            // An Answer is written `answer option <index>` or `answer card <id>`: a Golden Game
-            // that pauses holds them (ADR-0035).
-            Action::Answer { player, answer } => {
-                let answer = match answer {
-                    Answer::Option(option) => format!("option {option}"),
-                    Answer::Card(card) => format!("card {}", card.0),
-                };
-                text.push_str(&format!(
-                    "== action {}: player {} answer {answer}\n",
-                    index + 1,
-                    player.0
-                ));
-            }
-            // No Golden Game of this ruleset holds a Pass or an Activate: it has no Response Window.
-            Action::Pass { player } => {
-                text.push_str(&format!(
-                    "== action {}: player {} pass\n",
-                    index + 1,
-                    player.0
-                ));
-            }
-            Action::Activate {
-                player,
-                card,
-                ability,
-            } => {
-                text.push_str(&format!(
-                    "== action {}: player {} activate card {} ability {ability}\n",
-                    index + 1,
-                    player.0,
-                    card.0
-                ));
-            }
-        }
-        for event in events {
-            text.push_str(&format!("{event:?}\n"));
-        }
-    }
-    let outcome = played
-        .final_state
-        .outcome()
-        .expect("a Golden Game ends the Game");
-    text.push_str(&format!("== outcome\n{outcome:?}\n"));
-    text
-}
-
-/// Compares a Golden Game's text with its committed snapshot byte for byte and reports the first
-/// differing line, with the command that rewrites the snapshot. A snapshot ends with exactly one
-/// newline.
-fn assert_matches_snapshot(what: &str, snapshot: &str, actual: &str, regenerate: &str) {
-    if actual != snapshot {
-        let mut expected_lines = snapshot.lines();
-        let mut actual_lines = actual.lines();
-        for line_number in 1.. {
-            let (expected, found) = (expected_lines.next(), actual_lines.next());
-            assert!(
-                expected == found,
-                "the Golden Game {what} differs from its snapshot at line {line_number}\n  \
-                 expected: {}\n  actual:   {}\nIf the change is deliberate, rewrite the \
-                 snapshot with:\n  {regenerate}",
-                expected.unwrap_or("<end of the snapshot>"),
-                found.unwrap_or("<end of the trace>"),
-            );
-            if expected.is_none() {
-                break;
-            }
-        }
-        panic!(
-            "the snapshot of the Golden Game {what} differs in its line endings; rewrite it with:\n  {regenerate}"
-        );
-    }
-    assert!(snapshot.ends_with('\n') && !snapshot.ends_with("\n\n"));
 }
 
 fn yaml_error(yaml: &str) -> YamlError {
@@ -1032,87 +858,19 @@ const OBSERVED_PATHS: [&str; 2] = [
 const REGENERATE_OBSERVED_COMMAND: &str =
     "cargo test -p tcg-loader --test effects_ruleset -- --ignored regenerate_observed_golden_snapshots";
 
-/// The line of a Taken Action in the observed snapshots (ADR-0033). A Taken Declared Action keeps the
-/// `Debug` line of the struct it was before `TakenAction` became an enum, `TakenAction { player: ..,
-/// action: .., arguments: [..] }`, so the committed snapshots stay byte for byte what they were; an
-/// Answer, which no snapshot holds, is its own `Debug`.
-fn taken_line(taken: &TakenAction) -> String {
-    match taken {
-        TakenAction::Declared {
-            player,
-            action,
-            arguments,
-        } => format!(
-            "TakenAction {{ player: {player:?}, action: {action:?}, arguments: {arguments:?} }}"
-        ),
-        TakenAction::Answer { .. } | TakenAction::Pass { .. } | TakenAction::Activate { .. } => {
-            format!("{taken:?}")
-        }
-    }
-}
-
-/// The text of the snapshot of the Golden Game `game`, played with the Effects sample decks, as
-/// seat `seat` observed it: the Observer follows the creation trace and then each accepted Action
-/// of the script.
-fn render_observed(game: &GoldenGame, seat: u32) -> String {
-    use tcg_engine::declarative::Viewer;
-    use tcg_engine::ruleset::Observations;
-
+/// The Effects Golden Game `game` as seat `seat` observed it, played with the Effects sample decks.
+fn render_effects_observed(game: &GoldenGame, seat: u32) -> String {
     let ruleset = effects();
     let decks = decks(&ruleset, [EFFECTS_DECK_A, EFFECTS_DECK_B]);
-    let created = ruleset
-        .create_game(&decks, Seed(game.seed))
-        .expect("the sample decks create a game");
-    let mut observer = ruleset
-        .observer(Viewer::Player(PlayerId(seat)), &created.empty, &[])
-        .expect("the Observer is built");
-    let creation = ruleset
-        .follow_events(
-            &mut observer,
-            &created.empty,
-            created.opening.trace.events(),
-        )
-        .expect("the creation trace is followed");
-    let mut text = format!(
-        "# {} observed by player {seat} | seed {} | seat 0 deck-a, seat 1 deck-b\n== creation\n",
-        game.name, game.seed
-    );
-    for event in &creation {
-        text.push_str(&format!("{event:?}\n"));
-    }
-    let mut state = created.opening.state;
-    let mut last = ruleset
-        .observe(&observer, &state)
-        .expect("the Opening Position is observed");
-    for (index, action) in game.script.iter().enumerate() {
-        let transition = ruleset
-            .transition(&state, action)
-            .expect("the script's Action is accepted");
-        let observed = ruleset
-            .follow_transition(&mut observer, &state, action, &transition)
-            .expect("the transition is followed");
-        text.push_str(&format!(
-            "== action {}\n{}\n",
-            index + 1,
-            taken_line(&observed.action)
-        ));
-        for event in &observed.events {
-            text.push_str(&format!("{event:?}\n"));
-        }
-        state = transition.state;
-        last = observed.state;
-    }
-    let outcome = last
-        .outcome()
-        .expect("a Golden Game ends the Game for every Viewer");
-    text.push_str(&format!("== outcome\n{outcome:?}\n"));
-    text
+    render_observed(&ruleset, &decks, game, seat)
 }
 
 #[test]
 fn the_effects_leader_kill_golden_game_as_observed_by_each_player_matches_its_snapshot() {
     let game = effects_leader_kill();
-    let observed: Vec<String> = (0..2).map(|seat| render_observed(&game, seat)).collect();
+    let observed: Vec<String> = (0..2)
+        .map(|seat| render_effects_observed(&game, seat))
+        .collect();
     for (seat, (actual, snapshot)) in observed.iter().zip(OBSERVED_SNAPSHOTS).enumerate() {
         assert_matches_snapshot(
             &format!("effects-leader-kill as observed by player {seat}"),
@@ -1132,7 +890,7 @@ fn the_effects_leader_kill_golden_game_as_observed_by_each_player_matches_its_sn
 fn regenerate_observed_golden_snapshots() {
     for (seat, path) in OBSERVED_PATHS.iter().enumerate() {
         let seat = u32::try_from(seat).expect("a seat");
-        std::fs::write(path, render_observed(&effects_leader_kill(), seat))
+        std::fs::write(path, render_effects_observed(&effects_leader_kill(), seat))
             .expect("the observed snapshot is written");
     }
 }
@@ -1231,7 +989,9 @@ fn the_pausing_golden_game_matches_its_snapshot() {
 #[test]
 fn the_pausing_golden_game_as_observed_by_each_player_matches_its_snapshot() {
     let game = effects_pausing();
-    let observed: Vec<String> = (0..2).map(|seat| render_observed(&game, seat)).collect();
+    let observed: Vec<String> = (0..2)
+        .map(|seat| render_effects_observed(&game, seat))
+        .collect();
     for (seat, (actual, snapshot)) in observed.iter().zip(PAUSING_OBSERVED_SNAPSHOTS).enumerate() {
         assert_matches_snapshot(
             &format!("effects-pausing as observed by player {seat}"),
@@ -1254,44 +1014,12 @@ fn regenerate_pausing_golden_snapshots() {
         .expect("the pausing snapshot is written");
     for (seat, path) in PAUSING_OBSERVED_PATHS.iter().enumerate() {
         let seat = u32::try_from(seat).expect("a seat");
-        std::fs::write(path, render_observed(&effects_pausing(), seat))
+        std::fs::write(path, render_effects_observed(&effects_pausing(), seat))
             .expect("the observed pausing snapshot is written");
     }
 }
 
 // ---- replay (ticket #77)
-
-/// The Game Record of a Golden Game, built from its script, replays to the Event Traces and the
-/// final GameState of the Game as it was played (ADR-0019).
-fn assert_replaying_the_record_reproduces(
-    ruleset: &DeclarativeRuleset,
-    decks: &[DeckList],
-    game: &GoldenGame,
-) {
-    let played = play_game(ruleset, decks, game);
-    let mut record = GameRecord::new(ruleset, decks, Seed(game.seed));
-    for action in &game.script {
-        record.push_accepted(action.clone());
-    }
-    let replay = ruleset.replay(&record).expect("the record replays");
-    assert_eq!(replay.creation.opening.trace.events(), played.creation);
-    let replayed: Vec<Vec<Event>> = replay
-        .traces
-        .iter()
-        .map(|trace| trace.events().to_vec())
-        .collect();
-    let original: Vec<Vec<Event>> = played
-        .steps
-        .iter()
-        .map(|(_, events)| events.clone())
-        .collect();
-    assert_eq!(replayed, original, "Event Traces of {}", game.name);
-    assert_eq!(
-        replay.state, played.final_state,
-        "final GameState of {}",
-        game.name
-    );
-}
 
 #[test]
 fn replaying_the_record_of_effects_leader_kill_reproduces_its_game() {
