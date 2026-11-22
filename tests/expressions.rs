@@ -122,6 +122,7 @@ fn base() -> RulesetDraft {
         inputs: vec![],
         setup: vec![],
         actions: vec![],
+        windows: Vec::new(),
         turn: None,
         win_conditions: vec![],
         effects: None,

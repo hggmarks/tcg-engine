@@ -40,6 +40,10 @@ id_type!(
     PhaseId
 );
 id_type!(
+    /// The identity of a Response Window, unique among the windows.
+    WindowId
+);
+id_type!(
     /// The name of an action parameter, unique within its action.
     ParamName
 );
@@ -59,6 +63,7 @@ pub struct RulesetDefinition {
     pub(super) deck_inputs: Vec<DeckInput>,
     pub(super) setup: Vec<SetupStep>,
     pub(super) actions: Vec<ActionDefinition>,
+    pub(super) windows: Vec<Window>,
     pub(super) turn: Option<TurnStructure>,
     pub(super) win_conditions: Vec<WinCondition>,
     pub(super) effects_active_zone: Option<ZoneId>,
@@ -115,6 +120,19 @@ impl RulesetDefinition {
 
     pub fn action(&self, id: &ActionId) -> Option<&ActionDefinition> {
         self.actions.iter().find(|action| action.id() == id)
+    }
+
+    /// The Response Windows in declared order; empty when the ruleset declares none.
+    pub fn windows(&self) -> &[Window] {
+        &self.windows
+    }
+
+    /// The window that `action` opens when it is taken outside a window: the one that lists it in
+    /// `opened_by`. Validation guarantees an action opens at most one.
+    pub fn window_opened_by(&self, action: &ActionId) -> Option<&Window> {
+        self.windows
+            .iter()
+            .find(|window| window.opened_by.contains(action))
     }
 
     /// The structure of a Turn; `None` when the ruleset declares none, and the Game then has no
@@ -423,6 +441,33 @@ impl ActionDefinition {
     }
 }
 
+/// A Response Window (ADR-0037): the Actions that open it, and the Actions the Player with
+/// Priority may take while it is open. Every id names a declared action. An action taken in an open
+/// window, and an opening action taken outside one, is pushed onto the Stack instead of resolving.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Window {
+    pub(super) id: WindowId,
+    pub(super) opened_by: Vec<ActionId>,
+    pub(super) actions: Vec<ActionId>,
+}
+
+impl Window {
+    pub fn id(&self) -> &WindowId {
+        &self.id
+    }
+
+    /// The actions that open this window, in declared order. No action opens two windows.
+    pub fn opened_by(&self) -> &[ActionId] {
+        &self.opened_by
+    }
+
+    /// The actions that may be taken while this window is open, in declared order: the order the
+    /// Legal Actions of the Player with Priority list them.
+    pub fn actions(&self) -> &[ActionId] {
+        &self.actions
+    }
+}
+
 /// A card the Action supplies. It must fit one of the param's alternatives (at least one).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Param {
@@ -544,6 +589,12 @@ pub enum Cost {
     /// Taps the first `count` untapped cards (a card whose card type declares `tapped` and whose
     /// value is false), in list order, of the acting Player's `zone`.
     Tap { zone: ZoneId, count: ValueRef },
+    /// Taps `card`, which must be untapped; every card type its param may take declares a bool
+    /// `tapped` instance state.
+    TapCard { card: CardRef },
+    /// Moves `card` from the zone it is in onto the Top of `to`, a zone of its owner, as the
+    /// `move` effect does.
+    Move { card: CardRef, to: ZoneId },
 }
 
 /// An effect of an action.

@@ -13,10 +13,11 @@
 //! its card types (non-empty, known, without repeats), then `size`, then `max_copies`, then its
 //! zone. Setup steps follow, in declaration order, then the actions (each: id grammar, duplicate,
 //! then its params, its cost and its effects, in that order, ADR-0015, and then where its `end_turn`
-//! may be, ADR-0027), then the turn: per phase,
+//! may be, ADR-0027), then the Response Windows (the player count, then per window its id, its
+//! `opened_by` and its `actions`, then the checks of the pushed actions, ADR-0037), then the turn: per phase,
 //! in declaration order, its id (grammar, duplicate), its kind (exactly one of `automatic` and
 //! `actions`) and its content (an action phase also needs an action that ends the Turn), and after
-//! all the phases that exactly one has actions, then that every action is listed by a phase. Phases are
+//! all the phases that exactly one has actions, then that every action is listed by a phase or by a window. Phases are
 //! addressed by id (`turn.phases[main].actions[0]`) and steps by position, with
 //! `then` and `else` as the keys of nested steps (`turn.phases[start].automatic[2].else[0]`).
 //! Within a step: `player`, then its zones in key order (a source that cards are taken from is
@@ -55,7 +56,7 @@ pub use draft::{
     EffectDraft, EffectsDraft, ExpressionDraft, FieldDraft, FieldTypeDraft, InitializerDraft,
     InstanceStateDraft, MetaDraft, ParamAlternativeDraft, ParamCardsDraft, ParamDraft,
     ParametersDraft, PhaseDraft, RefDraft, RulesetDraft, SetupStepDraft, TurnDraft,
-    WinConditionDraft, WinConditionWhenDraft, ZoneDraft,
+    WinConditionDraft, WinConditionWhenDraft, WindowDraft, ZoneDraft,
 };
 pub use error::{DefinitionError, DefinitionErrorKind, RefType, ReferenceTarget};
 pub use model::{
@@ -65,5 +66,5 @@ pub use model::{
     ParamAlternative, ParamName, ParamOwner, Parameters, Phase, PhaseId, PhaseKind, PlayerCount,
     PlayerPosition, PlayerSelector, Position, RulesetDefinition, RulesetId, RulesetVersion,
     SetupStep, StateName, TurnStructure, ValueRef, Visibility, WinCondition, WinConditionId,
-    WinConditionWhen, Zone, ZoneId,
+    WinConditionWhen, Window, WindowId, Zone, ZoneId,
 };

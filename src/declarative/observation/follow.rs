@@ -10,7 +10,7 @@ use super::error::ObservationError;
 use super::observed_event::{
     ObservedAnswer, ObservedEvent, ObservedTransition, TakenAction, TakenArgument,
 };
-use super::observed_state;
+use super::observed_state::{self, observed_item};
 use super::observer::{sees, Observer, Sight};
 use crate::declarative::action::{Action, Argument};
 use crate::declarative::creation::DeclarativeRuleset;
@@ -80,6 +80,7 @@ impl DeclarativeRuleset {
                     arguments,
                 }
             }
+            Action::Pass { player } => TakenAction::Pass { player: *player },
             Action::Answer { player, answer } => TakenAction::Answer {
                 player: *player,
                 answer: match answer {
@@ -276,6 +277,15 @@ impl DeclarativeRuleset {
                     },
                 }
             }
+            (Event::ItemPushed { item }, Sight::NoCard) => ObservedEvent::ItemPushed {
+                item: observed_item(observer, item)?,
+            },
+            (Event::ItemResolved { item }, Sight::NoCard) => ObservedEvent::ItemResolved {
+                item: observed_item(observer, item)?,
+            },
+            (Event::ItemFizzled { item }, Sight::NoCard) => ObservedEvent::ItemFizzled {
+                item: observed_item(observer, item)?,
+            },
             _ => return Err(out_of_step()),
         };
         Ok(Some(projected))
@@ -334,6 +344,7 @@ mod tests {
             inputs: Vec::new(),
             setup: Vec::new(),
             actions: Vec::new(),
+            windows: Vec::new(),
             turn: None,
             win_conditions: Vec::new(),
             effects: None,

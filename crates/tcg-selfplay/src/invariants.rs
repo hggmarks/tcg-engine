@@ -238,6 +238,13 @@ fn state_difference(recomputed: &GameState, next: &GameState) -> Option<String> 
     if recomputed.pending_decision() != next.pending_decision() {
         return Some("the Pending Decision differs".to_string());
     }
+    if recomputed.stack() != next.stack() {
+        return Some(format!(
+            "the Stack holds {} items in the Recomputed GameState and {} in the engine's, or they differ",
+            recomputed.stack().len(),
+            next.stack().len()
+        ));
+    }
     let (left, right) = (recomputed.cards(), next.cards());
     if left.len() != right.len() {
         return Some(format!(

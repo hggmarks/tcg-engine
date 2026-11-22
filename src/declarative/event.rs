@@ -2,6 +2,7 @@
 //! know nothing about any particular game (ADR-0010).
 
 use super::decision::{Answer, DecisionKind, PausedResolution};
+use super::stack::StackItem;
 use super::state::{CardInstanceId, Loss};
 use crate::card_catalog::CardId;
 use crate::player::PlayerId;
@@ -72,4 +73,16 @@ pub enum Event {
     /// The Deciding Player answered the pending decision. It is the first Event of the trace of an
     /// Answer.
     DecisionAnswered { player: PlayerId, answer: Answer },
+    /// An Action was pushed onto the Stack (ADR-0037): its cost was paid by the Events before it in
+    /// the trace, and its effects wait as `item`. It comes after the cost Events and before the
+    /// Trigger Resolution of the transition. Applying it puts `item` on top of the Stack.
+    ItemPushed { item: StackItem },
+    /// The top item of the Stack resolved: it is the first Event of the trace of a Pass, and the
+    /// item's effect Events follow. Applying it pops the item, which must be the top one and must
+    /// not Fizzle.
+    ItemResolved { item: StackItem },
+    /// The top item of the Stack Fizzled, a card it bound having left (ADR-0037): it is the first
+    /// Event of the trace of a Pass, in the place of `ItemResolved`, and nothing of the item's
+    /// effects happens. Applying it pops the item, which must be the top one and must Fizzle.
+    ItemFizzled { item: StackItem },
 }

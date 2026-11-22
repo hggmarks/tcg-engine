@@ -10,9 +10,10 @@ use super::viewer::{ObservedCard, Viewer};
 use crate::card_catalog::CardId;
 use crate::declarative::creation::DeclarativeRuleset;
 use crate::declarative::decision::DecisionKind;
+use crate::declarative::stack::{StackItem, StackSource};
 use crate::declarative::state::{GameState, TerminalOutcome};
 use crate::player::{PlayerId, PlayerOrder};
-use crate::ruleset_definition::{FieldValue, PhaseId, StateName, ZoneId};
+use crate::ruleset_definition::{FieldValue, ParamName, PhaseId, StateName, ZoneId};
 use crate::turn::TurnNumber;
 
 /// A GameState as one Viewer sees it: the facts every Viewer sees, each zone as the Viewer's
@@ -26,6 +27,7 @@ pub struct ObservedGameState {
     phase: Option<PhaseId>,
     outcome: Option<TerminalOutcome>,
     pending: Option<ObservedPendingDecision>,
+    stack: Vec<ObservedStackItem>,
     zones: Vec<(PlayerId, Vec<ObservedZone>)>,
     cards: Vec<VisibleCard>,
 }
@@ -38,17 +40,92 @@ pub struct ObservedPendingDecision {
     pub kind: DecisionKind,
 }
 
+/// One card a Stack Item bound, as every Viewer sees it (ADR-0037): the param, the zone it was in
+/// once the cost was paid, and its Observed Card; `None` once the card has left, which is what
+/// makes the item Fizzle.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ObservedBoundCard {
+    pub param: ParamName,
+    pub zone: ZoneId,
+    pub card: Option<ObservedCard>,
+}
+
+/// A Stack Item as every Viewer sees it: the Stack is fully public (ADR-0037). The bound cards are
+/// in param order.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ObservedStackItem {
+    pub controller: PlayerId,
+    pub source: StackSource,
+    pub bound: Vec<ObservedBoundCard>,
+}
+
+impl ObservedStackItem {
+    /// Whether the item Fizzles when it resolves: a card it bound has left.
+    pub fn fizzles(&self) -> bool {
+        self.bound.iter().any(|bound| bound.card.is_none())
+    }
+}
+
+/// The Observed Stack Item of `item` for the Viewer of `observer`: a bound card that left is
+/// `None`; any other is the Observed Card the Viewer holds, which it must (a bound card is public).
+pub(super) fn observed_item(
+    observer: &Observer,
+    item: &StackItem,
+) -> Result<ObservedStackItem, ObservationError> {
+    let mut bound = Vec::with_capacity(item.bound.len());
+    for held in &item.bound {
+        let card = if held.left {
+            None
+        } else {
+            Some(
+                observer
+                    .observed_card(held.card)
+                    .ok_or(ObservationError::ObserverOutOfStep)?,
+            )
+        };
+        bound.push(ObservedBoundCard {
+            param: held.param.clone(),
+            zone: held.zone.clone(),
+            card,
+        });
+    }
+    Ok(ObservedStackItem {
+        controller: item.controller,
+        source: item.source.clone(),
+        bound,
+    })
+}
+
 impl ObservedGameState {
     /// The decision a Resolution is paused at; `None` when nothing is pending.
     pub fn pending_decision(&self) -> Option<&ObservedPendingDecision> {
         self.pending.as_ref()
     }
 
-    /// The Player who acts next: the one asked while a decision is pending, else the Active Player.
+    /// The Stack Items waiting to resolve, bottom first; empty when no Response Window is open.
+    pub fn stack(&self) -> &[ObservedStackItem] {
+        &self.stack
+    }
+
+    /// The Player with Priority: the first Player in seat order other than the controller of the
+    /// top item; `None` when the Stack is empty.
+    pub fn priority(&self) -> Option<PlayerId> {
+        let top = self.stack.last()?;
+        self.player_order
+            .players()
+            .iter()
+            .copied()
+            .find(|&player| player != top.controller)
+    }
+
+    /// The Player who acts next: the one asked while a decision is pending, else the Player with
+    /// Priority while a window is open, else the Active Player.
     pub fn deciding_player(&self) -> PlayerId {
         self.pending
             .as_ref()
-            .map_or(self.active_player, |pending| pending.decider)
+            .map(|pending| pending.decider)
+            .or_else(|| self.priority())
+            .unwrap_or(self.active_player)
     }
 }
 
@@ -184,6 +261,7 @@ impl ObservedGameState {
                 self.card(*card).ok_or(misfit)?;
                 self.remove_seen(from, *card);
                 self.push_seen(to, *card);
+                self.mark_left(*card);
                 Ok(())
             }
             ObservedEvent::CardMovedIntoSight {
@@ -239,6 +317,7 @@ impl ObservedGameState {
                 self.remove_seen(from, *card);
                 self.set_unseen_count(to, grown);
                 self.cards.remove(position);
+                self.mark_left(*card);
                 Ok(())
             }
             ObservedEvent::UnseenCardMoved { player, from, to } => {
@@ -300,7 +379,7 @@ impl ObservedGameState {
                 Ok(())
             }
             ObservedEvent::TurnBegan { player, turn } => {
-                if !self.player_order.contains(*player) {
+                if !self.stack.is_empty() || !self.player_order.contains(*player) {
                     return Err(misfit);
                 }
                 self.active_player = *player;
@@ -309,7 +388,7 @@ impl ObservedGameState {
                 Ok(())
             }
             ObservedEvent::PhaseBegan { phase } => {
-                if self.turn_number.is_none() {
+                if !self.stack.is_empty() || self.turn_number.is_none() {
                     return Err(misfit);
                 }
                 self.phase = Some(phase.clone());
@@ -334,6 +413,7 @@ impl ObservedGameState {
                     TerminalOutcome::of(&self.player_order, losses).map_err(|_| misfit)?;
                 self.outcome = Some(outcome);
                 self.pending = None;
+                self.stack.clear();
                 Ok(())
             }
             ObservedEvent::DecisionPending { decider, kind } => {
@@ -353,6 +433,46 @@ impl ObservedGameState {
                 }
                 self.pending = None;
                 Ok(())
+            }
+            ObservedEvent::ItemPushed { item } => {
+                // A card of the item that is not left is a card the Viewer sees, and the item has
+                // not Fizzled yet.
+                let sees_every_card = item
+                    .bound
+                    .iter()
+                    .all(|bound| bound.card.is_some_and(|card| self.card(card).is_some()));
+                if !self.player_order.contains(item.controller) || !sees_every_card {
+                    return Err(misfit);
+                }
+                self.stack.push(item.clone());
+                Ok(())
+            }
+            ObservedEvent::ItemResolved { item } => self.pop_top(item, false),
+            ObservedEvent::ItemFizzled { item } => self.pop_top(item, true),
+        }
+    }
+
+    /// Pops the top item, which must be `item`, and Fizzle or not as `fizzles` says.
+    fn pop_top(
+        &mut self,
+        item: &ObservedStackItem,
+        fizzles: bool,
+    ) -> Result<(), ObservedApplyError> {
+        let misfit = ObservedApplyError::EventDoesNotFit;
+        if self.stack.last() != Some(item) || item.fizzles() != fizzles {
+            return Err(misfit);
+        }
+        self.stack.pop();
+        Ok(())
+    }
+
+    /// A card the Viewer saw moved: every Stack Item that bound it shows it as gone.
+    fn mark_left(&mut self, card: ObservedCard) {
+        for item in &mut self.stack {
+            for bound in &mut item.bound {
+                if bound.card == Some(card) {
+                    bound.card = None;
+                }
             }
         }
     }
@@ -561,6 +681,11 @@ pub(super) fn observe(
         return Err(ObservationError::ObserverOutOfStep);
     }
 
+    let mut stack = Vec::with_capacity(state.stack().len());
+    for item in state.stack() {
+        stack.push(observed_item(observer, item)?);
+    }
+
     let mut cards = Vec::new();
     for (handle, id) in observer.held_cards() {
         let instance = state.card(id).ok_or(ObservationError::ObserverOutOfStep)?;
@@ -585,6 +710,7 @@ pub(super) fn observe(
                 decider: pending.decider(),
                 kind: pending.kind(),
             }),
+        stack,
         zones,
         cards,
     })

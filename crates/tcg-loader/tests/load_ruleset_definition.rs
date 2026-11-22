@@ -148,6 +148,7 @@ fn small_ruleset_draft() -> RulesetDraft {
         ],
         setup: vec![],
         actions: vec![],
+        windows: vec![],
         turn: None,
         win_conditions: vec![],
         effects: None,

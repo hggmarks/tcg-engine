@@ -164,6 +164,10 @@ fn describe(event: &Event) -> String {
         // These tests load a ruleset with no Card Effects, so no decision is ever pending.
         Event::DecisionPending { decider, .. } => format!("asked p{}", decider.0),
         Event::DecisionAnswered { player, .. } => format!("answered p{}", player.0),
+        // No window is ever open in a ruleset without `windows`.
+        Event::ItemPushed { .. } => "pushed".to_string(),
+        Event::ItemResolved { .. } => "resolved".to_string(),
+        Event::ItemFizzled { .. } => "fizzled".to_string(),
     }
 }
 

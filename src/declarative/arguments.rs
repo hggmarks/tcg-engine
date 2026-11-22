@@ -15,6 +15,7 @@ use super::action::{Argument, Rejection};
 use super::creation::DeclarativeRuleset;
 use super::decision::BoundName;
 use super::expression;
+use super::stack::BoundCard;
 use super::state::{CardInstanceId, GameState};
 use crate::player::PlayerId;
 use crate::ruleset_definition::{ActionDefinition, Param, ParamAlternative, ParamName, ParamOwner};
@@ -30,6 +31,16 @@ impl BoundCards {
     pub(super) fn of(param: ParamName, card: CardInstanceId) -> Self {
         Self {
             cards: vec![(param, card)],
+        }
+    }
+
+    /// The bindings a Stack Item kept, in param order.
+    pub(super) fn of_item(bound: &[BoundCard]) -> Self {
+        Self {
+            cards: bound
+                .iter()
+                .map(|bound| (bound.param.clone(), bound.card))
+                .collect(),
         }
     }
 

@@ -16,8 +16,8 @@ use tcg_engine::deck_list::DeckList;
 use tcg_engine::declarative::{
     Action, Argument, CardInstanceId, DecisionKind, DeclarativeRuleset, Event, GameCreation,
     GameRecord, GameState, Loss, ObservationError, ObservedAnswer, ObservedApplyError,
-    ObservedCard, ObservedEvent, ObservedGameState, ObservedTransition, Observer, TakenAction,
-    TakenArgument, Viewer,
+    ObservedCard, ObservedEvent, ObservedGameState, ObservedStackItem, ObservedTransition,
+    Observer, TakenAction, TakenArgument, Viewer,
 };
 use tcg_engine::player::PlayerId;
 use tcg_engine::random::Seed;
@@ -202,7 +202,10 @@ fn card_of(event: &ObservedEvent) -> Option<ObservedCard> {
         | ObservedEvent::DrawFromEmptyZone { .. }
         | ObservedEvent::GameEnded { .. }
         | ObservedEvent::DecisionPending { .. }
-        | ObservedEvent::DecisionAnswered { .. } => None,
+        | ObservedEvent::DecisionAnswered { .. }
+        | ObservedEvent::ItemPushed { .. }
+        | ObservedEvent::ItemResolved { .. }
+        | ObservedEvent::ItemFizzled { .. } => None,
     }
 }
 
@@ -948,6 +951,14 @@ fn binds_every_field_with_its_type(event: &ObservedEvent) {
             let _: &PlayerId = player;
             let _: &ObservedAnswer = answer;
         }
+        ObservedEvent::ItemPushed { item }
+        | ObservedEvent::ItemResolved { item }
+        | ObservedEvent::ItemFizzled { item } => {
+            let _: &ObservedStackItem = item;
+            for bound in &item.bound {
+                let _: &Option<ObservedCard> = &bound.card;
+            }
+        }
     }
 }
 
@@ -975,6 +986,9 @@ fn binds_every_taken_field_with_its_type(taken: &TakenAction) {
             let _: &PlayerId = player;
             let _: &ObservedAnswer = answer;
         }
+        TakenAction::Pass { player } => {
+            let _: &PlayerId = player;
+        }
     }
 }
 
@@ -983,6 +997,7 @@ fn taken_arguments(taken: &TakenAction) -> &[TakenArgument] {
     match taken {
         TakenAction::Declared { arguments, .. } => arguments,
         TakenAction::Answer { .. } => panic!("the Taken Action is an Answer"),
+        TakenAction::Pass { .. } => panic!("the Taken Action is a Pass"),
     }
 }
 

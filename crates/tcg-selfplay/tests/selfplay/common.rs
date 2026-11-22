@@ -117,7 +117,7 @@ pub fn declared(action: &Action) -> Option<(PlayerId, &ActionId, &[Argument])> {
             action,
             arguments,
         } => Some((*player, action, arguments.as_slice())),
-        Action::Answer { .. } => None,
+        Action::Answer { .. } | Action::Pass { .. } => None,
     }
 }
 
@@ -202,7 +202,7 @@ fn action_line(action: &Action) -> String {
         } => {
             format!("Action {{ player: {player:?}, action: {action:?}, arguments: {arguments:?} }}")
         }
-        Action::Answer { .. } => format!("{action:?}"),
+        Action::Answer { .. } | Action::Pass { .. } => format!("{action:?}"),
     }
 }
 
@@ -225,6 +225,28 @@ pub fn pin_difference(committed: &str, lines: &[String]) -> Option<String> {
             lines.len()
         )
     })
+}
+
+pub const RESPONSE_RULESET: &str =
+    include_str!("../../../../rulesets/response-ruleset/response-ruleset.yaml");
+pub const RESPONSE_CATALOG: &str =
+    include_str!("../../../../rulesets/response-ruleset/response-catalog.yaml");
+pub const RESPONSE_DECK_A: &str =
+    include_str!("../../../../rulesets/response-ruleset/decks/deck-a.yaml");
+pub const RESPONSE_DECK_B: &str =
+    include_str!("../../../../rulesets/response-ruleset/decks/deck-b.yaml");
+
+/// The real Response Ruleset and the real Response catalog.
+pub fn response() -> DeclarativeRuleset {
+    ruleset_from(RESPONSE_RULESET, RESPONSE_CATALOG)
+}
+
+/// The Response sample Deck A for seat 0 and Deck B for seat 1.
+pub fn response_decks(ruleset: &DeclarativeRuleset) -> Vec<DeckList> {
+    vec![
+        deck(ruleset, RESPONSE_DECK_A),
+        deck(ruleset, RESPONSE_DECK_B),
+    ]
 }
 
 /// Asserts that `one` and `other` are the same Game: the same record, creation, Event Traces and

@@ -1,0 +1,151 @@
+# Starter card catalog for the Response Ruleset (rulesets/response-ruleset/response-ruleset.yaml):
+# the cards of the Effects catalog, each creature with `fast: false` (a field has no default), and
+# two fast creatures. The Effects catalog starts with the cards of the Small Ruleset catalog, then
+# nine creatures that carry a triggered Card Effect, two that carry a continuous one and three
+# auras, which carry a continuous one over a matched set. The sample decks list all the effect
+# cards but restless_shade, which exists only to reach the Trigger Cap. curious_owl, snare_vine
+# and mind_leech, the cards that pause a Resolution for a Choice, are in both.
+# Format: rulesets/formats.md.
+
+meta: { ruleset: response, ruleset_version: 1 }
+
+cards:
+  # Leaders: one per player, starts in the Leader Zone.
+  - { id: captain_ardel, type: leader, fields: { name: "Captain Ardel", power: 2, life: 5 } }
+  - { id: warden_ilse,   type: leader, fields: { name: "Warden Ilse",   power: 1, life: 6 } }
+  - { id: sage_orren,    type: leader, fields: { name: "Sage Orren",    power: 1, life: 7 } }
+
+  # Creatures.
+  - { id: goblin_scout, type: creature, fields: { name: "Goblin Scout", cost: 1, power: 1, fast: false } }
+  - { id: moss_sprite,  type: creature, fields: { name: "Moss Sprite",  cost: 1, power: 2, fast: false } }
+  - { id: ember_hound,  type: creature, fields: { name: "Ember Hound",  cost: 2, power: 2, fast: false } }
+  - { id: river_otter,  type: creature, fields: { name: "River Otter",  cost: 2, power: 3, fast: false } }
+  - { id: stone_golem,  type: creature, fields: { name: "Stone Golem",  cost: 3, power: 3, fast: false } }
+  - { id: shadow_cat,   type: creature, fields: { name: "Shadow Cat",   cost: 3, power: 4, fast: false } }
+  - { id: iron_guard,   type: creature, fields: { name: "Iron Guard",   cost: 3, power: 2, fast: false } }
+  - { id: wind_hawk,    type: creature, fields: { name: "Wind Hawk",    cost: 2, power: 2, fast: false } }
+  - { id: thorn_boar,   type: creature, fields: { name: "Thorn Boar",   cost: 4, power: 4, fast: false } }
+  - { id: frost_wolf,   type: creature, fields: { name: "Frost Wolf",   cost: 4, power: 5, fast: false } }
+  - { id: ash_drake,    type: creature, fields: { name: "Ash Drake",    cost: 5, power: 6, fast: false } }
+  - { id: tide_serpent, type: creature, fields: { name: "Tide Serpent", cost: 5, power: 5, fast: false } }
+  - { id: sun_knight,   type: creature, fields: { name: "Sun Knight",   cost: 4, power: 3, fast: false } }
+  - { id: moon_witch,   type: creature, fields: { name: "Moon Witch",   cost: 3, power: 2, fast: false } }
+  - { id: bone_giant,   type: creature, fields: { name: "Bone Giant",   cost: 5, power: 7, fast: false } }
+  - { id: storm_roc,    type: creature, fields: { name: "Storm Roc",    cost: 4, power: 4, fast: false } }
+
+  # Creatures with a triggered Card Effect. Each draws one card for its controller, except the Shade.
+  # Draws when it enters the field.
+  - id: lamp_keeper
+    type: creature
+    fields: { name: "Lamp Keeper", cost: 1, power: 1, fast: false }
+    effects:
+      - on: { enter: field }
+        do: [ { draw: { player: controller, from: deck, to: hand, count: 1 } } ]
+  # Draws at the start of its controller's Turn, while it is in the field.
+  - id: dawn_scout
+    type: creature
+    fields: { name: "Dawn Scout", cost: 2, power: 2, fast: false }
+    effects:
+      - on: { turn_start: {} }
+        do: [ { draw: { player: controller, from: deck, to: hand, count: 1 } } ]
+  # Draws when it enters the trash, as when it dies in combat.
+  - id: grave_jackal
+    type: creature
+    fields: { name: "Grave Jackal", cost: 1, power: 1, fast: false }
+    effects:
+      - on: { enter: trash }
+        do: [ { draw: { player: controller, from: deck, to: hand, count: 1 } } ]
+  # Draws when it enters the field, but only if `recently_played` is true (a play sets it, and it
+  # stays until the start of its controller's next Turn): false, for example, when it arrives in the
+  # field after the Turn it was played.
+  - id: eager_recruit
+    type: creature
+    fields: { name: "Eager Recruit", cost: 1, power: 1, fast: false }
+    effects:
+      - on: { enter: field }
+        if: { eq: [ { ref: self.recently_played }, true ] }
+        do: [ { draw: { player: controller, from: deck, to: hand, count: 1 } } ]
+  # A mutually-triggering pair of effects on one card: each wakes the other, so playing it exceeds the
+  # Trigger Cap and the play is rejected. It exists to show the cap; keep it out of the sample decks.
+  - id: restless_shade
+    type: creature
+    fields: { name: "Restless Shade", cost: 2, power: 2, fast: false }
+    effects:
+      - on: { enter: field }
+        do: [ { move: { card: { ref: self }, to: trash } } ]
+      - on: { enter: trash }
+        do: [ { move: { card: { ref: self }, to: field } } ]
+  # The bounded version of that pattern, a cascade: a trigger whose own Events wake another trigger.
+  # Entering the field moves it to the trash, and entering the trash draws a card for its controller.
+  # The second effect does not move the card back, so the chain stops after two steps. Shipped in
+  # the sample decks.
+  - id: pyre_imp
+    type: creature
+    fields: { name: "Pyre Imp", cost: 1, power: 1, fast: false }
+    effects:
+      - on: { enter: field }
+        do: [ { move: { card: { ref: self }, to: trash } } ]
+      - on: { enter: trash }
+        do: [ { draw: { player: controller, from: deck, to: hand, count: 1 } } ]
+  # An Option Choice (ADR-0033): when it enters the field its controller may draw a card. The
+  # Resolution pauses until the controller answers: option 0 draws, option 1 (empty) does nothing.
+  # In both sample decks, two copies each.
+  - id: curious_owl
+    type: creature
+    fields: { name: "Curious Owl", cost: 1, power: 1, fast: false }
+    effects:
+      - on: { enter: field }
+        do:
+          - choose_one:
+              decider: controller
+              options:
+                - [ { draw: { player: controller, from: deck, to: hand, count: 1 } } ]
+                - []
+
+  # A Card Choice (ADR-0034): when it enters the field its controller picks a creature in an
+  # opponent's field, which becomes `target` for the rest of the `do`, and taps it. With no such
+  # creature nothing is asked and the rest of the `do` is skipped. In both sample decks, two copies each.
+  - id: snare_vine
+    type: creature
+    fields: { name: "Snare Vine", cost: 2, power: 1, fast: false }
+    effects:
+      - on: { enter: field }
+        do:
+          - choose_card: { name: target, decider: controller, zone: field, card_type: creature, owner: opponent }
+          - set_state: { card: { ref: target }, state: tapped, value: true }
+  # A Card Choice decided by the controller's opponent: when it enters the field the opponent
+  # picks a creature from its own hand, which goes to its trash. `owner: opponent` is the
+  # controller's opponent whoever decides, and the opponent sees its own hand. In both sample decks,
+  # two copies each.
+  - id: mind_leech
+    type: creature
+    fields: { name: "Mind Leech", cost: 2, power: 2, fast: false }
+    effects:
+      - on: { enter: field }
+        do:
+          - choose_card: { name: victim, decider: opponent, zone: hand, card_type: creature, owner: opponent }
+          - move: { card: { ref: victim }, to: trash }
+
+  # Creatures with a continuous Card Effect (ADR-0024). A creature taps when it attacks, before the
+  # combat compares powers, so while it is tapped it fights with the modified power.
+  - { id: battle_veteran, type: creature, fields: { name: "Battle Veteran", cost: 1, power: 2, fast: false }, effects: [ { while: { eq: [ { ref: self.tapped }, true ] }, modify: { field: power, amount: 1 } } ] }
+  - { id: weary_ox,       type: creature, fields: { name: "Weary Ox",       cost: 2, power: 3, fast: false }, effects: [ { while: { eq: [ { ref: self.tapped }, true ] }, modify: { field: power, amount: -1 } } ] }
+
+  # Creatures with a continuous Card Effect over a matched set: an aura (ADR-0025). While it is in the
+  # field it adds its amount to the power of every creature its `scope` matches; `while: true` makes it
+  # unconditional. A scope names the zone and card type of its targets, and optionally `owner:
+  # opponent` (the other Players' cards; absent is its controller's) and `include_self: true`.
+  # Raises the controller's other creatures by 1: not itself, not the opponent's.
+  - { id: banner_bearer, type: creature, fields: { name: "Banner Bearer", cost: 2, power: 1, fast: false }, effects: [ { while: true, scope: { zone: field, card_type: creature }, modify: { field: power, amount: 1 } } ] }
+  # Lowers every opponent creature by 1.
+  - { id: dread_herald,  type: creature, fields: { name: "Dread Herald",  cost: 3, power: 2, fast: false }, effects: [ { while: true, scope: { zone: field, card_type: creature, owner: opponent }, modify: { field: power, amount: -1 } } ] }
+  # Raises the controller's creatures by 1, itself included.
+  - { id: rally_captain, type: creature, fields: { name: "Rally Captain", cost: 3, power: 2, fast: false }, effects: [ { while: true, scope: { zone: field, card_type: creature, include_self: true }, modify: { field: power, amount: 1 } } ] }
+
+  # Fast creatures: they can be played in a Response Window with `fast_play`, for the same mana as
+  # `play_creature` costs. In both sample decks, two copies each.
+  - { id: swift_sparrow, type: creature, fields: { name: "Swift Sparrow", cost: 1, power: 1, fast: true } }
+  - { id: flash_fox,     type: creature, fields: { name: "Flash Fox",     cost: 2, power: 2, fast: true } }
+
+  # Mana: the mana card has no fields, so one definition serves the whole mana deck.
+  - { id: mana, type: mana, fields: {} }

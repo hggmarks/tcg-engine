@@ -1,4 +1,4 @@
-//! Listing the Legal Actions of the declarative Ruleset (ADR-0018, ADR-0033).
+//! Listing the Legal Actions of the declarative Ruleset (ADR-0018, ADR-0033, ADR-0037).
 
 use super::action::{current_action_phase, Action, Argument, Rejection};
 use super::arguments;
@@ -29,7 +29,9 @@ impl DeclarativeRuleset {
     /// The one walk over the candidates, in Listing Order. With `keep_rejected` false a refused
     /// candidate is dropped on the spot, so `legal_actions` allocates nothing for it. While a
     /// decision is pending the candidates are the Answers of its Deciding Player, in index order
-    /// (ADR-0033); otherwise they are the Declared Actions of the Active Player.
+    /// (ADR-0033); otherwise, while a Response Window is open, they are a Pass and then the
+    /// window's Declared Actions, for the Player with Priority (ADR-0037); otherwise they are the
+    /// Declared Actions the current phase lists, of the Active Player.
     fn walk(&self, state: &GameState, keep_rejected: bool) -> Vec<(Action, Option<Rejection>)> {
         if state.outcome().is_some() {
             return Vec::new();
@@ -58,10 +60,20 @@ impl DeclarativeRuleset {
             }
             return walked;
         }
-        let Some(listed) = current_action_phase(self, state) else {
-            return Vec::new();
+        // While a window is open the Player with Priority may Pass, then take the window's
+        // Actions in the order it lists them (ADR-0037).
+        let (listed, actor) = if let Some(window) = self.open_window(state) {
+            let Some(priority) = state.priority() else {
+                return Vec::new();
+            };
+            consider(Action::Pass { player: priority });
+            (window.actions(), priority)
+        } else {
+            let Some(listed) = current_action_phase(self, state) else {
+                return Vec::new();
+            };
+            (listed, state.active_player())
         };
-        let actor = state.active_player();
         for id in listed {
             let Some(declared) = self.definition().action(id) else {
                 continue;

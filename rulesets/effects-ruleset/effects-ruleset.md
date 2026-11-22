@@ -1,6 +1,8 @@
 # Ruleset: Effects
 
-The ruleset of Phase C. It is **derived from the Small Ruleset** (`../small-ruleset/small-ruleset.md`), which is frozen as the canonical ruleset of Phase B: from now on a rule decision is made here, and the Small Ruleset files do not change (ADR-0022).
+**Frozen since Phase F (ADR-0037); rule decisions go to `rulesets/response-ruleset/`.** This file, `effects-ruleset.yaml`, the catalog, the decks, the Golden Games and the self-play pin do not change; a digest test asserts it.
+
+The ruleset of Phase C. It is **derived from the Small Ruleset** (`../small-ruleset/small-ruleset.md`), which is frozen as the canonical ruleset of Phase B: from now on a rule decision is made here, and the Small Ruleset files do not change (ADR-0022). *(Amended by ADR-0037: the Effects Ruleset is frozen too, since Phase F; rule decisions are made in the Response Ruleset, `../response-ruleset/response-ruleset.md`.)*
 
 Every rule not stated on this page is the Small Ruleset's, word for word: parameters, zones, deck inputs, setup, the turn, combat and win conditions. A Game of the Effects Ruleset with the same Seed, Deck Lists of Small cards and Actions plays identically to a Game of the Small Ruleset, Event for Event (a test plays the Small Ruleset's Leader-kill script with the Small sample decks under both). Its sample decks play the effect cards (see Sample decks), so its own golden game, `crates/tcg-loader/tests/golden/effects-leader-kill.trace`, is not the Small Ruleset's: it is a Leader-kill with a trigger resolution in it. A second Effects Golden Game, `crates/tcg-loader/tests/golden/effects-pausing.trace`, pauses for each kind of Choice (ADR-0035).
 
@@ -156,7 +158,7 @@ The leaders and the mana decks are the Small Ruleset's. The sample decks are the
 | **Option Choice** | `choose_one: { decider, options }`: the Decider picks one of at least 2 effect lists, any of which may be empty, and the Resolution pauses until they answer (ADR-0033). |
 | **Candidate** | A card a Card Choice can be answered with: one that could fill its param for the controller, listed in ascending Card Instance Id, evaluated when the Choice is reached and recomputed when the Answer arrives. |
 | **Card Choice** | `choose_card: { name, decider, zone, card_type, owner?, where? }` (or `one_of`): the Decider picks one card among the Candidates, an action param whose `owner` is relative to the controller; the name is a Card Ref after it. With no Candidate the rest of the `do` is skipped; with one it is still asked (ADR-0034). |
-| **Deciding Player** | The Player who acts next: the Decider while a decision is pending, otherwise the Active Player. |
+| **Deciding Player** | The Player who acts next: the Decider while a decision is pending, otherwise the Active Player. *(Amended by ADR-0037: otherwise the Player with Priority while a Response Window is open, which only the Response Ruleset has, otherwise the Active Player.)* |
 | **Answer** | The Deciding Player's Action that settles the pending decision: `Answer::Option(index)`, or `Answer::Card(id)` for a Card Choice. |
 | **Controller** | The owner of `self`, the carrying card: the Player a `draw` in a Card Effect draws for. |
 | **Draw effect** | `draw: { player, from, to, count }`: draws like the `draw` step; an empty `from` records `DrawFromEmptyZone`. |
