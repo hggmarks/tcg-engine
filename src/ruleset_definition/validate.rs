@@ -240,6 +240,30 @@ pub(super) fn validate(draft: RulesetDraft) -> Result<RulesetDefinition, Definit
         })
         .transpose()?;
 
+    // A window that allows abilities in a ruleset where no Card Effect is ever active could never
+    // do anything (ADR-0038).
+    if let Some(window) = valid_windows.iter().find(|window| window.abilities) {
+        let at = DefinitionPath::root()
+            .key("windows")
+            .id(window.id.as_str())
+            .key("abilities");
+        let Some(active) = &effects_active_zone else {
+            return fail(at, DefinitionErrorKind::AbilitiesWithoutActiveZone);
+        };
+        // The card of an ability is bound in the Active Zone and the Stack is public (ADR-0038).
+        let public = valid_zones
+            .iter()
+            .any(|zone| &zone.id == active && zone.visibility == Visibility::Public);
+        if !public {
+            return fail(
+                at,
+                DefinitionErrorKind::AbilitiesActiveZoneNotPublic {
+                    zone: active.as_str().to_string(),
+                },
+            );
+        }
+    }
+
     Ok(RulesetDefinition {
         meta: Meta {
             id: RulesetId::new(meta.id),
@@ -292,6 +316,7 @@ fn validate_win_condition(
                     .collect(),
                 missing: ReferenceTarget::CardType,
                 has_self: false,
+                choices: false,
             };
             let condition = check_condition(draft, &refs, when_at.clone())?;
             let subject = match params_read(&condition).as_slice() {
@@ -363,6 +388,7 @@ fn validate_action(
         params: scope,
         missing: ReferenceTarget::Param,
         has_self: false,
+        choices: false,
     };
 
     let cost_path = at.clone().key("cost");
@@ -444,6 +470,16 @@ pub(crate) struct SelfScope<'a> {
 
 impl<'a> SelfScope<'a> {
     pub(crate) fn new(definition: &'a RulesetDefinition, card_type: &CardTypeId) -> Self {
+        Self::scoped(definition, card_type, true)
+    }
+
+    /// The scope of an activated ability (ADR-0038): `self` as in a triggered Card Effect, but no
+    /// Choice may stand in its `cost` or its `do`.
+    pub(crate) fn for_ability(definition: &'a RulesetDefinition, card_type: &CardTypeId) -> Self {
+        Self::scoped(definition, card_type, false)
+    }
+
+    fn scoped(definition: &'a RulesetDefinition, card_type: &CardTypeId, choices: bool) -> Self {
         Self {
             players: definition.parameters().player_count().get(),
             refs: Refs {
@@ -455,8 +491,51 @@ impl<'a> SelfScope<'a> {
                 }],
                 missing: ReferenceTarget::Param,
                 has_self: true,
+                choices,
             },
         }
+    }
+
+    /// The `cost` of an activated ability: the action cost steps, each at its position under `at`,
+    /// with only `self` in scope. The Stack is public, so the zone `self` is in once the costs are
+    /// paid must be: the `to` of the last `move: self` cost must be `public` (`PushedCardNotPublic`
+    /// at `cost[k].move.to`, ADR-0038). Without a `move`, the Active Zone, which the window
+    /// declaration checks.
+    pub(crate) fn check_costs(
+        &self,
+        costs: &[CostDraft],
+        at: DefinitionPath,
+    ) -> Result<Vec<Cost>, DefinitionError> {
+        let checked = costs
+            .iter()
+            .enumerate()
+            .map(|(index, cost)| validate_cost(cost, &self.refs, at.clone().index(index)))
+            .collect::<Result<Vec<_>, _>>()?;
+        let last_move = checked
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(index, cost)| match cost {
+                Cost::Move { card, to } if card.param.as_str() == "self" => Some((index, to)),
+                _ => None,
+            });
+        if let Some((index, to)) = last_move {
+            let public = self
+                .refs
+                .zones
+                .iter()
+                .any(|zone| &zone.id == to && zone.visibility == Visibility::Public);
+            if !public {
+                return fail(
+                    at.index(index).key("move").key("to"),
+                    DefinitionErrorKind::PushedCardNotPublic {
+                        param: "self".to_string(),
+                        zone: to.as_str().to_string(),
+                    },
+                );
+            }
+        }
+        Ok(checked)
     }
 
     /// An `if` or a `while`: an expression that must be bool. `at` is its path.
@@ -629,6 +708,7 @@ fn validate_alternative(
                 params,
                 missing: ReferenceTarget::Param,
                 has_self: false,
+                choices: false,
             };
             Some(check_condition(draft, &refs, at.key("where"))?)
         }
@@ -755,6 +835,7 @@ fn validate_windows(
             id: WindowId::new(&window.id),
             opened_by: window.opened_by.iter().map(ActionId::new).collect(),
             actions: window.actions.iter().map(ActionId::new).collect(),
+            abilities: window.abilities,
         });
     }
 
@@ -1014,8 +1095,9 @@ fn validate_effect(
         }
         EffectDraft::ChooseOne { decider, options } => {
             let at = at.key("choose_one");
-            // Only a Card Effect, which has `self`, can pause for a decision (ADR-0033).
-            if !refs.has_self {
+            // Only a triggered Card Effect can pause for a decision (ADR-0033); an activated
+            // one has `self` but no Choice (ADR-0038).
+            if !refs.choices {
                 return fail(at, DefinitionErrorKind::ChoiceOutsideTriggeredEffect);
             }
             let decider = match decider.as_str() {
@@ -1048,8 +1130,9 @@ fn validate_effect(
         }
         EffectDraft::ChooseCard { decider, param } => {
             let at = at.key("choose_card");
-            // Only a Card Effect, which has `self`, can pause for a decision (ADR-0033).
-            if !refs.has_self {
+            // Only a triggered Card Effect can pause for a decision (ADR-0033); an activated
+            // one has `self` but no Choice (ADR-0038).
+            if !refs.choices {
                 return fail(at, DefinitionErrorKind::ChoiceOutsideTriggeredEffect);
             }
             let name_at = at.clone().key("name");

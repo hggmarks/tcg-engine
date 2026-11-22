@@ -119,6 +119,9 @@ pub struct WindowDraft {
     pub id: String,
     pub opened_by: Vec<String>,
     pub actions: Vec<String>,
+    /// Whether the activated abilities of cards in the Active Zone may be used while the window is
+    /// open (ADR-0038). `abilities`, default false.
+    pub abilities: bool,
 }
 
 /// An unvalidated action, in the order validation checks it: params, then cost, then effects.

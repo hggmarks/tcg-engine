@@ -252,6 +252,7 @@ fn declared(action: &Action) -> (&ActionId, &[Argument]) {
         } => (action, arguments),
         Action::Answer { .. } => panic!("an Answer is listed, but no decision is pending"),
         Action::Pass { .. } => panic!("a Pass is listed, but no window is open"),
+        Action::Activate { .. } => panic!("an Activate is listed, but no window is open"),
     }
 }
 

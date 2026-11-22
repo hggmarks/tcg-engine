@@ -122,6 +122,14 @@ pub enum TakenAction {
     },
     /// The Player with Priority passed.
     Pass { player: PlayerId },
+    /// The Player with Priority used the activated ability of `card` at Ability Index `ability`
+    /// (ADR-0038). The card was in the public Active Zone, so it is a plain Observed Card: the one
+    /// the Viewer holds after the transition, else the one it held before (now retired).
+    Activate {
+        player: PlayerId,
+        card: ObservedCard,
+        ability: u32,
+    },
 }
 
 /// An Answer as a Viewer observes it (ADR-0033, ADR-0034): the index of the option picked, or the

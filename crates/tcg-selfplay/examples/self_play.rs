@@ -171,6 +171,10 @@ fn print_game_log(loaded: &Loaded) {
                 ..
             } => ("answers card".to_string(), vec![card_name(&game, *card)]),
             Action::Pass { .. } => ("passes".to_string(), Vec::new()),
+            Action::Activate { card, ability, .. } => (
+                format!("activates ability {ability} of"),
+                vec![card_name(&game, *card)],
+            ),
         };
         println!(
             "  {index:>3}. Player {} {name}{}",

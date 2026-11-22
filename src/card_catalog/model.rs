@@ -5,7 +5,7 @@ use super::draft::CardCatalogDraft;
 use super::error::CatalogError;
 use crate::id::id_type;
 use crate::ruleset_definition::{
-    CardTypeId, Effect, Expression, FieldName, FieldValue, RulesetDefinition, RulesetId,
+    CardTypeId, Cost, Effect, Expression, FieldName, FieldValue, RulesetDefinition, RulesetId,
     RulesetVersion, ZoneId,
 };
 
@@ -98,11 +98,33 @@ impl CardDefinition {
     }
 }
 
-/// An ability carried by a Card Definition, in one of two shapes (ADR-0022).
+/// An ability carried by a Card Definition, in one of three shapes (ADR-0022, ADR-0038).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CardEffect {
     Triggered(TriggeredCardEffect),
     Continuous(ContinuousCardEffect),
+    Activated(ActivatedCardEffect),
+}
+
+/// `activated: { cost, do }`: an ability the card's controller uses as a response (ADR-0038). Its
+/// cost and its effects read the carrying card as `self`. Its Ability Index is its position among
+/// all the effects of the card, whatever their shapes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActivatedCardEffect {
+    pub(super) costs: Vec<Cost>,
+    pub(super) body: Vec<Effect>,
+}
+
+impl ActivatedCardEffect {
+    /// The cost steps, paid in order when the ability is used; possibly none.
+    pub fn costs(&self) -> &[Cost] {
+        &self.costs
+    }
+
+    /// The Action Effects to run when the ability resolves; never empty, and holding no Choice.
+    pub fn body(&self) -> &[Effect] {
+        &self.body
+    }
 }
 
 /// `on`, an optional `if` and `do`: when an Event matches, and the condition holds, the effects

@@ -335,13 +335,16 @@ pub(crate) struct DrawDto {
     count: u32,
 }
 
-/// A Response Window: `{ id, opened_by: [action ids], actions: [action ids] }`.
+/// A Response Window: `{ id, opened_by: [action ids], actions: [action ids], abilities? }`.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct WindowDto {
     id: String,
     opened_by: Vec<String>,
     actions: Vec<String>,
+    /// Whether activated abilities may be used while the window is open; an unquoted bool.
+    #[serde(default, deserialize_with = "scalar::strict_bool")]
+    abilities: bool,
 }
 
 /// `{}`: the argument of a primitive that has none.
@@ -507,10 +510,10 @@ struct RefDto {
     reference: String,
 }
 
-/// One cost of an action: a single-key map `{ <primitive>: { ... } }`.
+/// One cost of an action, or of an activated ability: a single-key map `{ <primitive>: { ... } }`.
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
-enum CostDto {
+pub(crate) enum CostDto {
     Tap(TapDto),
     Move(MoveEffectDto),
 }
@@ -518,7 +521,7 @@ enum CostDto {
 /// `tap: { zone, count }` taps mana, `tap: { card }` taps one card. The keys are read into
 /// `RawTapDto` and the combination is checked when it becomes a `TapDto`, so a wrong one is a
 /// syntax error at the `tap`, and a missing key is reported as it always was.
-struct TapDto(CostDraft);
+pub(crate) struct TapDto(CostDraft);
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1025,6 +1028,7 @@ impl RulesetDto {
                     id: window.id,
                     opened_by: window.opened_by,
                     actions: window.actions,
+                    abilities: window.abilities,
                 })
                 .collect(),
             turn: self.turn.map(TurnDto::into_draft),
@@ -1062,19 +1066,24 @@ impl ActionDto {
         ActionDraft {
             id: self.id,
             params: self.params.into_iter().map(|param| param.0).collect(),
-            cost: self
-                .cost
-                .into_iter()
-                .map(|cost| match cost {
-                    CostDto::Tap(tap) => tap.0,
-                    CostDto::Move(step) => CostDraft::Move {
-                        card: RefDraft(step.card.reference),
-                        to: step.to,
-                    },
-                })
-                .collect(),
+            cost: CostDto::into_drafts(self.cost),
             effects: EffectDto::into_drafts(self.effects),
         }
+    }
+}
+
+impl CostDto {
+    pub(crate) fn into_drafts(costs: Vec<CostDto>) -> Vec<CostDraft> {
+        costs
+            .into_iter()
+            .map(|cost| match cost {
+                CostDto::Tap(tap) => tap.0,
+                CostDto::Move(step) => CostDraft::Move {
+                    card: RefDraft(step.card.reference),
+                    to: step.to,
+                },
+            })
+            .collect()
     }
 }
 

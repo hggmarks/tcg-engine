@@ -449,6 +449,7 @@ pub struct Window {
     pub(super) id: WindowId,
     pub(super) opened_by: Vec<ActionId>,
     pub(super) actions: Vec<ActionId>,
+    pub(super) abilities: bool,
 }
 
 impl Window {
@@ -465,6 +466,12 @@ impl Window {
     /// Legal Actions of the Player with Priority list them.
     pub fn actions(&self) -> &[ActionId] {
         &self.actions
+    }
+
+    /// Whether the activated abilities of cards in the Active Zone may be used while this window is
+    /// open (ADR-0038). The declaration of the window, never a property of an ability.
+    pub fn abilities(&self) -> bool {
+        self.abilities
     }
 }
 

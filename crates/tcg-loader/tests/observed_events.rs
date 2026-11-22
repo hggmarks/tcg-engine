@@ -989,6 +989,15 @@ fn binds_every_taken_field_with_its_type(taken: &TakenAction) {
         TakenAction::Pass { player } => {
             let _: &PlayerId = player;
         }
+        TakenAction::Activate {
+            player,
+            card,
+            ability,
+        } => {
+            let _: &PlayerId = player;
+            let _: &ObservedCard = card;
+            let _: &u32 = ability;
+        }
     }
 }
 
@@ -998,6 +1007,7 @@ fn taken_arguments(taken: &TakenAction) -> &[TakenArgument] {
         TakenAction::Declared { arguments, .. } => arguments,
         TakenAction::Answer { .. } => panic!("the Taken Action is an Answer"),
         TakenAction::Pass { .. } => panic!("the Taken Action is a Pass"),
+        TakenAction::Activate { .. } => panic!("the Taken Action is an Activate"),
     }
 }
 

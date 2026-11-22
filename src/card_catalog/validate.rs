@@ -2,11 +2,14 @@
 
 use std::collections::BTreeMap;
 
-use super::draft::{CardCatalogDraft, CardDraft, CardEffectDraft, ScopeDraft, TriggerMatcherDraft};
+use super::draft::{
+    ActivatedDraft, CardCatalogDraft, CardDraft, CardEffectDraft, ScopeDraft, TriggerMatcherDraft,
+};
 use super::error::{CatalogError, CatalogErrorKind};
 use super::model::{
-    CardCatalog, CardDefinition, CardEffect, CardId, CatalogMeta, ContinuousCardEffect,
-    FieldModifier, ModifierScope, ScopeOwner, TriggerMatcher, TriggeredCardEffect,
+    ActivatedCardEffect, CardCatalog, CardDefinition, CardEffect, CardId, CatalogMeta,
+    ContinuousCardEffect, FieldModifier, ModifierScope, ScopeOwner, TriggerMatcher,
+    TriggeredCardEffect,
 };
 use crate::definition_path::DefinitionPath;
 use crate::id::is_valid_id;
@@ -197,8 +200,9 @@ fn validate_effects(
     Ok(effects)
 }
 
-/// A Card Effect is triggered (`on`, `if`, `do`) or continuous (`while`, `modify`). An element with
-/// keys of both is mixed; one with neither `on` nor `while` has no shape.
+/// A Card Effect is triggered (`on`, `if`, `do`), continuous (`while`, `modify`) or activated
+/// (`activated`). An element with keys of two shapes is mixed; one with none of `on`, `while` and
+/// `activated` has no shape.
 fn validate_card_effect(
     ruleset: &RulesetDefinition,
     card_type: &CardType,
@@ -209,10 +213,14 @@ fn validate_card_effect(
     let triggered_keys = draft.on.is_some() || draft.condition.is_some() || draft.body.is_some();
     let continuous_keys =
         draft.while_condition.is_some() || draft.modify.is_some() || draft.scope.is_some();
-    if triggered_keys && continuous_keys {
+    let activated_keys = draft.activated.is_some();
+    let shapes = [triggered_keys, continuous_keys, activated_keys];
+    if shapes.iter().filter(|present| **present).count() > 1 {
         return fail(at.clone(), CatalogErrorKind::MixedCardEffectShapes);
     }
-    if let Some(matcher) = &draft.on {
+    if let Some(activated) = &draft.activated {
+        validate_activated(ruleset, card_type, activated, at).map(CardEffect::Activated)
+    } else if let Some(matcher) = &draft.on {
         validate_triggered(ruleset, scope, draft, matcher, at).map(CardEffect::Triggered)
     } else if let Some(condition) = &draft.while_condition {
         validate_continuous(ruleset, card_type, scope, condition, draft, at)
@@ -220,6 +228,37 @@ fn validate_card_effect(
     } else {
         fail(at.clone(), CatalogErrorKind::MissingCardEffectShape)
     }
+}
+
+/// `activated`: its `cost`, then its `do`, both with only `self` in scope and no Choice allowed
+/// (ADR-0038). The `do` is checked as a triggered one is, and likewise cannot end the Turn.
+fn validate_activated(
+    ruleset: &RulesetDefinition,
+    card_type: &CardType,
+    draft: &ActivatedDraft,
+    at: &DefinitionPath,
+) -> Result<ActivatedCardEffect, CatalogError> {
+    let scope = SelfScope::for_ability(ruleset, card_type.id());
+    let activated = at.clone().key("activated");
+    let costs = scope
+        .check_costs(&draft.cost, activated.clone().key("cost"))
+        .map_err(invalid)?;
+    let do_path = activated.key("do");
+    let body = match &draft.body {
+        None => return fail(do_path, CatalogErrorKind::MissingDo),
+        Some(body) if body.is_empty() => return fail(do_path, CatalogErrorKind::EmptyDo),
+        Some(body) => body,
+    };
+    let checked = scope
+        .check_effects(body, do_path.clone())
+        .map_err(invalid)?;
+    if let Some(end_turn) = find_end_turn(body, &do_path) {
+        return fail(end_turn, CatalogErrorKind::EndTurnInCardEffect);
+    }
+    Ok(ActivatedCardEffect {
+        costs,
+        body: checked,
+    })
 }
 
 /// `on`, then `if`, then `do`.

@@ -1,6 +1,6 @@
 //! Plain data that a frontend fills before validation. No field has an invariant.
 
-use crate::ruleset_definition::{EffectDraft, ExpressionDraft, FieldValue};
+use crate::ruleset_definition::{CostDraft, EffectDraft, ExpressionDraft, FieldValue};
 
 /// An unvalidated Card Catalog. Field names mirror the keys of the catalog format.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,7 +29,7 @@ pub struct CardDraft {
 /// optional here; validation decides which shape the element is and rejects a mix (ADR-0022).
 ///
 /// A triggered Card Effect uses `on`, `condition` (`if`) and `body` (`do`); a continuous one uses
-/// `while_condition` (`while`) and `modify`.
+/// `while_condition` (`while`) and `modify`; an activated one uses `activated` (ADR-0038).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CardEffectDraft {
     pub on: Option<TriggerMatcherDraft>,
@@ -38,6 +38,15 @@ pub struct CardEffectDraft {
     pub while_condition: Option<ExpressionDraft>,
     pub modify: Option<ModifyDraft>,
     pub scope: Option<ScopeDraft>,
+    pub activated: Option<ActivatedDraft>,
+}
+
+/// An unvalidated `activated: { cost, do }`. `cost` defaults to no steps; `body` is `None` when the
+/// `do` key is missing, so that every frontend gets the same engine error.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ActivatedDraft {
+    pub cost: Vec<CostDraft>,
+    pub body: Option<Vec<EffectDraft>>,
 }
 
 /// An unvalidated `on`: a single-key map. `Other` keeps the key of a matcher the engine does not

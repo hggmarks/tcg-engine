@@ -27,7 +27,7 @@ fn the_response_ruleset_loads_and_self_plays_with_checks_on() {
         assert!(deck.contains("swift_sparrow") && deck.contains("flash_fox"));
     }
 
-    let (mut passes, mut pushes, mut responses) = (0, 0, 0);
+    let (mut passes, mut pushes, mut responses, mut activations) = (0, 0, 0, 0);
     for seed in 0..SEEDS {
         let game = self_play(&ruleset, &decks, Seed(seed), MAX_STEPS, Checks::On)
             .unwrap_or_else(|failure| panic!("seed {seed}: {:?}", failure.kind));
@@ -41,6 +41,12 @@ fn the_response_ruleset_loads_and_self_plays_with_checks_on() {
             .actions()
             .iter()
             .filter(|action| matches!(action, Action::Pass { .. }))
+            .count();
+        activations += game
+            .record
+            .actions()
+            .iter()
+            .filter(|action| matches!(action, Action::Activate { .. }))
             .count();
         for event in game.traces.iter().flat_map(|trace| trace.events()) {
             if let Event::ItemPushed { item } = event {
@@ -59,6 +65,10 @@ fn the_response_ruleset_loads_and_self_plays_with_checks_on() {
     assert!(
         responses >= 1,
         "no Game holds a response: the decks exercise no window"
+    );
+    assert!(
+        activations >= 1,
+        "no Game uses an ability: the decks exercise no activated ability"
     );
 }
 

@@ -34,8 +34,8 @@ pub use event::Event;
 pub use observation::{
     ObservationError, ObservedAction, ObservedAnswer, ObservedApplyError, ObservedArgument,
     ObservedBoundCard, ObservedCard, ObservedEvent, ObservedGameState, ObservedPendingDecision,
-    ObservedStackItem, ObservedTransition, ObservedZone, Observer, TakenAction, TakenArgument,
-    Viewer, VisibleCard,
+    ObservedStackItem, ObservedStackSource, ObservedTransition, ObservedZone, Observer,
+    TakenAction, TakenArgument, Viewer, VisibleCard,
 };
 pub use record::{GameRecord, Replay, ReplayError};
 pub use stack::{BoundCard, StackItem, StackSource};

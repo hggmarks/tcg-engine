@@ -117,7 +117,7 @@ pub fn declared(action: &Action) -> Option<(PlayerId, &ActionId, &[Argument])> {
             action,
             arguments,
         } => Some((*player, action, arguments.as_slice())),
-        Action::Answer { .. } | Action::Pass { .. } => None,
+        Action::Answer { .. } | Action::Pass { .. } | Action::Activate { .. } => None,
     }
 }
 
@@ -202,7 +202,9 @@ fn action_line(action: &Action) -> String {
         } => {
             format!("Action {{ player: {player:?}, action: {action:?}, arguments: {arguments:?} }}")
         }
-        Action::Answer { .. } | Action::Pass { .. } => format!("{action:?}"),
+        Action::Answer { .. } | Action::Pass { .. } | Action::Activate { .. } => {
+            format!("{action:?}")
+        }
     }
 }
 

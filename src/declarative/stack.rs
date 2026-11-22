@@ -8,13 +8,17 @@ use super::state::CardInstanceId;
 use crate::player::PlayerId;
 use crate::ruleset_definition::{ActionId, ParamName, ZoneId};
 
-/// What put a Stack Item on the Stack: the Action whose effects it holds. Activated abilities
-/// ([35]) add a variant beside it; the enum is deliberately not `#[non_exhaustive]`, so every
-/// `match` on it shows where that variant must be handled.
+/// What put a Stack Item on the Stack: the Action whose effects it holds, or the activated ability
+/// whose effects it holds (ADR-0038). The enum is deliberately not `#[non_exhaustive]`, so every
+/// `match` on it shows where a new source must be handled.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StackSource {
     /// A pushed Action of the ruleset.
     Action(ActionId),
+    /// The activated ability of `card` at Ability Index `ability`: the position of its Card Effect
+    /// among all the effects of the card's definition, whatever their shapes. The card is also
+    /// bound as `self` in the item's bound cards.
+    Ability { card: CardInstanceId, ability: u32 },
 }
 
 /// One card a pushed Action bound: its param, the card, and the zone it was in once the cost was

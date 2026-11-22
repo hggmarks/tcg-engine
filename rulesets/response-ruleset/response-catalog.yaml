@@ -1,6 +1,6 @@
 # Starter card catalog for the Response Ruleset (rulesets/response-ruleset/response-ruleset.yaml):
-# the cards of the Effects catalog, each creature with `fast: false` (a field has no default), and
-# two fast creatures. The Effects catalog starts with the cards of the Small Ruleset catalog, then
+# the cards of the Effects catalog, each creature with `fast: false` (a field has no default), two
+# fast creatures and a creature with an activated ability. The Effects catalog starts with the cards of the Small Ruleset catalog, then
 # nine creatures that carry a triggered Card Effect, two that carry a continuous one and three
 # auras, which carry a continuous one over a matched set. The sample decks list all the effect
 # cards but restless_shade, which exists only to reach the Trigger Cap. curious_owl, snare_vine
@@ -146,6 +146,20 @@ cards:
   # `play_creature` costs. In both sample decks, two copies each.
   - { id: swift_sparrow, type: creature, fields: { name: "Swift Sparrow", cost: 1, power: 1, fast: true } }
   - { id: flash_fox,     type: creature, fields: { name: "Flash Fox",     cost: 2, power: 2, fast: true } }
+
+  # An activated ability (ADR-0038): while the Skittish Hare is in the field, its controller may use it
+  # as a response in the `attack_response` window. The cost taps 1 mana (its own cost), then the hare
+  # goes back to its owner's hand. It pays mana and not its own tap: the target of an attack is
+  # tapped, so a hare that tapped itself could never dodge the attack that targets it. If the attack
+  # targets the hare, the attack Fizzles once the ability has resolved. In both sample decks, two
+  # copies, replacing two of the four stone_golems.
+  - id: skittish_hare
+    type: creature
+    fields: { name: "Skittish Hare", cost: 1, power: 1, fast: false }
+    effects:
+      - activated:
+          cost: [ { tap: { zone: mana_zone, count: { ref: self.cost } } } ]
+          do: [ { move: { card: { ref: self }, to: hand } } ]
 
   # Mana: the mana card has no fields, so one definition serves the whole mana deck.
   - { id: mana, type: mana, fields: {} }

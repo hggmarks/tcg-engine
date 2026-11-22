@@ -56,6 +56,9 @@ pub(super) struct Refs<'a> {
     /// Whether `self`, the carrying card, is in scope: only in a Card Effect, where the
     /// `controller` of a `draw` is its owner.
     pub(super) has_self: bool,
+    /// Whether a Choice may stand in the effects: only in a triggered Card Effect, which can pause
+    /// for a decision (ADR-0033). An activated ability has `self` but no Choice (ADR-0038).
+    pub(super) choices: bool,
 }
 
 impl Refs<'_> {
@@ -468,6 +471,7 @@ mod tests {
                 .collect(),
             missing: ReferenceTarget::Param,
             has_self: false,
+            choices: false,
         }
     }
 

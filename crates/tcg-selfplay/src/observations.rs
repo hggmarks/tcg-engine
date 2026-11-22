@@ -18,8 +18,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use tcg_engine::card_catalog::CardId;
 use tcg_engine::declarative::{
     Action, Answer, Argument, CardInstanceId, DeclarativeRuleset, Event, GameState,
-    ObservationError, ObservedCard, ObservedEvent, ObservedGameState, Observer, TakenAction,
-    Viewer,
+    ObservationError, ObservedCard, ObservedEvent, ObservedGameState, Observer, StackSource,
+    TakenAction, Viewer,
 };
 use tcg_engine::player::PlayerId;
 use tcg_engine::random::RandomState;
@@ -257,6 +257,16 @@ pub(crate) fn relabel(
         },
         // A Pass names no card.
         Action::Pass { .. } => action.clone(),
+        // An Activate names the card that carries the ability, through the same permutation.
+        Action::Activate {
+            player,
+            card,
+            ability,
+        } => Action::Activate {
+            player: *player,
+            card: map(*card),
+            ability: *ability,
+        },
         // An option Answer names no card; a card Answer names one, through the same permutation.
         Action::Answer {
             player,
@@ -355,10 +365,14 @@ fn relabel_ids(event: &mut Event, map: &impl Fn(CardInstanceId) -> CardInstanceI
         } => {
             *card = map(*card);
         }
-        // The Stack Items name the cards they bound (ADR-0037).
+        // The Stack Items name the cards they bound, and an ability's source the card that carries
+        // it (ADR-0037, ADR-0038).
         Event::ItemPushed { item } | Event::ItemResolved { item } | Event::ItemFizzled { item } => {
             for bound in &mut item.bound {
                 bound.card = map(bound.card);
+            }
+            if let StackSource::Ability { card, .. } = &mut item.source {
+                *card = map(*card);
             }
         }
         Event::CardCreated { .. }

@@ -158,9 +158,12 @@ actions:
 # pushed onto the Stack and opens the window; while it is open the Player with Priority (the
 # opponent of the top item's controller) passes or takes one of its `actions`, which is pushed too.
 # A pass resolves the top item, last in first out; the window closes when the Stack is empty.
+# With `abilities: true` (ADR-0038) the Player with Priority may also use the activated abilities
+# of their cards in the Active Zone, which are pushed too; without it, the default, none is usable.
 windows:
   - id: attack_response
     opened_by: [attack]
+    abilities: true
     actions: [fast_play]
 
 # Checked after every action and at the end of game creation. `draw_from_empty` is a Player's loss

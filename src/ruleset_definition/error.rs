@@ -192,6 +192,14 @@ pub enum DefinitionErrorKind {
     /// the top item's controller", defined for two Players only (ADR-0037); `players` is how many
     /// the ruleset has.
     WindowsNeedTwoPlayers { players: u64 },
+    /// `windows[attack_response].abilities`: a window with `abilities: true` in a ruleset without
+    /// `effects.active_zone`, where no Card Effect is ever active, so the flag could never do
+    /// anything (ADR-0038).
+    AbilitiesWithoutActiveZone,
+    /// `windows[attack_response].abilities`: a window with `abilities: true` in a ruleset whose
+    /// `effects.active_zone` is not `public`. The card of an ability is bound in the Active Zone
+    /// and the Stack is public (ADR-0037, ADR-0038); `zone` is the Active Zone.
+    AbilitiesActiveZoneNotPublic { zone: String },
     /// An action named in the `opened_by` of two windows, or twice in one, at the later one, such
     /// as `windows[second].opened_by[0]`; `first` is the earlier one (ADR-0037).
     DuplicateWindowOpener {
@@ -206,7 +214,9 @@ pub enum DefinitionErrorKind {
     /// at the param (when a `move` cost moves it: `zone` is the `to` of its last one) or at its
     /// `one_of[i]` alternative (`zone` is the zone the alternative binds from), such as
     /// `actions[fast_play].params[card]`: the Stack is public, so the bound cards must be seen by
-    /// every Player in the zone they are bound in (ADR-0037).
+    /// every Player in the zone they are bound in (ADR-0037). For an activated ability, `param` is
+    /// `self` and the error is at the `to` of its last `move: self` cost, such as
+    /// `cards[x].effects[0].activated.cost[0].move.to` (ADR-0038).
     PushedCardNotPublic { param: String, zone: String },
     /// The card of a `tap: { card }` cost, such as `actions[attack].cost[0].tap.card`: a card type
     /// its param may take has no bool `tapped` instance state; `card_type` is the first such one.
@@ -364,6 +374,10 @@ impl fmt::Display for DefinitionErrorKind {
                 f,
                 "`{param}` can never be a `{card_type}`: testing for it would retype the param"
             ),
+            Self::AbilitiesWithoutActiveZone => write!(
+                f,
+                "a window allows abilities, but the ruleset declares no `effects.active_zone`"
+            ),
             Self::WindowsNeedTwoPlayers { players } => write!(
                 f,
                 "Response Windows need exactly 2 players, the ruleset has {players}"
@@ -378,7 +392,11 @@ impl fmt::Display for DefinitionErrorKind {
             ),
             Self::PushedCardNotPublic { param, zone } => write!(
                 f,
-                "the card `{param}` of a pushed action is in the zone `{zone}` once the costs are paid, which is not public"
+                "the card `{param}` of a pushed action or ability is in the zone `{zone}` once the costs are paid, which is not public"
+            ),
+            Self::AbilitiesActiveZoneNotPublic { zone } => write!(
+                f,
+                "a window allows abilities, but the Active Zone `{zone}` is not public"
             ),
             Self::TapCardWithoutTappedState { card_type } => write!(
                 f,

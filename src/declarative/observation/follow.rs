@@ -81,6 +81,21 @@ impl DeclarativeRuleset {
                 }
             }
             Action::Pass { player } => TakenAction::Pass { player: *player },
+            Action::Activate {
+                player,
+                card,
+                ability,
+            } => {
+                let handle = folded
+                    .observed_card(*card)
+                    .or_else(|| observer.observed_card(*card))
+                    .ok_or(ObservationError::ObserverOutOfStep)?;
+                TakenAction::Activate {
+                    player: *player,
+                    card: handle,
+                    ability: *ability,
+                }
+            }
             Action::Answer { player, answer } => TakenAction::Answer {
                 player: *player,
                 answer: match answer {

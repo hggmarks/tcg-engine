@@ -108,6 +108,7 @@ fn triggered() -> CardEffectDraft {
         while_condition: None,
         modify: None,
         scope: None,
+        activated: None,
     }
 }
 
@@ -123,6 +124,7 @@ fn continuous() -> CardEffectDraft {
             amount: 1,
         }),
         scope: None,
+        activated: None,
     }
 }
 

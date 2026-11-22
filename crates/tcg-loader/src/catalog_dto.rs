@@ -6,12 +6,12 @@ use std::fmt;
 use serde::de::{self, Deserializer, IgnoredAny, MapAccess, Visitor};
 use serde::Deserialize;
 use tcg_engine::card_catalog::{
-    CardCatalogDraft, CardDraft, CardEffectDraft, CatalogMetaDraft, ModifyDraft, ScopeDraft,
-    TriggerMatcherDraft,
+    ActivatedDraft, CardCatalogDraft, CardDraft, CardEffectDraft, CatalogMetaDraft, ModifyDraft,
+    ScopeDraft, TriggerMatcherDraft,
 };
 use tcg_engine::ruleset_definition::FieldValue;
 
-use crate::dto::{some, EffectDto, ExpressionDto};
+use crate::dto::{some, CostDto, EffectDto, ExpressionDto};
 use crate::scalar::{self, ScalarDto};
 
 #[derive(Deserialize)]
@@ -68,8 +68,9 @@ impl<'de> Deserialize<'de> for FieldsDto {
     }
 }
 
-/// A Card Effect, one element of `effects`: the keys of the triggered shape (`on`, `if`, `do`) and
-/// of the continuous shape (`while`, `modify`, `scope`), all optional. Which shape it is, and
+/// A Card Effect, one element of `effects`: the keys of the triggered shape (`on`, `if`, `do`), of
+/// the continuous shape (`while`, `modify`, `scope`) and of the activated shape (`activated`), all
+/// optional. Which shape it is, and
 /// whether the keys mix, is the engine's to decide; only an unknown key is a syntax error. A key
 /// that is present must have a value, so `on:` with nothing after it is an error, not an absent
 /// key.
@@ -88,6 +89,19 @@ struct CardEffectDto {
     modify: Option<ModifyDto>,
     #[serde(default, deserialize_with = "some")]
     scope: Option<ScopeDto>,
+    #[serde(default, deserialize_with = "some")]
+    activated: Option<ActivatedDto>,
+}
+
+/// `activated: { cost?, do }`: the cost steps of an action and the effects of a Card Effect. A
+/// missing `cost` is no steps; a missing `do` is the engine's error, as for a triggered effect.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ActivatedDto {
+    #[serde(default)]
+    cost: Vec<CostDto>,
+    #[serde(default, rename = "do", deserialize_with = "some")]
+    body: Option<Vec<EffectDto>>,
 }
 
 /// `modify: { field, amount }`; `amount` is an unquoted integer.
@@ -182,6 +196,10 @@ impl CardEffectDto {
                 card_type: scope.card_type,
                 owner: scope.owner,
                 include_self: scope.include_self,
+            }),
+            activated: self.activated.map(|activated| ActivatedDraft {
+                cost: CostDto::into_drafts(activated.cost),
+                body: activated.body.map(EffectDto::into_drafts),
             }),
         }
     }
