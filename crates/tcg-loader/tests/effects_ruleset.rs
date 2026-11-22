@@ -211,7 +211,7 @@ const PAUSING_OWL_0: CardInstanceId = CardInstanceId(11);
 const PAUSING_OTTER_0: CardInstanceId = CardInstanceId(13);
 const PAUSING_GOLEM_3: CardInstanceId = CardInstanceId(20);
 const PAUSING_CAT_1: CardInstanceId = CardInstanceId(22);
-const PAUSING_DAWN_0: CardInstanceId = CardInstanceId(34);
+const PAUSING_DAWN_1: CardInstanceId = CardInstanceId(34);
 const PAUSING_LEADER_1: CardInstanceId = CardInstanceId(61);
 const PAUSING_HOUND_0: CardInstanceId = CardInstanceId(66);
 const PAUSING_VINE_1: CardInstanceId = CardInstanceId(83);
@@ -241,7 +241,7 @@ fn effects_pausing_script() -> Vec<Action> {
         pass(1),
         // Turn 3, seat 0.
         play(0, PAUSING_OTTER_0),
-        play(0, PAUSING_DAWN_0),
+        play(0, PAUSING_DAWN_1),
         attack(0, PAUSING_GOBLIN_0, PAUSING_LEADER_1),
         attack(0, PAUSING_OWL_0, PAUSING_LEADER_1),
         pass(0),
@@ -258,7 +258,7 @@ fn effects_pausing_script() -> Vec<Action> {
         attack(0, PAUSING_GOBLIN_0, PAUSING_LEADER_1),
         attack(0, PAUSING_OWL_0, PAUSING_LEADER_1),
         attack(0, PAUSING_OTTER_0, PAUSING_LEADER_1),
-        attack(0, PAUSING_DAWN_0, PAUSING_LEADER_1),
+        attack(0, PAUSING_DAWN_1, PAUSING_LEADER_1),
     ]
 }
 
