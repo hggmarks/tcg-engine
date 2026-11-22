@@ -394,34 +394,97 @@ impl AlternativeDto {
     }
 }
 
-impl<'de> Deserialize<'de> for ParamDto {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let raw = RawParamDto::deserialize(deserializer)?;
-        let cards = match (raw.one_of, raw.zone, raw.card_type) {
-            (Some(listed), None, None) if raw.owner.is_none() && raw.condition.is_none() => {
+/// The keys that say which cards a param takes, shared by a param and a `choose_card`: the simple
+/// form `zone`, `card_type`, `owner?`, `where?`, or `one_of`.
+struct ParamCardsDto {
+    zone: Option<String>,
+    card_type: Option<String>,
+    owner: Option<String>,
+    condition: Option<ExpressionDto>,
+    one_of: Option<Vec<AlternativeDto>>,
+}
+
+impl ParamCardsDto {
+    /// The param named `name`: the two forms cannot be mixed and one of them is needed.
+    fn into_param<E: de::Error>(self, name: String) -> Result<ParamDraft, E> {
+        let cards = match (self.one_of, self.zone, self.card_type) {
+            (Some(listed), None, None) if self.owner.is_none() && self.condition.is_none() => {
                 ParamCardsDraft::OneOf(listed.into_iter().map(AlternativeDto::into_draft).collect())
             }
             (Some(_), _, _) => {
-                return Err(de::Error::custom(
+                return Err(E::custom(
                     "a param with `one_of` takes no `zone`, `card_type`, `owner` or `where`",
                 ))
             }
             (None, Some(zone), Some(card_type)) => ParamCardsDraft::Single(ParamAlternativeDraft {
                 zone,
                 card_type,
-                owner: raw.owner,
-                condition: raw.condition.map(ExpressionDto::into_draft),
+                owner: self.owner,
+                condition: self.condition.map(ExpressionDto::into_draft),
             }),
             (None, _, _) => {
-                return Err(de::Error::custom(
+                return Err(E::custom(
                     "a param needs `zone` and `card_type`, or `one_of`",
                 ))
             }
         };
-        Ok(ParamDto(ParamDraft {
-            name: raw.name,
-            cards,
-        }))
+        Ok(ParamDraft { name, cards })
+    }
+}
+
+impl<'de> Deserialize<'de> for ParamDto {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let raw = RawParamDto::deserialize(deserializer)?;
+        let cards = ParamCardsDto {
+            zone: raw.zone,
+            card_type: raw.card_type,
+            owner: raw.owner,
+            condition: raw.condition,
+            one_of: raw.one_of,
+        };
+        Ok(ParamDto(cards.into_param(raw.name)?))
+    }
+}
+
+/// `choose_card: { name, decider, zone, card_type, owner?, where? }` or `{ name, decider, one_of }`:
+/// the keys of a param and a `decider`, read like a param. The engine checks the decider and the
+/// rest.
+pub(crate) struct ChooseCardDto {
+    decider: String,
+    param: ParamDraft,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawChooseCardDto {
+    name: String,
+    decider: String,
+    #[serde(default, deserialize_with = "some")]
+    zone: Option<String>,
+    #[serde(default, deserialize_with = "some")]
+    card_type: Option<String>,
+    #[serde(default, deserialize_with = "some")]
+    owner: Option<String>,
+    #[serde(default, rename = "where", deserialize_with = "some")]
+    condition: Option<ExpressionDto>,
+    #[serde(default, deserialize_with = "some")]
+    one_of: Option<Vec<AlternativeDto>>,
+}
+
+impl<'de> Deserialize<'de> for ChooseCardDto {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let raw = RawChooseCardDto::deserialize(deserializer)?;
+        let cards = ParamCardsDto {
+            zone: raw.zone,
+            card_type: raw.card_type,
+            owner: raw.owner,
+            condition: raw.condition,
+            one_of: raw.one_of,
+        };
+        Ok(ChooseCardDto {
+            decider: raw.decider,
+            param: cards.into_param(raw.name)?,
+        })
     }
 }
 
@@ -462,6 +525,7 @@ pub(crate) enum EffectDto {
         otherwise: Vec<EffectDto>,
     },
     ChooseOne(ChooseOneDto),
+    ChooseCard(ChooseCardDto),
 }
 
 /// `choose_one: { decider, options }`: each option is a list of effects. The engine checks the
@@ -505,6 +569,7 @@ const EFFECT_KEYS: &[&str] = &[
     "add_state",
     "draw",
     "choose_one",
+    "choose_card",
     "if",
     "then",
     "else",
@@ -540,6 +605,7 @@ impl<'de> Deserialize<'de> for EffectDto {
                         "add_state" => Some(EffectDto::AddState(map.next_value()?)),
                         "draw" => Some(EffectDto::Draw(map.next_value()?)),
                         "choose_one" => Some(EffectDto::ChooseOne(map.next_value()?)),
+                        "choose_card" => Some(EffectDto::ChooseCard(map.next_value()?)),
                         "if" => {
                             condition = Some(map.next_value()?);
                             None
@@ -992,6 +1058,10 @@ impl EffectDto {
                 condition: condition.into_draft(),
                 then: Self::into_drafts(then),
                 otherwise: Self::into_drafts(otherwise),
+            },
+            Self::ChooseCard(choice) => EffectDraft::ChooseCard {
+                decider: choice.decider,
+                param: choice.param,
             },
             Self::ChooseOne(choice) => EffectDraft::ChooseOne {
                 decider: choice.decider,

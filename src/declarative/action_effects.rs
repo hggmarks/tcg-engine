@@ -5,9 +5,9 @@
 //! definition was validated; here they only read that value.
 
 use super::action::Rejection;
-use super::arguments::BoundCards;
+use super::arguments::{self, BoundCards};
 use super::creation::DeclarativeRuleset;
-use super::decision::{Branch, BranchKind, DecisionKind, EffectPath};
+use super::decision::{Answer, BoundName, Branch, BranchKind, DecisionKind, EffectPath};
 use super::event::Event;
 use super::execution::Execution;
 use super::expression;
@@ -84,19 +84,25 @@ fn tap(
     Ok(())
 }
 
-/// How running effects ended: to the end, or at a Choice that asks a Player (ADR-0033).
+/// How running effects ended: to the end, at a Choice that asks a Player (ADR-0033), or early
+/// because a Card Choice had no Candidate (ADR-0034).
 #[derive(Debug)]
 pub(super) enum Flow {
     Done,
     Paused(Pause),
+    /// A Card Choice had no Candidate: the rest of the whole `do` is skipped, every enclosing list
+    /// included. Nothing runs after it; the Events emitted so far stand.
+    Skipped,
 }
 
-/// A Choice reached: who is asked, what for, and where in the `do` it is.
+/// A Choice reached: who is asked, what for, where in the `do` it is, and the names in scope there.
 #[derive(Debug)]
 pub(super) struct Pause {
     pub(super) decider: PlayerId,
     pub(super) kind: DecisionKind,
     pub(super) at: EffectPath,
+    /// The names in scope at the Choice, in binding order, `self` left out.
+    pub(super) bound: Vec<BoundName>,
 }
 
 impl Pause {
@@ -122,12 +128,12 @@ pub(super) fn run(
 ) -> Result<(), Rejection> {
     match run_at(ruleset, execution, bound, effect, 0)? {
         Flow::Done => Ok(()),
-        Flow::Paused(_) => Err(Rejection::ChoiceOutsideTriggeredEffect),
+        Flow::Paused(_) | Flow::Skipped => Err(Rejection::ChoiceOutsideTriggeredEffect),
     }
 }
 
-/// Runs `effects` in order, from the one at `start`, stopping at the first Choice. The index of an
-/// effect in a path is its index in `effects`.
+/// Runs `effects` in order, from the one at `start`, stopping at the first Choice or when a Card
+/// Choice has no Candidate. The index of an effect in a path is its index in `effects`.
 pub(super) fn run_from(
     ruleset: &DeclarativeRuleset,
     execution: &mut Execution,
@@ -136,8 +142,9 @@ pub(super) fn run_from(
     start: usize,
 ) -> Result<Flow, Rejection> {
     for (index, effect) in effects.iter().enumerate().skip(start) {
-        if let Flow::Paused(pause) = run_at(ruleset, execution, bound, effect, index)? {
-            return Ok(Flow::Paused(pause));
+        match run_at(ruleset, execution, bound, effect, index)? {
+            Flow::Done => {}
+            stopped @ (Flow::Paused(_) | Flow::Skipped) => return Ok(stopped),
         }
     }
     Ok(Flow::Done)
@@ -155,85 +162,134 @@ fn branch_of<'a>(effect: &'a Effect, into: &BranchKind) -> Option<&'a [Effect]> 
     }
 }
 
-/// The number of options of the Choice at `at` in `body`, the `do` of a Triggered Card Effect;
-/// `None` when `at` does not lead to a Choice.
-pub(super) fn option_count(body: &[Effect], at: &EffectPath) -> Option<u32> {
+/// The Choice at `at` in `body`, the `do` of a Triggered Card Effect; `None` when `at` does not
+/// lead to a Choice.
+pub(super) fn choice_at<'a>(body: &'a [Effect], at: &EffectPath) -> Option<&'a Effect> {
     let mut list = body;
     for branch in &at.branches {
         let effect = list.get(usize::try_from(branch.effect).ok()?)?;
         list = branch_of(effect, &branch.into)?;
     }
     match list.get(usize::try_from(at.choice).ok()?)? {
-        Effect::ChooseOne { options, .. } => u32::try_from(options.len()).ok(),
+        choice @ (Effect::ChooseOne { .. } | Effect::ChooseCard { .. }) => Some(choice),
         _ => None,
     }
 }
 
-/// Resumes a paused `do` after its Choice at `at` was answered with `option`: runs that option,
-/// then the rest of each enclosing list, innermost first. No `if` on the path is read again: the
-/// path says which branch the pause was in. It may pause again, at a path of its own.
+/// The scope at `list[upto]`: `outer` plus the names the Card Choices of `list[..upto]` bound, each
+/// with the card `names` holds for it. A missing name is an inconsistency (ADR-0034).
+fn level_scope(
+    outer: &BoundCards,
+    list: &[Effect],
+    upto: usize,
+    names: &[BoundName],
+) -> Result<BoundCards, Rejection> {
+    let mut scope = outer.clone();
+    for effect in list.iter().take(upto) {
+        if let Effect::ChooseCard { param, .. } = effect {
+            let Some(bound) = names.iter().find(|bound| &bound.name == param.name()) else {
+                let card = outer.card(&ParamName::new("self"))?;
+                return Err(Rejection::CardDataMismatch { card });
+            };
+            scope = scope.with(bound.name.clone(), bound.card);
+        }
+    }
+    Ok(scope)
+}
+
+/// Resumes a paused `do` after its Choice at `at` was answered with `answer`: an option runs and a
+/// card is bound, then the rest of each enclosing list goes on, innermost first. No `if` on the
+/// path is read again: the path says which branch the pause was in. It may pause again, at a path
+/// of its own, or end the `do` early at a Card Choice with no Candidate.
+///
+/// `bound` holds `self`; `names` are those the Paused Resolution kept. The scope of each list is
+/// rebuilt from the Card Choices before the path in it, so the names bound inside a branch never
+/// reach the list that follows it (ADR-0034).
 pub(super) fn resume(
     ruleset: &DeclarativeRuleset,
     execution: &mut Execution,
     bound: &BoundCards,
     body: &[Effect],
     at: &EffectPath,
-    option: u32,
+    answer: Answer,
+    names: &[BoundName],
 ) -> Result<Flow, Rejection> {
-    resume_in(
+    let resumption = Resumption {
         ruleset,
-        execution,
-        bound,
-        body,
-        &at.branches,
-        at.choice,
-        option,
-    )
+        names,
+        answer,
+        choice: at.choice,
+    };
+    resumption.resume_in(execution, bound, body, &at.branches)
 }
 
-fn resume_in(
-    ruleset: &DeclarativeRuleset,
-    execution: &mut Execution,
-    bound: &BoundCards,
-    list: &[Effect],
-    branches: &[Branch],
+/// What is the same at every level of a resumption.
+struct Resumption<'a> {
+    ruleset: &'a DeclarativeRuleset,
+    names: &'a [BoundName],
+    answer: Answer,
     choice: u32,
-    option: u32,
-) -> Result<Flow, Rejection> {
-    let card = bound.card(&ParamName::new("self"))?;
-    let mismatch = || Rejection::CardDataMismatch { card };
-    let position = |index: u32| usize::try_from(index).map_err(|_| mismatch());
-    match branches.split_first() {
-        None => {
-            let choice = position(choice)?;
-            let Some(chosen) = list
-                .get(choice)
-                .and_then(|effect| branch_of(effect, &BranchKind::Option(option)))
-            else {
-                return Err(mismatch());
-            };
-            if let Flow::Paused(pause) = run_from(ruleset, execution, bound, chosen, 0)? {
-                let entered = Branch {
-                    effect: number(choice),
-                    into: BranchKind::Option(option),
+}
+
+impl Resumption<'_> {
+    fn resume_in(
+        &self,
+        execution: &mut Execution,
+        outer: &BoundCards,
+        list: &[Effect],
+        branches: &[Branch],
+    ) -> Result<Flow, Rejection> {
+        let card = outer.card(&ParamName::new("self"))?;
+        let mismatch = || Rejection::CardDataMismatch { card };
+        let position = |index: u32| usize::try_from(index).map_err(|_| mismatch());
+        match branches.split_first() {
+            None => {
+                let choice = position(self.choice)?;
+                let scope = level_scope(outer, list, choice, self.names)?;
+                let after = choice.saturating_add(1);
+                match (list.get(choice), self.answer) {
+                    (Some(effect @ Effect::ChooseOne { .. }), Answer::Option(option)) => {
+                        let Some(chosen) = branch_of(effect, &BranchKind::Option(option)) else {
+                            return Err(mismatch());
+                        };
+                        match run_from(self.ruleset, execution, &scope, chosen, 0)? {
+                            Flow::Done => {}
+                            Flow::Paused(pause) => {
+                                let entered = Branch {
+                                    effect: number(choice),
+                                    into: BranchKind::Option(option),
+                                };
+                                return Ok(Flow::Paused(pause.entered(entered)));
+                            }
+                            Flow::Skipped => return Ok(Flow::Skipped),
+                        }
+                        run_from(self.ruleset, execution, &scope, list, after)
+                    }
+                    (Some(Effect::ChooseCard { param, .. }), Answer::Card(picked)) => {
+                        let scope = scope.with(param.name().clone(), picked);
+                        run_from(self.ruleset, execution, &scope, list, after)
+                    }
+                    _ => Err(mismatch()),
+                }
+            }
+            Some((branch, rest)) => {
+                let at = position(branch.effect)?;
+                let level = level_scope(outer, list, at, self.names)?;
+                let Some(inner) = list
+                    .get(at)
+                    .and_then(|effect| branch_of(effect, &branch.into))
+                else {
+                    return Err(mismatch());
                 };
-                return Ok(Flow::Paused(pause.entered(entered)));
+                match self.resume_in(execution, &level, inner, rest)? {
+                    Flow::Done => {}
+                    Flow::Paused(pause) => {
+                        return Ok(Flow::Paused(pause.entered(branch.clone())));
+                    }
+                    Flow::Skipped => return Ok(Flow::Skipped),
+                }
+                run_from(self.ruleset, execution, &level, list, at.saturating_add(1))
             }
-            run_from(ruleset, execution, bound, list, choice.saturating_add(1))
-        }
-        Some((branch, rest)) => {
-            let at = position(branch.effect)?;
-            let Some(inner) = list
-                .get(at)
-                .and_then(|effect| branch_of(effect, &branch.into))
-            else {
-                return Err(mismatch());
-            };
-            let flow = resume_in(ruleset, execution, bound, inner, rest, choice, option)?;
-            if let Flow::Paused(pause) = flow {
-                return Ok(Flow::Paused(pause.entered(branch.clone())));
-            }
-            run_from(ruleset, execution, bound, list, at.saturating_add(1))
         }
     }
 }
@@ -323,37 +379,64 @@ fn run_at(
                     effect: number(index),
                     into,
                 }))),
+                Flow::Skipped => Ok(Flow::Skipped),
             }
         }
-        Effect::ChooseOne { decider, .. } => {
-            let owner = owner_of_self(execution, bound)?;
-            let decider = match decider {
-                Decider::Controller => owner,
-                Decider::Opponent => {
-                    let other = execution
-                        .state
-                        .player_order()
-                        .players()
-                        .iter()
-                        .copied()
-                        .find(|&other| other != owner);
-                    match other {
-                        Some(other) => other,
-                        None => {
-                            let card = bound.card(&ParamName::new("self"))?;
-                            return Err(Rejection::CardDataMismatch { card });
-                        }
-                    }
-                }
-            };
+        Effect::ChooseOne { decider, .. } => Ok(Flow::Paused(Pause {
+            decider: decider_player(execution, bound, *decider)?,
+            kind: DecisionKind::Option,
+            at: EffectPath {
+                branches: Vec::new(),
+                choice: number(index),
+            },
+            bound: bound.names(),
+        })),
+        Effect::ChooseCard { decider, param } => {
+            // The Candidates are those of an action param for the controller, on the GameState of
+            // this moment, with `self` and the earlier names readable (ADR-0034).
+            let controller = owner_of_self(execution, bound)?;
+            let candidates =
+                arguments::candidates(ruleset, &execution.state, controller, bound, param);
+            if candidates.is_empty() {
+                return Ok(Flow::Skipped);
+            }
             Ok(Flow::Paused(Pause {
-                decider,
-                kind: DecisionKind::Option,
+                decider: decider_player(execution, bound, *decider)?,
+                kind: DecisionKind::Card,
                 at: EffectPath {
                     branches: Vec::new(),
                     choice: number(index),
                 },
+                bound: bound.names(),
             }))
+        }
+    }
+}
+
+/// The Player a Choice asks: the owner of `self` for `controller`, the other Player for `opponent`.
+fn decider_player(
+    execution: &Execution,
+    bound: &BoundCards,
+    decider: Decider,
+) -> Result<PlayerId, Rejection> {
+    let owner = owner_of_self(execution, bound)?;
+    match decider {
+        Decider::Controller => Ok(owner),
+        Decider::Opponent => {
+            let other = execution
+                .state
+                .player_order()
+                .players()
+                .iter()
+                .copied()
+                .find(|&other| other != owner);
+            match other {
+                Some(other) => Ok(other),
+                None => {
+                    let card = bound.card(&ParamName::new("self"))?;
+                    Err(Rejection::CardDataMismatch { card })
+                }
+            }
         }
     }
 }

@@ -388,6 +388,8 @@ fn effects_ruleset_loads_and_creates_a_game() {
             "restless_shade",
             "pyre_imp",
             "curious_owl",
+            "snare_vine",
+            "mind_leech",
             "battle_veteran",
             "weary_ox",
             "banner_bearer",

@@ -1,4 +1,5 @@
-//! Binding the arguments of an Action to the params of its Action Definition.
+//! Binding the arguments of an Action to the params of its Action Definition, and the Candidates of
+//! a Card Choice, which are the cards that fill one param (ADR-0034).
 //!
 //! Arguments bind to params by position (ADR-0015). The checks run in this order: the number of
 //! arguments, then for each param in order: the card exists, then it must fit one of the param's
@@ -12,6 +13,7 @@
 
 use super::action::{Argument, Rejection};
 use super::creation::DeclarativeRuleset;
+use super::decision::BoundName;
 use super::expression;
 use super::state::{CardInstanceId, GameState};
 use crate::player::PlayerId;
@@ -32,10 +34,23 @@ impl BoundCards {
     }
 
     /// These bindings and one more.
-    fn with(&self, param: ParamName, card: CardInstanceId) -> Self {
+    pub(super) fn with(&self, param: ParamName, card: CardInstanceId) -> Self {
         let mut cards = self.cards.clone();
         cards.push((param, card));
         Self { cards }
+    }
+
+    /// The names bound so far, in binding order, `self` left out: what a Paused Resolution keeps
+    /// of the scope (ADR-0034).
+    pub(super) fn names(&self) -> Vec<BoundName> {
+        self.cards
+            .iter()
+            .filter(|(name, _)| name.as_str() != "self")
+            .map(|(name, card)| BoundName {
+                name: name.clone(),
+                card: *card,
+            })
+            .collect()
     }
 
     /// The card bound to `param`. Definition validation guarantees every ref names a param, so a
@@ -200,6 +215,23 @@ fn candidate_cards(state: &GameState, actor: PlayerId, param: &Param) -> Vec<Car
     candidates.sort();
     candidates.dedup();
     candidates
+}
+
+/// The Candidates of a Card Choice: the cards that can fill `param` for `controller`, in ascending
+/// Card Instance Id, each of which binds it with `scope` (`self` and the names bound before)
+/// readable by its `where` (ADR-0034). It is the filling of one param of an action, so `owner` is
+/// relative to `controller`, whoever decides.
+pub(super) fn candidates(
+    ruleset: &DeclarativeRuleset,
+    state: &GameState,
+    controller: PlayerId,
+    scope: &BoundCards,
+    param: &Param,
+) -> Vec<CardInstanceId> {
+    candidate_cards(state, controller, param)
+        .into_iter()
+        .filter(|&id| bind_param(ruleset, state, controller, scope, param, id).is_ok())
+        .collect()
 }
 
 /// Every argument list that binds the params of `declared` for `actor`, in Listing Order.

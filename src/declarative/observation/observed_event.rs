@@ -116,12 +116,16 @@ pub enum TakenAction {
     },
 }
 
-/// An Answer as a Viewer observes it (ADR-0033): the index of the option picked. Every Viewer sees
-/// every Answer.
+/// An Answer as a Viewer observes it (ADR-0033, ADR-0034): the index of the option picked, or the
+/// card picked as the Taken Action rule names a card. Every Viewer sees every Answer, and a card
+/// only as far as it sees the card.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ObservedAnswer {
     /// The option at this index.
     Option(u32),
+    /// The card picked: the Observed Card the Viewer holds after the transition, else the one it
+    /// held before, else hidden. The handle may be one issued later in the same trace.
+    Card(TakenArgument),
 }
 
 /// One card argument of a Taken Action.

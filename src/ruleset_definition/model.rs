@@ -585,6 +585,11 @@ pub enum Effect {
         decider: Decider,
         options: Vec<Vec<Effect>>,
     },
+    /// A Card Choice (ADR-0034): `decider` picks one card among the Candidates of `param`, and the
+    /// name `param.name()` reads it in the effects after this one in the same list and in
+    /// everything nested in them. `param` is an Action Param validated like any other. Only a
+    /// Triggered Card Effect has it.
+    ChooseCard { decider: Decider, param: Param },
 }
 
 /// The Player a Choice asks.

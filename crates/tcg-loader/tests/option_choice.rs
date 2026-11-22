@@ -397,6 +397,7 @@ fn pause(
             queue,
             unscanned,
             resolutions,
+            bound: Vec::new(),
         },
     }
 }

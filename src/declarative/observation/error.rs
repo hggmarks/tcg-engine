@@ -39,6 +39,9 @@ pub enum ObservationError {
     ObservedCardOverflow,
     /// An Observed Action names a Player other than the Viewer.
     ActionOfAnotherPlayer { player: PlayerId },
+    /// An Observed Answer names a hidden card: the Viewer cannot name a card it cannot see, so
+    /// there is no Answer to translate (ADR-0034).
+    AnswerNamesHiddenCard,
     /// A Legal Action of the Viewer names a card in a zone the Viewer cannot see; listing it would
     /// expose the card.
     LegalActionNamesUnseenCard { action: ActionId },
@@ -76,6 +79,9 @@ impl fmt::Display for ObservationError {
                     "the Observed Action is of Player {}, not the Viewer",
                     player.0
                 )
+            }
+            Self::AnswerNamesHiddenCard => {
+                write!(f, "the Observed Answer names a card the Viewer cannot see")
             }
             Self::LegalActionNamesUnseenCard { action } => write!(
                 f,

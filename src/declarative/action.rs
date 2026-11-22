@@ -11,7 +11,7 @@ use std::fmt;
 use super::action_effects;
 use super::arguments;
 use super::creation::DeclarativeRuleset;
-use super::decision::Answer;
+use super::decision::{Answer, DecisionKind};
 use super::event::Event;
 use super::execution::Execution;
 use super::game_end;
@@ -75,6 +75,11 @@ pub enum Rejection {
     NoDecisionPending,
     /// The Answer picks option `index`, and the pending Choice has `options`.
     OptionOutOfRange { index: u32, options: u32 },
+    /// The Answer is of another kind than the pending decision: `kind` is the one pending.
+    WrongAnswerKind { kind: DecisionKind },
+    /// The Answer picks a card that is not a Candidate of the pending Card Choice, unknown ids
+    /// included (ADR-0034).
+    CardNotCandidate { card: CardInstanceId },
     /// The ruleset declares no action with this id.
     UnknownAction { action: ActionId },
     /// The action is declared, but the current phase does not list it: there is no current phase,
@@ -187,6 +192,19 @@ impl fmt::Display for Rejection {
                     f,
                     "option {index} is out of range: the Choice has {options}"
                 )
+            }
+            Self::WrongAnswerKind { kind } => {
+                let asked = match kind {
+                    DecisionKind::Option => "an option",
+                    DecisionKind::Card => "a card",
+                };
+                write!(
+                    f,
+                    "the pending decision asks for {asked}, not this kind of Answer"
+                )
+            }
+            Self::CardNotCandidate { card } => {
+                write!(f, "the card instance {} is not a candidate", card.0)
             }
             Self::UnknownAction { action } => {
                 write!(f, "the ruleset has no action `{}`", action.as_str())
@@ -392,8 +410,8 @@ impl DeclarativeRuleset {
         self.finish(execution, paused)
     }
 
-    /// An Answer: checks the option, applies `DecisionAnswered` and goes on with the paused
-    /// Resolution.
+    /// An Answer: checks it against what the Choice asks (its kind, then its option or its card),
+    /// applies `DecisionAnswered` and goes on with the paused Resolution.
     fn answer(
         &self,
         state: &GameState,
@@ -404,16 +422,40 @@ impl DeclarativeRuleset {
             return Err(Rejection::NoDecisionPending);
         };
         let paused = pending.paused();
-        let Answer::Option(index) = answer;
-        let options = triggers::option_count(self, state, paused)?;
-        if index >= options {
-            return Err(Rejection::OptionOutOfRange { index, options });
+        let asked = triggers::asked(self, state, paused)?;
+        // The kind the GameState holds must be the one of the Choice at the path.
+        let consistent = matches!(
+            (&asked, pending.kind()),
+            (triggers::Asked::Options(_), DecisionKind::Option)
+                | (triggers::Asked::Candidates(_), DecisionKind::Card)
+        );
+        if !consistent {
+            return Err(Rejection::CardDataMismatch {
+                card: paused.trigger.card,
+            });
+        }
+        match (asked, answer) {
+            (triggers::Asked::Options(options), Answer::Option(index)) => {
+                if index >= options {
+                    return Err(Rejection::OptionOutOfRange { index, options });
+                }
+            }
+            (triggers::Asked::Candidates(candidates), Answer::Card(card)) => {
+                if !candidates.contains(&card) {
+                    return Err(Rejection::CardNotCandidate { card });
+                }
+            }
+            _ => {
+                return Err(Rejection::WrongAnswerKind {
+                    kind: pending.kind(),
+                })
+            }
         }
         let mut execution = Execution::new(state.clone());
         execution
             .apply(Event::DecisionAnswered { player, answer })
             .map_err(Rejection::EventRejected)?;
-        let again = triggers::resume(self, &mut execution, paused, index)?;
+        let again = triggers::resume(self, &mut execution, paused, answer)?;
         self.finish(execution, again)
     }
 

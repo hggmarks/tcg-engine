@@ -213,6 +213,13 @@ pub enum EffectDraft {
         decider: String,
         options: Vec<Vec<EffectDraft>>,
     },
+    /// `choose_card: { name, decider, zone, card_type, owner?, where? }` or `{ name, decider,
+    /// one_of: [...] }`: `decider` is `controller` or `opponent`, and `param` is read like the
+    /// param of an action.
+    ChooseCard {
+        decider: String,
+        param: ParamDraft,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -412,7 +412,8 @@ fn find_end_turn(effects: &[EffectDraft], list: &DefinitionPath) -> Option<Defin
                     }
                 }
             }
-            EffectDraft::Move { .. }
+            EffectDraft::ChooseCard { .. }
+            | EffectDraft::Move { .. }
             | EffectDraft::SetState { .. }
             | EffectDraft::AddState { .. }
             | EffectDraft::Draw { .. } => {}

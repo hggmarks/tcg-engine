@@ -421,8 +421,11 @@ fn the_relabelling_shuffles_only_the_hidden_positions_of_an_unseen_zones_shuffle
 }
 
 #[test]
-fn the_relabelling_maps_every_card_a_paused_resolution_names() {
-    use tcg_engine::declarative::{DecisionKind, EffectPath, PausedResolution, QueuedTrigger};
+fn the_relabelling_maps_every_card_a_paused_resolution_and_an_answer_names() {
+    use tcg_engine::declarative::{
+        Answer, BoundName, DecisionKind, EffectPath, PausedResolution, QueuedTrigger,
+    };
+    use tcg_engine::ruleset_definition::ParamName;
     use tcg_engine::ruleset_definition::{FieldValue, StateName};
 
     let (ruleset, _) = effects();
@@ -433,7 +436,8 @@ fn the_relabelling_maps_every_card_a_paused_resolution_names() {
     };
     // Six cards of one class, in a hidden zone for both Viewers; the Events of the step name five
     // of them: marker Events (a state change each) show where the permutation sends a card, and the
-    // pause carries the same cards in its trigger, its queue and its unscanned Events.
+    // pause carries the same cards in its trigger, its queue, its unscanned Events and its bound
+    // names (ADR-0034); the Answer that follows it names a card, and so does the recorded Action.
     let creation: Vec<Event> = (0..6).map(|card| created(card, 0, "deck")).collect();
     let pause = |trigger: u32, queue: &[u32], unscanned: Vec<Event>| Event::DecisionPending {
         decider: PlayerId(0),
@@ -447,6 +451,16 @@ fn the_relabelling_maps_every_card_a_paused_resolution_names() {
                 branches: Vec::new(),
                 choice: 0,
             },
+            bound: vec![
+                BoundName {
+                    name: ParamName::new("first"),
+                    card: id(4),
+                },
+                BoundName {
+                    name: ParamName::new("second"),
+                    card: id(5),
+                },
+            ],
             queue: queue
                 .iter()
                 .map(|&card| QueuedTrigger {
@@ -481,7 +495,15 @@ fn the_relabelling_maps_every_card_a_paused_resolution_names() {
                     shuffled(vec![id(5), id(4)]),
                 ],
             ),
+            Event::DecisionAnswered {
+                player: PlayerId(0),
+                answer: Answer::Card(id(3)),
+            },
         ]],
+    };
+    let recorded = Action::Answer {
+        player: PlayerId(0),
+        answer: Answer::Card(id(2)),
     };
     let hidden = hidden_cards(&ruleset, viewer(0), &events);
     assert_eq!(hidden, set(&[0, 1, 2, 3, 4, 5]));
@@ -489,7 +511,14 @@ fn the_relabelling_maps_every_card_a_paused_resolution_names() {
     let mut moved_a_card = false;
     for stream in 0..16 {
         let mut rng = RandomState::from_seed(Seed(stream));
-        let relabelled = relabel(&ruleset, viewer(0), &hidden, &events, None, &mut rng);
+        let relabelled = relabel(
+            &ruleset,
+            viewer(0),
+            &hidden,
+            &events,
+            Some(&recorded),
+            &mut rng,
+        );
         let trace = &relabelled.events.traces[0];
         // Where each card went, read off the marker Events.
         let to = |card: u32| match &trace[usize::try_from(card - 1).expect("an index")] {
@@ -519,8 +548,40 @@ fn the_relabelling_maps_every_card_a_paused_resolution_names() {
             ],
             "stream {stream}: the carried Events"
         );
+        assert_eq!(
+            paused.bound,
+            vec![
+                BoundName {
+                    name: ParamName::new("first"),
+                    card: to(4)
+                },
+                BoundName {
+                    name: ParamName::new("second"),
+                    card: to(5)
+                },
+            ],
+            "stream {stream}: the bound names"
+        );
         // What is not a card is kept.
         assert_eq!(paused.resolutions, 1);
+        // The card of the Answer goes through the same permutation, in its Event and in the
+        // recorded Action.
+        assert_eq!(
+            trace[6],
+            Event::DecisionAnswered {
+                player: PlayerId(0),
+                answer: Answer::Card(to(3)),
+            },
+            "stream {stream}: the Answer Event"
+        );
+        assert_eq!(
+            relabelled.action,
+            Some(Action::Answer {
+                player: PlayerId(0),
+                answer: Answer::Card(to(2)),
+            }),
+            "stream {stream}: the recorded Action"
+        );
     }
     assert!(moved_a_card, "no stream relabelled a card");
 }

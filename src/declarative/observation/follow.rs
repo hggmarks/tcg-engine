@@ -16,7 +16,7 @@ use crate::declarative::action::{Action, Argument};
 use crate::declarative::creation::DeclarativeRuleset;
 use crate::declarative::decision::Answer;
 use crate::declarative::event::Event;
-use crate::declarative::state::GameState;
+use crate::declarative::state::{CardInstanceId, GameState};
 use crate::ruleset::Transition;
 
 impl DeclarativeRuleset {
@@ -71,13 +71,7 @@ impl DeclarativeRuleset {
                     .iter()
                     .map(|argument| {
                         let Argument::Card(card) = argument;
-                        match folded
-                            .observed_card(*card)
-                            .or(observer.observed_card(*card))
-                        {
-                            Some(handle) => TakenArgument::Card(handle),
-                            None => TakenArgument::HiddenCard,
-                        }
+                        taken_argument(&folded, observer, *card)
                     })
                     .collect();
                 TakenAction::Declared {
@@ -86,12 +80,14 @@ impl DeclarativeRuleset {
                     arguments,
                 }
             }
-            Action::Answer {
-                player,
-                answer: Answer::Option(index),
-            } => TakenAction::Answer {
+            Action::Answer { player, answer } => TakenAction::Answer {
                 player: *player,
-                answer: ObservedAnswer::Option(*index),
+                answer: match answer {
+                    Answer::Option(index) => ObservedAnswer::Option(*index),
+                    Answer::Card(card) => {
+                        ObservedAnswer::Card(taken_argument(&folded, observer, *card))
+                    }
+                },
             },
         };
         let state = observed_state::observe(self, &folded, &transition.state)?;
@@ -103,7 +99,9 @@ impl DeclarativeRuleset {
         })
     }
 
-    /// Applies each Event to `working`, folds it into `observer` and projects it.
+    /// Applies each Event to `working`, folds it into `observer` and projects it. Every Observed
+    /// Event is read from the Viewer's sight at its own Event, so the Observed Events of a trace
+    /// are the same however the trace is sliced.
     fn project(
         &self,
         observer: &mut Observer,
@@ -263,19 +261,36 @@ impl DeclarativeRuleset {
                     kind: *kind,
                 }
             }
-            (
-                Event::DecisionAnswered {
-                    player,
-                    answer: Answer::Option(index),
-                },
-                Sight::NoCard,
-            ) => ObservedEvent::DecisionAnswered {
-                player: *player,
-                answer: ObservedAnswer::Option(*index),
-            },
+            (Event::DecisionAnswered { player, answer }, Sight::NoCard) => {
+                ObservedEvent::DecisionAnswered {
+                    player: *player,
+                    answer: match answer {
+                        Answer::Option(index) => ObservedAnswer::Option(*index),
+                        // The card as the Viewer sees it at this Event, which changes no sight:
+                        // the handle the Observer holds now, else hidden (ADR-0034).
+                        Answer::Card(card) => ObservedAnswer::Card(
+                            observer
+                                .observed_card(*card)
+                                .map_or(TakenArgument::HiddenCard, TakenArgument::Card),
+                        ),
+                    },
+                }
+            }
             _ => return Err(out_of_step()),
         };
         Ok(Some(projected))
+    }
+}
+
+/// A card as the Taken Action rule names it: the Observed Card the Viewer holds `after`, else the
+/// one it held `before` (now retired), else hidden.
+fn taken_argument(after: &Observer, before: &Observer, card: CardInstanceId) -> TakenArgument {
+    match after
+        .observed_card(card)
+        .or_else(|| before.observed_card(card))
+    {
+        Some(handle) => TakenArgument::Card(handle),
+        None => TakenArgument::HiddenCard,
     }
 }
 
