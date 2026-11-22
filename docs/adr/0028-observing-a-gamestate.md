@@ -1,5 +1,7 @@
 # Observing a GameState
 
+Amended by ADR-0038: the source of an Observed Stack Item is an `ObservedStackSource`, whose ability card is an Observed Card or `None` once it left.
+
 Amended by ADR-0037: the Stack, the Player with Priority and the Deciding Player's new rule are always visible.
 
 Amended by ADR-0033: the Observed GameState also holds the Observed Pending Decision.

@@ -1,12 +1,14 @@
 # Acting from an Observation
 
+Amended by ADR-0038: `ObservedAction` has a fourth variant, `Activate { player, card, ability }`, listed after the Declared Actions for the Player with Priority.
+
 Amended by ADR-0037: `ObservedAction` has a third variant, `Pass { player }`, listed first for the Player with Priority.
 
 The second half of acting on hidden information (ticket [25], #65, of the Observations roadmap #61): a Viewer lists its Legal Actions with Observed Cards and turns an Observed Action back into the engine Action. It builds on ADR-0028 and reads the Observer's mapping only through `Observer::{viewer, card_instance, observed_card}`. ADR-0018 (Legal Actions, Listing Order) and ADR-0021 (the listing is a filter through `transition`) are unchanged.
 
 **1. Where it lives.** Two inherent methods of the Declarative Ruleset, like `derived_read` and `listing_with_rejections`, not methods of the `Observations` trait, which carries only what every observing Ruleset has: `observed_legal_actions(observer, state)` and `translate_action(observer, action)`. `Observations` and `Ruleset` are unchanged.
 
-**2. The types.** *(Amended by ADR-0033: `ObservedAction` is an enum, `Declared { player, action, arguments }` and `Answer { player, answer }` with an `ObservedAnswer`; amended by ADR-0034: an `ObservedAnswer` may be `Card(TakenArgument)`.)* `ObservedAction { player, action, arguments }` mirrors `Action`, *(Amended by ADR-0037: and `Pass { player }` mirrors `Action::Pass`)* and `ObservedArgument::Card(ObservedCard)` mirrors `Argument::Card`. There is no encoding into vectors or indices.
+**2. The types.** *(Amended by ADR-0033: `ObservedAction` is an enum, `Declared { player, action, arguments }` and `Answer { player, answer }` with an `ObservedAnswer`; amended by ADR-0034: an `ObservedAnswer` may be `Card(TakenArgument)`.)* `ObservedAction { player, action, arguments }` mirrors `Action`, *(Amended by ADR-0037: and `Pass { player }` mirrors `Action::Pass`; amended by ADR-0038: and `Activate { player, card: ObservedCard, ability }` mirrors `Action::Activate`)* and `ObservedArgument::Card(ObservedCard)` mirrors `Argument::Card`. There is no encoding into vectors or indices.
 
 **3. The listing.** `legal_actions(state)` filtered to the Actions whose Player is the Viewer, in the engine's order, each card argument mapped to its Observed Card *(Amended by ADR-0034: and the card of each Card Answer, as `Card(TakenArgument::Card(handle))`; a missing handle is `ObserverOutOfStep`)*. The other Player's empty list comes from the engine (only the Active Player has Legal Actions *(Amended by ADR-0033: only the Deciding Player has)*) *(Amended by ADR-0037: the Deciding Player is the Player with Priority while a window is open)*; nothing special-cases the Active Player. Nothing is re-ordered, de-duplicated or re-run through `transition`. The Viewer's Player not being in the GameState is `UnknownViewer`.
 
