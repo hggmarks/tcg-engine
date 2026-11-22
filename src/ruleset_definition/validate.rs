@@ -786,8 +786,10 @@ fn validate_windows(
     Ok(valid)
 }
 
-/// The card params of a pushed action must be public: each alternative binds from a `public` zone,
-/// unless a `move` cost of the action moves the param to a `public` zone (ADR-0037).
+/// The card params of a pushed action must be public once the costs are paid, because the Stack
+/// shows the card in the zone it is in then (ADR-0037): the zone of a param is the `to` of its last
+/// `move` cost if it has one (a single zone, reported at the param), else the zone of each
+/// alternative (reported at the alternative). That zone must be `public`.
 fn check_pushed_params(
     action: &ActionDefinition,
     draft: &ActionDraft,
@@ -799,17 +801,30 @@ fn check_pushed_params(
             .any(|declared| &declared.id == zone && declared.visibility == Visibility::Public)
     };
     for (param, param_draft) in action.params.iter().zip(&draft.params) {
-        let moved_to_public = action.costs.iter().any(|cost| {
-            matches!(cost, Cost::Move { card, to } if card.param == param.name && is_public(to))
-        });
-        if moved_to_public {
-            continue;
-        }
         let at = DefinitionPath::root()
             .key("actions")
             .id(action.id.as_str())
             .key("params")
             .id(param.name.as_str());
+        let not_public = |at: DefinitionPath, zone: &ZoneId| {
+            fail(
+                at,
+                DefinitionErrorKind::PushedCardNotPublic {
+                    param: param.name.as_str().to_string(),
+                    zone: zone.as_str().to_string(),
+                },
+            )
+        };
+        let last_move = action.costs.iter().rev().find_map(|cost| match cost {
+            Cost::Move { card, to } if card.param == param.name => Some(to),
+            _ => None,
+        });
+        if let Some(to) = last_move {
+            if !is_public(to) {
+                return not_public(at, to);
+            }
+            continue;
+        }
         for (index, alternative) in param.alternatives.iter().enumerate() {
             if is_public(&alternative.zone) {
                 continue;
@@ -818,13 +833,7 @@ fn check_pushed_params(
                 ParamCardsDraft::Single(_) => at.clone(),
                 ParamCardsDraft::OneOf(_) => at.clone().key("one_of").index(index),
             };
-            return fail(
-                at,
-                DefinitionErrorKind::PushedCardNotPublic {
-                    param: param.name.as_str().to_string(),
-                    zone: alternative.zone.as_str().to_string(),
-                },
-            );
+            return not_public(at, &alternative.zone);
         }
     }
     Ok(())

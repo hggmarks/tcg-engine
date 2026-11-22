@@ -29,7 +29,9 @@ impl DeclarativeRuleset {
     /// The one walk over the candidates, in Listing Order. With `keep_rejected` false a refused
     /// candidate is dropped on the spot, so `legal_actions` allocates nothing for it. While a
     /// decision is pending the candidates are the Answers of its Deciding Player, in index order
-    /// (ADR-0033); otherwise they are the Declared Actions of the Active Player.
+    /// (ADR-0033); otherwise, while a Response Window is open, they are a Pass and then the
+    /// window's Declared Actions, for the Player with Priority (ADR-0037); otherwise they are the
+    /// Declared Actions the current phase lists, of the Active Player.
     fn walk(&self, state: &GameState, keep_rejected: bool) -> Vec<(Action, Option<Rejection>)> {
         if state.outcome().is_some() {
             return Vec::new();

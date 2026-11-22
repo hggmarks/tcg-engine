@@ -601,6 +601,13 @@ fn observed_state_difference(
             other.pending_decision()
         ));
     }
+    if one.stack() != other.stack() {
+        return Some(format!(
+            "the Stack is {:?} in {one_name} and {:?} in {other_name}",
+            one.stack(),
+            other.stack()
+        ));
+    }
     if one.players() != other.players() {
         return Some(format!(
             "the Players are {:?} in {one_name} and {:?} in {other_name}",

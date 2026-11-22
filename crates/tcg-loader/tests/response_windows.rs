@@ -17,9 +17,9 @@
 
 use tcg_engine::deck_list::DeckList;
 use tcg_engine::declarative::{
-    Action, Answer, Argument, BoundCard, CardInstanceId, DecisionKind, DeclarativeRuleset,
-    EffectPath, Event, GameRecord, GameState, Loss, PausedResolution, QueuedTrigger, Rejection,
-    StackItem, StackSource,
+    Action, Answer, ApplyError, Argument, BoundCard, CardInstanceId, DecisionKind,
+    DeclarativeRuleset, EffectPath, Event, GameRecord, GameState, Loss, PausedResolution,
+    QueuedTrigger, Rejection, StackItem, StackSource,
 };
 use tcg_engine::player::PlayerId;
 use tcg_engine::random::Seed;
@@ -27,6 +27,7 @@ use tcg_engine::ruleset::{LegalActions, Ruleset, Transition};
 use tcg_engine::ruleset_definition::{
     ActionId, FieldValue, ParamName, StateName, WinConditionId, ZoneId,
 };
+use tcg_engine::turn::TurnNumber;
 use tcg_loader::{load_card_catalog, load_deck_list, load_ruleset_definition};
 
 const RESPONSE_RULESET: &str =
@@ -1030,6 +1031,94 @@ fn a_resolution_that_meets_a_win_condition_ends_the_game() {
     let ended = transition.state;
     assert_eq!(ended.outcome().expect("ended").winners(), [p(0)]);
     assert!(ended.stack().is_empty());
+}
+
+// ---- applying the item Events
+
+/// Asserts that applying `event` to `state` is `expected` and leaves `state` as it was.
+fn assert_not_applied(state: &GameState, event: &Event, expected: ApplyError) {
+    let mut applied = state.clone();
+    assert_eq!(applied.apply(event), Err(expected));
+    assert_eq!(&applied, state, "an Event that is refused changes nothing");
+}
+
+#[test]
+fn an_item_event_that_does_not_fit_the_stack_is_a_typed_error() {
+    let ruleset = response_with_test_actions();
+    let scene = arrange(&ruleset, &response_decks(&ruleset));
+    let (a, t) = (scene.attacker, scene.target);
+    let fresh = scene.state.clone();
+
+    // `StackEmpty`: nothing resolves or Fizzles on an empty Stack.
+    assert_not_applied(
+        &fresh,
+        &resolved(attack_item(a, t, false)),
+        ApplyError::StackEmpty,
+    );
+    assert_not_applied(
+        &fresh,
+        &fizzled(attack_item(a, t, true)),
+        ApplyError::StackEmpty,
+    );
+
+    // `NotTopItem`: the bottom item is not the top one, and an item that differs is not either.
+    let (pushed_attack, _) = accept_all(&ruleset, &fresh, &[attack(a, t)]);
+    let (two, _) = accept_all(
+        &ruleset,
+        &fresh,
+        &[attack(a, t), declared(1, "snipe", &[a])],
+    );
+    assert_not_applied(
+        &two,
+        &resolved(attack_item(a, t, false)),
+        ApplyError::NotTopItem,
+    );
+    assert_not_applied(
+        &pushed_attack,
+        &resolved(fast_item(0, a)),
+        ApplyError::NotTopItem,
+    );
+
+    // `FizzleMismatch`: `ItemFizzled` of an item that does not Fizzle, `ItemResolved` of one that
+    // does, and `ItemPushed` of one that already has a card that left.
+    assert_not_applied(
+        &pushed_attack,
+        &fizzled(attack_item(a, t, false)),
+        ApplyError::FizzleMismatch,
+    );
+    let (gone, _) = accept_all(
+        &ruleset,
+        &fresh,
+        &[attack(a, t), declared(1, "snipe", &[a]), pass(0)],
+    );
+    assert_eq!(gone.stack(), [attack_item(a, t, true)]);
+    assert_not_applied(
+        &gone,
+        &resolved(attack_item(a, t, true)),
+        ApplyError::FizzleMismatch,
+    );
+    assert_not_applied(
+        &fresh,
+        &pushed(attack_item(a, t, true)),
+        ApplyError::FizzleMismatch,
+    );
+
+    // `StackNotEmpty`: a Turn or a phase cannot begin while the Stack holds an item.
+    assert_not_applied(
+        &pushed_attack,
+        &Event::TurnBegan {
+            player: p(1),
+            turn: TurnNumber::new(2).expect("a Turn Number"),
+        },
+        ApplyError::StackNotEmpty,
+    );
+    assert_not_applied(
+        &pushed_attack,
+        &Event::PhaseBegan {
+            phase: tcg_engine::ruleset_definition::PhaseId::new("main"),
+        },
+        ApplyError::StackNotEmpty,
+    );
 }
 
 // ---- replay and determinism

@@ -311,13 +311,64 @@ fn a_pushed_card_param_that_is_not_public_and_not_moved_to_a_public_zone_is_reje
             .id("card")
     );
 
-    // A move to a zone that is not public does not make it public either.
+    // A move to a zone that is not public does not make it public either: the zone that counts is
+    // the one the card is in once the costs are paid, here the hidden `deck`.
     let hidden = edit(
         RESPONSE_RULESET,
         "      - move: { card: { ref: card }, to: holding }\n",
         "      - move: { card: { ref: card }, to: deck }\n",
     );
     let error = definition_error(&hidden);
+    assert_eq!(
+        error.kind,
+        DefinitionErrorKind::PushedCardNotPublic {
+            param: "card".to_string(),
+            zone: "deck".to_string()
+        }
+    );
+    assert_eq!(
+        error.path,
+        path()
+            .key("actions")
+            .id("fast_play")
+            .key("params")
+            .id("card")
+    );
+}
+
+#[test]
+fn a_pushed_card_is_checked_in_the_zone_it_is_in_once_the_costs_are_paid() {
+    // `attack` binds its attacker from the public `field`, but a cost then moves it to the hand,
+    // which only its owner sees: the card the Stack would show is not public.
+    let yaml = edit(
+        RESPONSE_RULESET,
+        "      - tap: { card: { ref: attacker } }\n",
+        "      - tap: { card: { ref: attacker } }\n      - move: { card: { ref: attacker }, to: hand }\n",
+    );
+    let error = definition_error(&yaml);
+    assert_eq!(
+        error.kind,
+        DefinitionErrorKind::PushedCardNotPublic {
+            param: "attacker".to_string(),
+            zone: "hand".to_string()
+        }
+    );
+    assert_eq!(
+        error.path,
+        path()
+            .key("actions")
+            .id("attack")
+            .key("params")
+            .id("attacker")
+    );
+
+    // Only the last `move` of a param counts: public, then back to the hand.
+    let yaml = edit(
+        RESPONSE_RULESET,
+        "      - move: { card: { ref: card }, to: holding }\n",
+        "      - move: { card: { ref: card }, to: holding }\n      - move: { card: { ref: card }, to: hand }\n",
+    );
+    let error = definition_error(&yaml);
     assert_eq!(
         error.kind,
         DefinitionErrorKind::PushedCardNotPublic {

@@ -64,7 +64,7 @@ win_conditions:
 
 - Every zone says who sees it (`hidden`, `owner` or `public`) and whether its order matters. The zone a `shuffle` shuffles and the `from` of a `draw` must be `ordered` (ADR-0013); the `to` of a `draw` need not be.
 - `inputs` say what each Player brings. Each one fills the zone it names when the Game is created, before `setup` runs.
-- The turn has exactly one phase with `actions`: the Game waits there for the Active Player, and `end_turn` is the only way out. `pass_turn` is a plain action whose effect is `end_turn`. The phase must list at least one action that ends the Turn (its effects end with a top-level `end_turn`, and `end_turn` is allowed nowhere else in an action, never inside an `if`), and every action you declare must be listed by it, or by the `actions` of a Response Window (ADR-0027, ADR-0037).
+- The turn has exactly one phase with `actions`: the Game waits there for the Active Player (or, while a Response Window is open, for the Player with Priority, ADR-0037), and `end_turn` is the only way out. `pass_turn` is a plain action whose effect is `end_turn`. The phase must list at least one action that ends the Turn (its effects end with a top-level `end_turn`, and `end_turn` is allowed nowhere else in an action, never inside an `if`), and every action you declare must be listed by it, or by the `actions` of a Response Window (ADR-0027, ADR-0037).
 - `loser: owner` is the only value; `draw_from_empty` makes a Player lose when a draw of theirs during a turn found the zone empty. A `draw` in `setup` from an empty zone is not a loss: it fails Game creation (ADR-0011, ADR-0014).
 
 ## 2. The card catalog

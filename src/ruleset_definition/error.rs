@@ -202,10 +202,11 @@ pub enum DefinitionErrorKind {
     /// path, such as `actions[x].effects[1]`: a Stack Item's effects run on a Pass, which does not
     /// leave the Action phase (ADR-0037).
     EndTurnInPushedAction,
-    /// A card param of a pushed action that is neither bound from a `public` zone nor moved to one
-    /// by a `move` cost, at the param or at its `one_of[i]` alternative, such as
+    /// A card param of a pushed action that is not in a `public` zone once the costs are paid,
+    /// at the param (when a `move` cost moves it: `zone` is the `to` of its last one) or at its
+    /// `one_of[i]` alternative (`zone` is the zone the alternative binds from), such as
     /// `actions[fast_play].params[card]`: the Stack is public, so the bound cards must be seen by
-    /// every Player (ADR-0037). `zone` is the zone the alternative binds from.
+    /// every Player in the zone they are bound in (ADR-0037).
     PushedCardNotPublic { param: String, zone: String },
     /// The card of a `tap: { card }` cost, such as `actions[attack].cost[0].tap.card`: a card type
     /// its param may take has no bool `tapped` instance state; `card_type` is the first such one.
@@ -377,7 +378,7 @@ impl fmt::Display for DefinitionErrorKind {
             ),
             Self::PushedCardNotPublic { param, zone } => write!(
                 f,
-                "the card `{param}` of a pushed action is taken from the zone `{zone}`, which is not public, and no cost moves it to a public zone"
+                "the card `{param}` of a pushed action is in the zone `{zone}` once the costs are paid, which is not public"
             ),
             Self::TapCardWithoutTappedState { card_type } => write!(
                 f,

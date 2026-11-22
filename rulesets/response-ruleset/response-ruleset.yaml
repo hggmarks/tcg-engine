@@ -62,8 +62,9 @@ setup:
   - draw: { player: each, from: deck, to: hand, count: 5 }
 
 # A Turn runs its phases in order. An `automatic` phase runs its steps when it begins; the one phase
-# with `actions` (exactly one per turn) is where the Game waits for the Active Player. `player:
-# active` is the Player whose Turn it is. The first Turn begins as part of Game creation. Passing
+# with `actions` (exactly one per turn) is where the Game waits for the Active Player, or, while a
+# Response Window is open, for the Player with Priority. `player: active` is the Player whose Turn
+# it is. The first Turn begins as part of Game creation. Passing
 # the turn (the `end_turn` effect) runs the phases after Main, then the next Player's Turn begins at
 # once, in the same transition.
 turn:
@@ -106,8 +107,8 @@ actions:
   # Stack, and opens the `attack_response` window. When it resolves, a creature dies when the
   # attacker's power is at least its own, and goes to the top of its owner's trash; a Leader loses 1
   # life likewise. In `then` the target is a creature and in `else` a Leader, which is why only there
-  # is `current_life` a state of the target. If the attacker or the target has left the field by
-  # then, the attack does nothing (it Fizzles) and the tap stands.
+  # is `current_life` a state of the target. If the attacker or the target has moved since the
+  # attack was pushed, the attack does nothing (it Fizzles) and the tap stands.
   - id: attack
     params:
       - name: attacker

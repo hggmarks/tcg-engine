@@ -14,9 +14,9 @@
 use tcg_engine::deck_list::DeckList;
 use tcg_engine::declarative::{
     Action, Argument, CardInstanceId, DeclarativeRuleset, Event, GameCreation, GameState,
-    ObservationError, ObservedAction, ObservedArgument, ObservedBoundCard, ObservedCard,
-    ObservedEvent, ObservedGameState, ObservedStackItem, Observer, StackSource, TakenAction,
-    TakenArgument, Viewer,
+    ObservationError, ObservedAction, ObservedApplyError, ObservedArgument, ObservedBoundCard,
+    ObservedCard, ObservedEvent, ObservedGameState, ObservedStackItem, Observer, StackSource,
+    TakenAction, TakenArgument, Viewer,
 };
 use tcg_engine::player::PlayerId;
 use tcg_engine::random::Seed;
@@ -513,4 +513,55 @@ fn an_observed_pass_round_trips() {
         assert_eq!(followed.state.priority(), None);
         assert_eq!(followed.state.deciding_player(), p(0));
     }
+}
+
+#[test]
+fn an_observed_item_event_that_does_not_fit_is_event_does_not_fit() {
+    let ruleset = response();
+    let scene = arranged(&ruleset);
+    let (a, t) = (scene.attacker, scene.target);
+    let mut observer = scene.observer(&ruleset, 1);
+    let empty = ruleset
+        .observe(&observer, &scene.state)
+        .expect("the GameState is observed");
+    let attack = declared(0, "attack", &[a, t]);
+    let transition = ruleset
+        .transition(&scene.state, &attack)
+        .expect("the attack is accepted");
+    let followed = ruleset
+        .follow_transition(&mut observer, &scene.state, &attack, &transition)
+        .expect("the transition is followed");
+    let pushed = followed.state;
+    let item = observed_attack(&observer, a, t, false);
+    let gone = observed_attack(&observer, a, t, true);
+
+    let not_applied = |state: &ObservedGameState, event: ObservedEvent| {
+        let mut applied = state.clone();
+        assert_eq!(
+            applied.apply(&event),
+            Err(ObservedApplyError::EventDoesNotFit)
+        );
+        assert_eq!(
+            &applied, state,
+            "an Event that does not fit changes nothing"
+        );
+    };
+    // Nothing resolves on an empty Stack.
+    not_applied(&empty, ObservedEvent::ItemResolved { item: item.clone() });
+    // The item must be the top one, and resolving needs it not to Fizzle, Fizzling needs it to.
+    let other = ObservedStackItem {
+        controller: p(1),
+        ..item.clone()
+    };
+    not_applied(&pushed, ObservedEvent::ItemResolved { item: other });
+    not_applied(&pushed, ObservedEvent::ItemFizzled { item: item.clone() });
+    // An item that already shows a card as gone is not pushed.
+    not_applied(&empty, ObservedEvent::ItemPushed { item: gone });
+    // A Turn does not begin while the Stack holds an item.
+    not_applied(
+        &pushed,
+        ObservedEvent::PhaseBegan {
+            phase: tcg_engine::ruleset_definition::PhaseId::new("main"),
+        },
+    );
 }

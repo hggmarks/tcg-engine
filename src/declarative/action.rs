@@ -97,7 +97,8 @@ pub enum Rejection {
     /// A `tap: { card }` cost on a card that is tapped already.
     CardAlreadyTapped { card: CardInstanceId },
     /// The action is declared, but the current phase does not list it: there is no current phase,
-    /// the ruleset does not know it, or it is not a phase with actions.
+    /// the ruleset does not know it, or it is not a phase with actions. *(Amended by ADR-0037: or
+    /// the action is listed only by a Response Window and no window is open.)*
     ActionNotInCurrentPhase { action: ActionId },
     /// The Action has a different number of arguments than the action has params.
     ArgumentCountMismatch { expected: u64, found: u64 },

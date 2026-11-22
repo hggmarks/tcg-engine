@@ -1,6 +1,6 @@
-# Sample deck A for the Response Ruleset (the Effects deck A with two goblin_scouts and the ember_hounds
-# swapped for the fast creatures swift_sparrow and flash_fox): 1 Leader, 50 creatures (at most 4 of each), 10 mana. It
-# plays the three families of Card Effects: triggered (lamp_keeper, dawn_scout, grave_jackal,
+# Sample deck A for the Response Ruleset: the Effects deck A with two goblin_scouts and both
+# ember_hounds swapped for the fast creatures swift_sparrow and flash_fox. 1 Leader, 50 creatures
+# (at most 4 of each), 10 mana. It plays the three families of Card Effects: triggered (lamp_keeper, dawn_scout, grave_jackal,
 # eager_recruit, pyre_imp), self-continuous (battle_veteran, weary_ox) and aura (banner_bearer,
 # rally_captain). It also holds the three cards that pause a Resolution for a Choice: curious_owl
 # (an Option Choice), snare_vine (a Card Choice decided by the controller) and mind_leech (decided

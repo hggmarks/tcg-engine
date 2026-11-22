@@ -176,7 +176,7 @@ A Deck Input's optional `max_copies`: the most copies of one Card Definition an 
 ## Declarative Games
 
 **Declarative Ruleset**:
-The Ruleset that interprets a RulesetDefinition and a Card Catalog. Its GameState changes only by Event Application. Its Action is a Declared Action (a Player, an Action Definition id and one Argument per Action Parameter) or an Answer (a Player and an Answer), and its Rejection is one of Game Over (checked before every other), Unknown Player, Not Deciding Player, Declared While Decision Pending, No Decision Pending, Option Out Of Range, Wrong Answer Kind, Card Not Candidate, ChoiceOutsideTriggeredEffect (an internal inconsistency: a ruleset action's effects paused), Unknown Action, Action Not In Current Phase, Argument Count Mismatch, Unknown Card, Not Card Owner, Not Opponent Card, Card Not In Zone, Wrong Card Type, Where Condition Not Met, No Alternative Matched, Negative Count, Not Enough Untapped Cards, State Overflow, Turn Number Overflow, EventRejected, CardDataMismatch, ExpressionTypeMismatch or UnboundParam (ADR-0012, ADR-0014, ADR-0015, ADR-0016). It lists its Legal Actions, filtered through its own `transition` (ADR-0018).
+The Ruleset that interprets a RulesetDefinition and a Card Catalog. Its GameState changes only by Event Application. Its Action is a Declared Action (a Player, an Action Definition id and one Argument per Action Parameter), an Answer (a Player and an Answer) or a Pass *(Amended by ADR-0037)*, and its Rejection is one of Game Over (checked before every other), Unknown Player, Not Deciding Player, Declared While Decision Pending, Pass While Decision Pending, Pass Without Window, Action Not In Window, Card Already Tapped *(the last four added by ADR-0037)*, No Decision Pending, Option Out Of Range, Wrong Answer Kind, Card Not Candidate, ChoiceOutsideTriggeredEffect (an internal inconsistency: a ruleset action's effects paused), Unknown Action, Action Not In Current Phase, Argument Count Mismatch, Unknown Card, Not Card Owner, Not Opponent Card, Card Not In Zone, Wrong Card Type, Where Condition Not Met, No Alternative Matched, Negative Count, Not Enough Untapped Cards, State Overflow, Turn Number Overflow, EventRejected, CardDataMismatch, ExpressionTypeMismatch or UnboundParam (ADR-0012, ADR-0014, ADR-0015, ADR-0016). It lists its Legal Actions, filtered through its own `transition` (ADR-0018).
 
 **EventRejected**:
 A declarative Rejection for an internal inconsistency: an Event the Ruleset generated was rejected because the GameState does not fit this Ruleset. It is never expected.
@@ -378,6 +378,18 @@ A Stack Item whose Bound Card has left does nothing when it resolves: all or not
 **Response Ruleset**:
 The ruleset of Phase F (`rulesets/response-ruleset/`, id `response`), a copy of the Effects Ruleset with a `holding` zone, a `fast` field on creatures, `attack` tapping its attacker as a cost, `fast_play` and the `attack_response` window; two fast creatures, `swift_sparrow` and `flash_fox`, are in both sample decks. Rule decisions are made here from Phase F's ticket [34] (ADR-0037).
 
+**End Turn In Pushed Action**:
+A Definition Error at an `end_turn` in the effects of a pushed action (one a Response Window lists or opens), at its own path, such as `actions[x].effects[1]`: its effects run on a Pass, which does not leave the Action phase (ADR-0037).
+
+**Pushed Card Not Public**:
+A Definition Error at a card param of a pushed action, or at its `one_of[i]` alternative, whose card is not in a `public` zone once the costs are paid: the zone is the `to` of the param's last `move` cost if it has one, else the zone of the alternative. `PushedCardNotPublic { param, zone }` with that zone. The Stack is public, so the bound cards must be seen by every Player (ADR-0037).
+
+**Duplicate Window Opener**:
+A Definition Error at an action named in the `opened_by` of two Response Windows, or twice in one, at the later one (`windows[second].opened_by[0]`); `first` is the earlier (ADR-0037).
+
+**Stack Not Empty**:
+The Apply Error of a `TurnBegan` or `PhaseBegan` while the Stack holds an item: a window closes before the Turn goes on (ADR-0037). Its siblings are `StackEmpty` (an item resolves on an empty Stack), `NotTopItem` and `FizzleMismatch` (the item's Fizzle state does not fit the Event, or an `ItemPushed` of an item that already has a card that left).
+
 **Trigger Cap**:
 The hard limit of trigger resolutions in one Resolution: 100, counted across its pauses (the Paused Resolution carries the count, which an Answer does not reset). Every trigger taken from the queue counts, one whose `if` is false included. The 101st rejects the whole transition, the Action or Answer that would take it, with `Rejection::TriggerCapExceeded { cap }`; the input GameState is untouched (ADR-0023, ADR-0033).
 
@@ -442,7 +454,7 @@ The Event that a draw found its source zone empty. It changes nothing and is emi
 A Rejection: the Action names an action the ruleset does not declare.
 
 **Action Not In Current Phase**:
-A Rejection: the action is declared but the current phase does not list it, because the current phase is absent, unknown to the ruleset or not an Action Phase (the Action Phase lists every declared action, ADR-0027).
+A Rejection: the action is declared but the current phase does not list it, because the current phase is absent, unknown to the ruleset or not an Action Phase (the Action Phase lists every declared action, ADR-0027). *(Amended by ADR-0037: a window's `actions` are listed by no phase, so this is also the Rejection of such an action taken with no window open; with a window open the Rejection is Action Not In Window.)*
 
 **End Turn In If Effect**:
 A Definition Error at the `end_turn` of an action that is inside an `if` effect, `then` or `else`, at any depth, even when the `if` is the last effect (ADR-0027). Distinct from End Turn In Card Effect.
@@ -647,7 +659,7 @@ The permutation the leak check applies to the Hidden Cards of a Viewer, built fr
 The Game of the relabelled Events: they are folded from the Empty GameState, a fresh Observer follows them from the Empty GameState, and the relabelled Action and step are followed last. Its Observed Step must equal the real one. Built per step, so it costs O(steps squared) per Game (ADR-0031).
 
 **Trigger Cap Rejection**:
-A candidate Action that the Trigger Cap refused (`TriggerCapExceeded`, ADR-0023) while a GameState was listed with rejections. Self-play counts them per Game (`trigger_cap_rejections`, `0` with checks off) and checks that each leaves the GameState intact (`RejectionLeavesStateIntact`). It is a counted outcome, never a Self-Play Failure: `pass_turn` is always listed, so the cap cannot leave a Game without a Legal Action (ADR-0026).
+A candidate Action that the Trigger Cap refused (`TriggerCapExceeded`, ADR-0023) while a GameState was listed with rejections. Self-play counts them per Game (`trigger_cap_rejections`, `0` with checks off) and checks that each leaves the GameState intact (`RejectionLeavesStateIntact`). It is a counted outcome, never a Self-Play Failure: `pass_turn` is always listed, so the cap cannot leave a Game without a Legal Action (ADR-0026). *(Amended by ADR-0033: while a decision is pending it can. Amended by ADR-0037: so it can while a window is open, when the cap refuses the Pass and every window action; the Game then reports `NoLegalAction`, a Self-Play Failure like any other, with no special rule.)*
 
 **Step Cap**:
 The most Actions a self-played Game may accept. A Game that has not ended after that many is a Self-Play Failure; one that ends on its last allowed Action is not.
