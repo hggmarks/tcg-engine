@@ -2,8 +2,6 @@
 
 Amended by ADR-0037: self-play also runs the Response Ruleset.
 
-Amended by ADR-0039: self-play on the Response Ruleset runs the 1,000 pinned Seeds with every Invariant and observation check, and has a Self-Play Pin of its own (`response-self-play-seeds-0-1000.digest`), so there are three pins.
-
 Amended by ADR-0031: at most one violation per Invariant becomes per (Invariant, Viewer), and `Checks` gains `EngineOnly`.
 
 **Where it lives.** Self-play and the invariant checks are the crate `tcg-selfplay`, which depends only on `tcg-engine` and uses only its public API. The engine core stays free of AI and harness code. `tcg-loader` is a dev-dependency, so its tests and example load the real Small Ruleset. *(Amended by ADR-0037: and, from ADR-0026 and ADR-0037, the Effects and Response Rulesets; a Pass is a Legal Action the policy picks like any other)*
