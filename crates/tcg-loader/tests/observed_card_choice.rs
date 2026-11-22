@@ -465,17 +465,26 @@ fn the_other_viewer_sees_a_card_moved_to_a_public_trash() {
 
     let (_, seen) = game.take(&answer_card(1, chosen));
 
-    // The trash is public: Player 0 sees the card arrive, under a handle it holds after the
-    // transition, and the Answer names the card by it. The decider keeps the handle it had.
+    // The trash is public: Player 0 sees the card arrive, under a handle it holds only after the
+    // transition. The Taken Action names the card by it (the Taken Action rule: after, else
+    // before), but the Observed `DecisionAnswered` is read from Player 0's sight at that Event,
+    // which does not see the card yet: hidden. The decider keeps the handle it had, so its two
+    // values coincide.
     let arrived = game.handle(0, chosen);
     assert_eq!(game.handle(1, chosen), kept);
-    for (seat, handle) in [(0, arrived), (1, kept)] {
-        let answer = named(handle);
+    for (seat, taken, event) in [
+        (
+            0,
+            named(arrived),
+            ObservedAnswer::Card(TakenArgument::HiddenCard),
+        ),
+        (1, named(kept), named(kept)),
+    ] {
         assert_eq!(
             seen[seat].action,
             TakenAction::Answer {
                 player: p(1),
-                answer
+                answer: taken
             },
             "viewer {seat}"
         );
@@ -483,7 +492,7 @@ fn the_other_viewer_sees_a_card_moved_to_a_public_trash() {
             seen[seat].events.first(),
             Some(&ObservedEvent::DecisionAnswered {
                 player: p(1),
-                answer
+                answer: event
             }),
             "viewer {seat}"
         );
@@ -638,6 +647,69 @@ fn translate_action_refuses_a_hidden_card_answer() {
         ),
         Err(ObservationError::ActionOfAnotherPlayer { player: p(0) })
     );
+}
+
+// ---- slicing a trace
+
+#[test]
+fn follow_events_gives_the_same_observed_events_however_a_trace_is_sliced() {
+    // The `mind_leech` is played and then answered: two transitions, followed in one call or in two.
+    let mut game = Game::new();
+    let leech = game.card(0, "mind_leech", 0);
+    game.put(leech, "hand");
+    let mut hand = game.in_zone(1, "hand");
+    hand.sort();
+    let chosen = hand[0];
+    let before = game.state.clone();
+    let first = game
+        .ruleset
+        .transition(&before, &play(0, leech))
+        .expect("the play is accepted");
+    let second = game
+        .ruleset
+        .transition(&first.state, &answer_card(1, chosen))
+        .expect("the Answer is accepted");
+    let whole: Vec<Event> = first
+        .trace
+        .events()
+        .iter()
+        .chain(second.trace.events())
+        .cloned()
+        .collect();
+
+    for seat in 0..2 {
+        let mut together = game.observers[seat].clone();
+        let all = game
+            .ruleset
+            .follow_events(&mut together, &before, &whole)
+            .expect("the slice is followed");
+
+        let mut apart = game.observers[seat].clone();
+        let mut pieces = game
+            .ruleset
+            .follow_events(&mut apart, &before, first.trace.events())
+            .expect("the first trace is followed");
+        pieces.extend(
+            game.ruleset
+                .follow_events(&mut apart, &first.state, second.trace.events())
+                .expect("the second trace is followed"),
+        );
+
+        assert_eq!(all, pieces, "viewer {seat}");
+        assert_eq!(together, apart, "viewer {seat}");
+    }
+
+    // Player 0 does not see the card at the Answer, so a slice never names it by a handle it gets
+    // only later: it is hidden in the Observed Event however the trace is sliced.
+    let mut observer = game.observers[0].clone();
+    let events = game
+        .ruleset
+        .follow_events(&mut observer, &before, &whole)
+        .expect("the slice is followed");
+    assert!(events.contains(&ObservedEvent::DecisionAnswered {
+        player: p(1),
+        answer: ObservedAnswer::Card(TakenArgument::HiddenCard)
+    }));
 }
 
 // ---- the fold of Observed Events

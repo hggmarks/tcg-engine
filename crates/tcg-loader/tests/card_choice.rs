@@ -1690,3 +1690,31 @@ fn a_card_choice_follows_the_param_grammar_of_the_loader() {
     ]);
     assert!(loads(&effects));
 }
+
+#[test]
+fn an_opponent_decider_of_a_card_choice_needs_exactly_two_players() {
+    // The real `mind_leech` asks the opponent: in a ruleset of 3 Players "the controller's
+    // opponent" is not defined, and the error is at the `decider` of its `choose_card`.
+    let definition =
+        load_ruleset_definition(&edit(EFFECTS_RULESET, "  players: 2", "  players: 3"))
+            .expect("the 3-Player ruleset loads");
+    let error = match load_card_catalog(&definition, EFFECTS_CATALOG) {
+        Err(CatalogLoadError::Catalog(error)) => error,
+        other => panic!("expected a catalog error, got {other:?}"),
+    };
+    assert_eq!(
+        error,
+        invalid_card_effect(
+            path_of()
+                .key("cards")
+                .id("mind_leech")
+                .key("effects")
+                .index(0)
+                .key("do")
+                .index(0)
+                .key("choose_card")
+                .key("decider"),
+            DefinitionErrorKind::OpponentDeciderNeedsTwoPlayers { players: 3 }
+        )
+    );
+}

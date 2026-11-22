@@ -1,5 +1,5 @@
 # Starter card catalog for the Effects Ruleset (rulesets/effects-ruleset/effects-ruleset.yaml): the
-# cards of the Small Ruleset catalog, then seven creatures that carry a triggered Card Effect, two that
+# cards of the Small Ruleset catalog, then nine creatures that carry a triggered Card Effect, two that
 # carry a continuous one and three auras, which carry a continuous one over a matched set. The sample
 # decks list all the effect cards but restless_shade, which exists only to reach the Trigger Cap,
 # curious_owl, whose Option Choice is not in a shipped deck yet, and snare_vine and mind_leech, whose

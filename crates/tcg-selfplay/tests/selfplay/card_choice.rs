@@ -1,7 +1,8 @@
 //! Acceptance tests for ticket #76 over self-play (ADR-0034): Games that pause for a Card Choice
 //! and are answered by the Uniform Random Policy, with every Invariant checked, including the three
-//! over Observations, so the Relabelling of the names a Paused Resolution binds and of the cards an
-//! Answer names is exercised.
+//! over Observations. These Games pause and answer under those checks; that the Relabelling maps
+//! the bound names of a Paused Resolution and the card of an Answer is pinned by the unit test
+//! `the_relabelling_maps_every_card_a_paused_resolution_and_an_answer_names` in the crate.
 //!
 //! The deck lists `snare_vine` and `mind_leech`, which the real catalog defines and no shipped deck
 //! lists: on entering the field the first lets its controller tap a creature in an opponent's

@@ -22,7 +22,7 @@ The second half of the Observer (ticket [24], #64, of the Observations roadmap #
 | `CardStateChanged` | unseen | none |
 | `TurnBegan`, `PhaseBegan`, `DrawFromEmptyZone`, `GameEnded` | | the same, always |
 | `DecisionPending` *(added by ADR-0033)* | | `DecisionPending`: decider and kind, always; never the Paused Resolution |
-| `DecisionAnswered` *(added by ADR-0033)* | | `DecisionAnswered`: the Player and the `ObservedAnswer` (the option index *(Amended by ADR-0034: or, for a Card Answer, the card as the Taken Action rule names it, the same value as the Taken Action's, read once the whole trace is folded)*), always |
+| `DecisionAnswered` *(added by ADR-0033)* | | `DecisionAnswered`: the Player and the `ObservedAnswer` (the option index *(Amended by ADR-0034: or, for a Card Answer, the card as the Viewer sees it at that Event: the handle the Observer holds, else `HiddenCard`; the Taken Action rule is the Taken Action's)*), always |
 
 A seen shuffle maps each id through the Observer; an id with no handle is `ObserverOutOfStep`.
 
@@ -37,6 +37,8 @@ A seen shuffle maps each id through the Observer; an id with no handle is `Obser
 **Honest limits.** The apply takes the Observed Events as true and checks them only against the Observed GameState, so it cannot tell a forged `CardMovedIntoSight` from a real one. The consistency test covers a scripted Game on each ruleset, to its end, for both seats; a ruleset that moves a card through a zone of a Player other than its owner would need a change to the move variants (the owner of a revealed card is the moving Player).
 
 **Amended by ADR-0033:** `TakenAction` is an enum, there are two more Observed Events (`DecisionPending` and `DecisionAnswered`) and the fold knows the Pending Decision, each marked where it stands.
+
+**Amended by ADR-0034:** the Answer of a Card Choice names a card, in the Taken Action by the Taken Action rule and in the Observed `DecisionAnswered` by the Viewer's sight at that Event, each marked where it stands.
 
 **Conflicts.** ADR-0028's `ObserverOutOfStep` is extended and marked as amended there. ADR-0010's event model is unchanged.
 

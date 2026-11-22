@@ -34,7 +34,7 @@ impl DeclarativeRuleset {
         events: &[Event],
     ) -> Result<Vec<ObservedEvent>, ObservationError> {
         let mut folded = observer.clone();
-        let observed = self.project(&mut folded, observer, &mut previous.clone(), events)?;
+        let observed = self.project(&mut folded, &mut previous.clone(), events)?;
         *observer = folded;
         Ok(observed)
     }
@@ -57,12 +57,7 @@ impl DeclarativeRuleset {
     ) -> Result<ObservedTransition, ObservationError> {
         let mut folded = observer.clone();
         let mut working = previous.clone();
-        let events = self.project(
-            &mut folded,
-            observer,
-            &mut working,
-            transition.trace.events(),
-        )?;
+        let events = self.project(&mut folded, &mut working, transition.trace.events())?;
         if working != transition.state {
             return Err(ObservationError::ObserverOutOfStep);
         }
@@ -104,38 +99,23 @@ impl DeclarativeRuleset {
         })
     }
 
-    /// Applies each Event to `working`, folds it into `observer` (which `before` is the state of,
-    /// unfolded) and projects it. The card an Answer names is read once the whole trace is folded,
-    /// as the Taken Action rule reads it, so the handle may be one issued later in the trace
-    /// (ADR-0034).
+    /// Applies each Event to `working`, folds it into `observer` and projects it. Every Observed
+    /// Event is read from the Viewer's sight at its own Event, so the Observed Events of a trace
+    /// are the same however the trace is sliced.
     fn project(
         &self,
         observer: &mut Observer,
-        before: &Observer,
         working: &mut GameState,
         events: &[Event],
     ) -> Result<Vec<ObservedEvent>, ObservationError> {
         let mut observed = Vec::new();
-        let mut named = Vec::new();
         for event in events {
             working
                 .apply(event)
                 .map_err(|_| ObservationError::ObserverOutOfStep)?;
             let sight = observer.follow(self, event)?;
             if let Some(projected) = self.project_event(observer, working, event, sight)? {
-                if let Event::DecisionAnswered {
-                    answer: Answer::Card(card),
-                    ..
-                } = event
-                {
-                    named.push((observed.len(), *card));
-                }
                 observed.push(projected);
-            }
-        }
-        for (index, card) in named {
-            if let Some(ObservedEvent::DecisionAnswered { answer, .. }) = observed.get_mut(index) {
-                *answer = ObservedAnswer::Card(taken_argument(observer, before, card));
             }
         }
         Ok(observed)
@@ -286,8 +266,13 @@ impl DeclarativeRuleset {
                     player: *player,
                     answer: match answer {
                         Answer::Option(index) => ObservedAnswer::Option(*index),
-                        // The card is named once the trace is folded: see `project`.
-                        Answer::Card(_) => ObservedAnswer::Card(TakenArgument::HiddenCard),
+                        // The card as the Viewer sees it at this Event, which changes no sight:
+                        // the handle the Observer holds now, else hidden (ADR-0034).
+                        Answer::Card(card) => ObservedAnswer::Card(
+                            observer
+                                .observed_card(*card)
+                                .map_or(TakenArgument::HiddenCard, TakenArgument::Card),
+                        ),
                     },
                 }
             }
