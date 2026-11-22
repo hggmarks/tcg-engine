@@ -128,7 +128,7 @@ impl fmt::Display for CatalogErrorKind {
             Self::MissingCardEffectShape => {
                 write!(f, "a Card Effect needs an `on`, a `while` or an `activated`")
             }
-            Self::MissingDo => write!(f, "a triggered Card Effect needs a `do`"),
+            Self::MissingDo => write!(f, "a triggered or activated Card Effect needs a `do`"),
             Self::EmptyDo => write!(f, "`do` must list at least one effect"),
             Self::MissingModify => write!(f, "a continuous Card Effect needs a `modify`"),
             Self::UnknownTriggerMatcher { matcher } => write!(

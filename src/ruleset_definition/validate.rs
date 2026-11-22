@@ -242,14 +242,24 @@ pub(super) fn validate(draft: RulesetDraft) -> Result<RulesetDefinition, Definit
 
     // A window that allows abilities in a ruleset where no Card Effect is ever active could never
     // do anything (ADR-0038).
-    if effects_active_zone.is_none() {
-        if let Some(window) = valid_windows.iter().find(|window| window.abilities) {
+    if let Some(window) = valid_windows.iter().find(|window| window.abilities) {
+        let at = DefinitionPath::root()
+            .key("windows")
+            .id(window.id.as_str())
+            .key("abilities");
+        let Some(active) = &effects_active_zone else {
+            return fail(at, DefinitionErrorKind::AbilitiesWithoutActiveZone);
+        };
+        // The card of an ability is bound in the Active Zone and the Stack is public (ADR-0038).
+        let public = valid_zones
+            .iter()
+            .any(|zone| &zone.id == active && zone.visibility == Visibility::Public);
+        if !public {
             return fail(
-                DefinitionPath::root()
-                    .key("windows")
-                    .id(window.id.as_str())
-                    .key("abilities"),
-                DefinitionErrorKind::AbilitiesWithoutActiveZone,
+                at,
+                DefinitionErrorKind::AbilitiesActiveZoneNotPublic {
+                    zone: active.as_str().to_string(),
+                },
             );
         }
     }
@@ -487,17 +497,45 @@ impl<'a> SelfScope<'a> {
     }
 
     /// The `cost` of an activated ability: the action cost steps, each at its position under `at`,
-    /// with only `self` in scope.
+    /// with only `self` in scope. The Stack is public, so the zone `self` is in once the costs are
+    /// paid must be: the `to` of the last `move: self` cost must be `public` (`PushedCardNotPublic`
+    /// at `cost[k].move.to`, ADR-0038). Without a `move`, the Active Zone, which the window
+    /// declaration checks.
     pub(crate) fn check_costs(
         &self,
         costs: &[CostDraft],
         at: DefinitionPath,
     ) -> Result<Vec<Cost>, DefinitionError> {
-        costs
+        let checked = costs
             .iter()
             .enumerate()
             .map(|(index, cost)| validate_cost(cost, &self.refs, at.clone().index(index)))
-            .collect()
+            .collect::<Result<Vec<_>, _>>()?;
+        let last_move = checked
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(index, cost)| match cost {
+                Cost::Move { card, to } if card.param.as_str() == "self" => Some((index, to)),
+                _ => None,
+            });
+        if let Some((index, to)) = last_move {
+            let public = self
+                .refs
+                .zones
+                .iter()
+                .any(|zone| &zone.id == to && zone.visibility == Visibility::Public);
+            if !public {
+                return fail(
+                    at.index(index).key("move").key("to"),
+                    DefinitionErrorKind::PushedCardNotPublic {
+                        param: "self".to_string(),
+                        zone: to.as_str().to_string(),
+                    },
+                );
+            }
+        }
+        Ok(checked)
     }
 
     /// An `if` or a `while`: an expression that must be bool. `at` is its path.
@@ -1057,7 +1095,8 @@ fn validate_effect(
         }
         EffectDraft::ChooseOne { decider, options } => {
             let at = at.key("choose_one");
-            // Only a Card Effect, which has `self`, can pause for a decision (ADR-0033).
+            // Only a triggered Card Effect can pause for a decision (ADR-0033); an activated
+            // one has `self` but no Choice (ADR-0038).
             if !refs.choices {
                 return fail(at, DefinitionErrorKind::ChoiceOutsideTriggeredEffect);
             }
@@ -1091,7 +1130,8 @@ fn validate_effect(
         }
         EffectDraft::ChooseCard { decider, param } => {
             let at = at.key("choose_card");
-            // Only a Card Effect, which has `self`, can pause for a decision (ADR-0033).
+            // Only a triggered Card Effect can pause for a decision (ADR-0033); an activated
+            // one has `self` but no Choice (ADR-0038).
             if !refs.choices {
                 return fail(at, DefinitionErrorKind::ChoiceOutsideTriggeredEffect);
             }

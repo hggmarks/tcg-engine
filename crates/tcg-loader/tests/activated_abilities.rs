@@ -585,6 +585,34 @@ fn activating_pays_the_cost_and_pushes_an_ability_item() {
 }
 
 #[test]
+fn activating_with_a_tap_self_cost_taps_the_card_and_pushes_an_ability_item() {
+    let ruleset = response_with_test_cards();
+    let mut scene = arrange_with_test_cards(&ruleset);
+    let juggler = scene.place("juggler", 1, "field");
+    let (a, t) = (scene.attacker, scene.target);
+    let (state, _) = accept_all(&ruleset, &scene.state, &[attack(a, t)]);
+
+    // The juggler's second ability (index 2) costs `tap: { card: { ref: self } }`.
+    let transition = accepted(&ruleset, &state, &activate(1, juggler, 2));
+
+    let item = ability_item(1, juggler, 2, "field", false);
+    assert_eq!(
+        transition.trace.events(),
+        [tapped(juggler), pushed(item.clone())]
+    );
+    let next = &transition.state;
+    assert_eq!(next.stack(), [attack_item(a, t, false, false), item]);
+    assert_eq!(
+        state_value(next, juggler, "tapped"),
+        Some(FieldValue::Bool(true))
+    );
+    // Priority flips to the attacker, who is the Deciding Player and may pass.
+    assert_eq!(next.priority(), Some(p(0)));
+    assert_eq!(next.deciding_player(), p(0));
+    assert_eq!(ruleset.legal_actions(next).first(), Some(&pass(0)));
+}
+
+#[test]
 fn a_cost_that_wakes_a_trigger_resolves_it_after_the_push() {
     let ruleset = response_with_test_cards();
     let mut scene = arrange_with_test_cards(&ruleset);
@@ -799,6 +827,16 @@ fn activate_is_rejected_in_a_window_without_abilities() {
         },
     );
     assert_eq!(ruleset.legal_actions(&state), [pass(1)]);
+
+    // The window is checked before the card: even a card that does not exist.
+    assert_rejected(
+        &ruleset,
+        &state,
+        &activate(1, CardInstanceId(9999), 0),
+        Rejection::AbilitiesNotInWindow {
+            window: WindowId::new("quiet"),
+        },
+    );
 }
 
 #[test]
@@ -806,6 +844,7 @@ fn activate_is_rejected_for_a_player_who_does_not_control_the_card() {
     let ruleset = response();
     let mut scene = arrange_real(&ruleset);
     let other_hare = scene.hare(0, "field");
+    let other_hare_in_hand = scene.hare(0, "hand");
     scene.hare(1, "field");
     let (a, t) = (scene.attacker, scene.target);
     let (state, _) = accept_all(&ruleset, &scene.state, &[attack(a, t)]);
@@ -818,6 +857,17 @@ fn activate_is_rejected_for_a_player_who_does_not_control_the_card() {
         Rejection::NotCardOwner {
             param: ParamName::new("self"),
             card: other_hare,
+            owner: p(0),
+        },
+    );
+    // The owner is checked before the zone: seat 0's hare in the hand is not seat 1's either.
+    assert_rejected(
+        &ruleset,
+        &state,
+        &activate(1, other_hare_in_hand, 0),
+        Rejection::NotCardOwner {
+            param: ParamName::new("self"),
+            card: other_hare_in_hand,
             owner: p(0),
         },
     );
@@ -1079,6 +1129,83 @@ fn abilities_without_an_active_zone_is_a_load_error() {
         DefinitionError {
             path: path().key("windows").id("attack_response").key("abilities"),
             kind: DefinitionErrorKind::AbilitiesWithoutActiveZone,
+        }
+    );
+}
+
+#[test]
+fn a_cost_that_moves_self_to_a_zone_that_is_not_public_is_a_load_error() {
+    // `hand` is `owner`: the opponent would not see the card the item binds.
+    let error = catalog_error(
+        "      - { activated: { cost: [ { move: { card: { ref: self }, to: hand } } ], do: [ { move: { card: { ref: self }, to: field } } ] } }\n",
+    );
+    assert_eq!(
+        error,
+        CatalogError {
+            path: path()
+                .key("cards")
+                .id("sage")
+                .key("effects")
+                .index(0)
+                .key("activated")
+                .key("cost")
+                .index(0)
+                .key("move")
+                .key("to"),
+            kind: CatalogErrorKind::InvalidCardEffect {
+                error: Box::new(DefinitionErrorKind::PushedCardNotPublic {
+                    param: "self".to_string(),
+                    zone: "hand".to_string(),
+                }),
+            },
+        }
+    );
+
+    // Only the last move of `self` decides, reported at its own position (here the second step);
+    // a move to `hand` that a later move to the public `trash` follows is fine.
+    let error = catalog_error(
+        "      - { activated: { cost: [ { move: { card: { ref: self }, to: trash } }, { move: { card: { ref: self }, to: deck } } ], do: [ { move: { card: { ref: self }, to: field } } ] } }\n",
+    );
+    assert!(matches!(
+        error.kind,
+        CatalogErrorKind::InvalidCardEffect { .. }
+    ));
+    assert_eq!(
+        error.path,
+        path()
+            .key("cards")
+            .id("sage")
+            .key("effects")
+            .index(0)
+            .key("activated")
+            .key("cost")
+            .index(1)
+            .key("move")
+            .key("to")
+    );
+    let public = "      - { activated: { cost: [ { move: { card: { ref: self }, to: hand } }, { move: { card: { ref: self }, to: trash } } ], do: [ { move: { card: { ref: self }, to: field } } ] } }\n";
+    assert!(load_card_catalog(&response_definition(), &sage_catalog(public)).is_ok());
+}
+
+#[test]
+fn abilities_with_an_active_zone_that_is_not_public_is_a_load_error() {
+    // `hand` is `owner`, not `public`.
+    let yaml = edit(
+        RESPONSE_RULESET,
+        "effects:\n  active_zone: field\n",
+        "effects:\n  active_zone: hand\n",
+    );
+    let error = match load_ruleset_definition(&yaml) {
+        Err(LoadError::Definition(error)) => error,
+        other => panic!("expected a definition error, got {other:?}"),
+    };
+    assert_eq!(
+        error,
+        DefinitionError {
+            path: path().key("windows").id("attack_response").key("abilities"),
+            kind: DefinitionErrorKind::AbilitiesActiveZoneNotPublic {
+                zone: "hand".to_string()
+            },
         }
     );
 }
