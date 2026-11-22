@@ -8,7 +8,7 @@
 
 use tcg_engine::deck_list::DeckList;
 use tcg_engine::declarative::{
-    Action, Argument, CardInstanceId, DeclarativeRuleset, Event, GameState, Loss,
+    Action, Argument, CardInstanceId, DeclarativeRuleset, Event, GameRecord, GameState, Loss,
 };
 use tcg_engine::player::PlayerId;
 use tcg_engine::random::Seed;
@@ -537,6 +537,52 @@ fn a_golden_snapshot_pins_the_whole_event_trace() {
     // A snapshot ends with exactly one newline, so a trace with one more or one less differs.
     assert!(DECK_OUT_SNAPSHOT.ends_with('\n') && !DECK_OUT_SNAPSHOT.ends_with("\n\n"));
     assert!(LEADER_KILL_SNAPSHOT.ends_with('\n') && !LEADER_KILL_SNAPSHOT.ends_with("\n\n"));
+}
+
+/// The Game Record of a Golden Game replays to its Event Traces and its final GameState (ADR-0019):
+/// the creation, every transition's Events and the GameState after the last Action are equal to
+/// those of the Game as it was played.
+fn assert_replaying_the_record_reproduces(
+    ruleset: &DeclarativeRuleset,
+    played: &Played,
+    script: &[Action],
+) {
+    let mut record = GameRecord::new(ruleset, &decks(ruleset), Seed(played.seed));
+    for action in script {
+        record.push_accepted(action.clone());
+    }
+    let replay = ruleset.replay(&record).expect("the record replays");
+    assert_eq!(replay.creation.opening.trace.events(), played.creation);
+    let replayed: Vec<Vec<Event>> = replay
+        .traces
+        .iter()
+        .map(|trace| trace.events().to_vec())
+        .collect();
+    let original: Vec<Vec<Event>> = played
+        .steps
+        .iter()
+        .map(|(_, events)| events.clone())
+        .collect();
+    assert_eq!(replayed, original, "Event Traces of {}", played.name);
+    assert_eq!(
+        replay.state, played.final_state,
+        "final GameState of {}",
+        played.name
+    );
+}
+
+#[test]
+fn replaying_the_record_of_small_deck_out_reproduces_its_game() {
+    let ruleset = small();
+    let played = play_deck_out(&ruleset, DECK_OUT_SEED);
+    assert_replaying_the_record_reproduces(&ruleset, &played, &deck_out_script());
+}
+
+#[test]
+fn replaying_the_record_of_small_leader_kill_reproduces_its_game() {
+    let ruleset = small();
+    let played = play_leader_kill(&ruleset, LEADER_KILL_SEED);
+    assert_replaying_the_record_reproduces(&ruleset, &played, &leader_kill_script());
 }
 
 #[test]

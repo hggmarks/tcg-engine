@@ -13,7 +13,8 @@ use tcg_engine::card_catalog::{
 };
 use tcg_engine::deck_list::DeckList;
 use tcg_engine::declarative::{
-    Action, Argument, CardInstanceId, DeclarativeRuleset, Event, GameState, TakenAction,
+    Action, Answer, Argument, CardInstanceId, DecisionKind, DeclarativeRuleset, Event, GameRecord,
+    GameState, TakenAction,
 };
 use tcg_engine::definition_path::DefinitionPath;
 use tcg_engine::player::PlayerId;
@@ -187,6 +188,63 @@ fn effects_leader_kill_script() -> Vec<Action> {
     ]
 }
 
+fn answer(player: u32, answer: Answer) -> Action {
+    Action::Answer {
+        player: PlayerId(player),
+        answer,
+    }
+}
+
+/// The Seed of the Effects pausing Golden Game, found by a search over the Seeds that played a
+/// scripted bot at the shipped Effects decks and kept the shortest Game that holds the three
+/// Choices below and ends. The search is not committed: the script is the Game.
+const PAUSING_SEED: u64 = 204;
+
+/// The pausing Golden Game: the Effects sample decks and Seed 204, 23 Actions, with the three kinds
+/// of Choice in it, each answered through `Action::Answer`:
+///
+/// - `curious_owl` (11), an Option Choice of seat 0, answered with option 0 (draw);
+/// - `mind_leech` (85), played by seat 1, a Card Choice decided by its opponent, seat 0, who
+///   moves its own creature (4) to its trash;
+/// - `snare_vine` (83), played by seat 1 while seat 0 has creatures in the field, a Card Choice
+///   decided by its controller, who taps seat 0's `goblin_scout` (1).
+///
+/// Seat 0 then kills seat 1's Leader (life 6) with four attackers in the last Turn.
+fn effects_pausing_script() -> Vec<Action> {
+    vec![
+        // Turn 1, seat 0: `curious_owl` pauses for its Option Choice.
+        play(0, CardInstanceId(11)),
+        answer(0, Answer::Option(0)),
+        play(0, CardInstanceId(1)), // goblin_scout
+        pass(0),
+        // Turn 2, seat 1: `mind_leech` pauses for seat 0, the opponent, to choose a creature of
+        // its own hand.
+        play(1, CardInstanceId(85)),
+        answer(0, Answer::Card(CardInstanceId(4))), // goblin_scout, to seat 0's trash
+        pass(1),
+        // Turn 3, seat 0.
+        play(0, CardInstanceId(13)), // river_otter
+        play(0, CardInstanceId(34)), // dawn_scout
+        attack(0, CardInstanceId(1), CardInstanceId(61)),
+        attack(0, CardInstanceId(11), CardInstanceId(61)),
+        pass(0),
+        // Turn 4, seat 1: `snare_vine` pauses for its controller, who taps a creature in seat 0's
+        // field.
+        play(1, CardInstanceId(83)),
+        answer(1, Answer::Card(CardInstanceId(1))), // goblin_scout, tapped
+        play(1, CardInstanceId(66)),                // ember_hound
+        attack(1, CardInstanceId(85), CardInstanceId(0)),
+        pass(1),
+        // Turn 5, seat 0: the last attacks land on seat 1's Leader.
+        play(0, CardInstanceId(20)), // stone_golem
+        play(0, CardInstanceId(22)), // shadow_cat
+        attack(0, CardInstanceId(1), CardInstanceId(61)),
+        attack(0, CardInstanceId(11), CardInstanceId(61)),
+        attack(0, CardInstanceId(13), CardInstanceId(61)),
+        attack(0, CardInstanceId(34), CardInstanceId(61)),
+    ]
+}
+
 /// A Golden Game before it is played: its name (the stem of its snapshots), its Seed and its literal
 /// script. The decks it is played with are the caller's.
 struct GoldenGame {
@@ -254,6 +312,15 @@ fn small_leader_kill() -> GoldenGame {
     }
 }
 
+/// The pausing Golden Game: the Effects sample decks, `PAUSING_SEED`.
+fn effects_pausing() -> GoldenGame {
+    GoldenGame {
+        name: "effects-pausing",
+        seed: PAUSING_SEED,
+        script: effects_pausing_script(),
+    }
+}
+
 fn play_effects_leader_kill() -> Played {
     let ruleset = effects();
     let decks = decks(&ruleset, [EFFECTS_DECK_A, EFFECTS_DECK_B]);
@@ -283,27 +350,40 @@ fn render(played: &Played) -> String {
         text.push_str(&format!("{event:?}\n"));
     }
     for (index, (action, events)) in played.steps.iter().enumerate() {
-        let Action::Declared {
-            player,
-            action: id,
-            arguments,
-        } = action
-        else {
-            panic!("a Golden Game has no Answer");
-        };
-        let cards: Vec<String> = arguments
-            .iter()
-            .map(|argument| match argument {
-                Argument::Card(card) => card.0.to_string(),
-            })
-            .collect();
-        text.push_str(&format!(
-            "== action {}: player {} {} [{}]\n",
-            index + 1,
-            player.0,
-            id.as_str(),
-            cards.join(", ")
-        ));
+        match action {
+            Action::Declared {
+                player,
+                action: id,
+                arguments,
+            } => {
+                let cards: Vec<String> = arguments
+                    .iter()
+                    .map(|argument| match argument {
+                        Argument::Card(card) => card.0.to_string(),
+                    })
+                    .collect();
+                text.push_str(&format!(
+                    "== action {}: player {} {} [{}]\n",
+                    index + 1,
+                    player.0,
+                    id.as_str(),
+                    cards.join(", ")
+                ));
+            }
+            // An Answer is written `answer option <index>` or `answer card <id>`: a Golden Game
+            // that pauses holds them (ADR-0035).
+            Action::Answer { player, answer } => {
+                let answer = match answer {
+                    Answer::Option(option) => format!("option {option}"),
+                    Answer::Card(card) => format!("card {}", card.0),
+                };
+                text.push_str(&format!(
+                    "== action {}: player {} answer {answer}\n",
+                    index + 1,
+                    player.0
+                ));
+            }
+        }
         for event in events {
             text.push_str(&format!("{event:?}\n"));
         }
@@ -1013,4 +1093,167 @@ fn regenerate_observed_golden_snapshots() {
         std::fs::write(path, render_observed(&effects_leader_kill(), seat))
             .expect("the observed snapshot is written");
     }
+}
+
+// ---- the pausing Golden Game (ticket #77)
+
+const PAUSING_SNAPSHOT: &str = include_str!("golden/effects-pausing.trace");
+const PAUSING_PATH: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/tests/golden/effects-pausing.trace"
+);
+const PAUSING_OBSERVED_SNAPSHOTS: [&str; 2] = [
+    include_str!("golden/effects-pausing.observed-by-player-0.trace"),
+    include_str!("golden/effects-pausing.observed-by-player-1.trace"),
+];
+const PAUSING_OBSERVED_PATHS: [&str; 2] = [
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/golden/effects-pausing.observed-by-player-0.trace"
+    ),
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/golden/effects-pausing.observed-by-player-1.trace"
+    ),
+];
+const REGENERATE_PAUSING_COMMAND: &str =
+    "cargo test -p tcg-loader --test effects_ruleset -- --ignored regenerate_pausing_golden_snapshots";
+
+fn play_effects_pausing() -> Played {
+    let ruleset = effects();
+    let decks = decks(&ruleset, [EFFECTS_DECK_A, EFFECTS_DECK_B]);
+    play_game(&ruleset, &decks, &effects_pausing())
+}
+
+#[test]
+fn the_pausing_golden_game_matches_its_snapshot() {
+    let played = play_effects_pausing();
+    assert_eq!(played.steps.len(), effects_pausing_script().len());
+
+    // The Game holds a Card Choice decided by the controller of the carrying card, one decided by
+    // its opponent and an Option Choice: each is a `DecisionPending` in the Event Traces.
+    let pending: Vec<(PlayerId, DecisionKind, PlayerId)> = played
+        .steps
+        .iter()
+        .flat_map(|(_, events)| events)
+        .filter_map(|event| match event {
+            Event::DecisionPending {
+                decider,
+                kind,
+                paused,
+            } => {
+                let controller = played
+                    .final_state
+                    .card(paused.trigger.card)
+                    .expect("the carrying card exists")
+                    .owner();
+                Some((*decider, *kind, controller))
+            }
+            _ => None,
+        })
+        .collect();
+    assert!(
+        pending
+            .iter()
+            .any(|(decider, kind, controller)| *kind == DecisionKind::Card && decider == controller),
+        "a Card Choice decided by the controller: {pending:?}"
+    );
+    assert!(
+        pending
+            .iter()
+            .any(|(decider, kind, controller)| *kind == DecisionKind::Card && decider != controller),
+        "a Card Choice decided by the opponent: {pending:?}"
+    );
+    assert!(
+        pending
+            .iter()
+            .any(|(_, kind, _)| *kind == DecisionKind::Option),
+        "an Option Choice: {pending:?}"
+    );
+
+    assert_matches_snapshot(
+        "effects-pausing",
+        PAUSING_SNAPSHOT,
+        &render(&played),
+        REGENERATE_PAUSING_COMMAND,
+    );
+}
+
+#[test]
+fn the_pausing_golden_game_as_observed_by_each_player_matches_its_snapshot() {
+    let game = effects_pausing();
+    let observed: Vec<String> = (0..2).map(|seat| render_observed(&game, seat)).collect();
+    for (seat, (actual, snapshot)) in observed.iter().zip(PAUSING_OBSERVED_SNAPSHOTS).enumerate() {
+        assert_matches_snapshot(
+            &format!("effects-pausing as observed by player {seat}"),
+            snapshot,
+            actual,
+            REGENERATE_PAUSING_COMMAND,
+        );
+    }
+    // The two Players do not see the same Game: what each observed differs.
+    assert_ne!(PAUSING_OBSERVED_SNAPSHOTS[0], PAUSING_OBSERVED_SNAPSHOTS[1]);
+}
+
+/// Rewrites the three snapshots of the pausing Golden Game: the Event Trace and the two observed
+/// ones. Run it on purpose, and read the diff before committing it. It does not touch the
+/// Leader-kill files.
+#[test]
+#[ignore = "deliberate update: rewrites the pausing golden snapshots"]
+fn regenerate_pausing_golden_snapshots() {
+    std::fs::write(PAUSING_PATH, render(&play_effects_pausing()))
+        .expect("the pausing snapshot is written");
+    for (seat, path) in PAUSING_OBSERVED_PATHS.iter().enumerate() {
+        let seat = u32::try_from(seat).expect("a seat");
+        std::fs::write(path, render_observed(&effects_pausing(), seat))
+            .expect("the observed pausing snapshot is written");
+    }
+}
+
+// ---- replay (ticket #77)
+
+/// The Game Record of a Golden Game, built from its script, replays to the Event Traces and the
+/// final GameState of the Game as it was played (ADR-0019).
+fn assert_replaying_the_record_reproduces(
+    ruleset: &DeclarativeRuleset,
+    decks: &[DeckList],
+    game: &GoldenGame,
+) {
+    let played = play_game(ruleset, decks, game);
+    let mut record = GameRecord::new(ruleset, decks, Seed(game.seed));
+    for action in &game.script {
+        record.push_accepted(action.clone());
+    }
+    let replay = ruleset.replay(&record).expect("the record replays");
+    assert_eq!(replay.creation.opening.trace.events(), played.creation);
+    let replayed: Vec<Vec<Event>> = replay
+        .traces
+        .iter()
+        .map(|trace| trace.events().to_vec())
+        .collect();
+    let original: Vec<Vec<Event>> = played
+        .steps
+        .iter()
+        .map(|(_, events)| events.clone())
+        .collect();
+    assert_eq!(replayed, original, "Event Traces of {}", game.name);
+    assert_eq!(
+        replay.state, played.final_state,
+        "final GameState of {}",
+        game.name
+    );
+}
+
+#[test]
+fn replaying_the_record_of_effects_leader_kill_reproduces_its_game() {
+    let ruleset = effects();
+    let decks = decks(&ruleset, [EFFECTS_DECK_A, EFFECTS_DECK_B]);
+    assert_replaying_the_record_reproduces(&ruleset, &decks, &effects_leader_kill());
+}
+
+#[test]
+fn replaying_the_record_of_effects_pausing_reproduces_its_game() {
+    let ruleset = effects();
+    let decks = decks(&ruleset, [EFFECTS_DECK_A, EFFECTS_DECK_B]);
+    assert_replaying_the_record_reproduces(&ruleset, &decks, &effects_pausing());
 }
