@@ -170,56 +170,101 @@ fn the_response_sample_decks_hold_the_fast_cards_and_the_ability_card() {
     }
 }
 
+/// The part tests assert, for every Game of their Seed Range, what the single 1,000-Seed test
+/// asserted: a Terminal Outcome, an empty Stack, `TriggerCapRejections::Counted(0)`, the Activate
+/// and Ability-push counts equal, `verify_record` on Seeds 0..100 and no `FailureKind`.
+fn assert_seed_range_holds(part: usize) {
+    let play = seed_range(part);
+    assert!(
+        play.failures.is_empty(),
+        "Seeds {:?}:\n{}",
+        seeds_of_range(part),
+        play.failures.join("\n")
+    );
+}
+
 #[test]
-fn response_self_play_ends_every_game_over_1000_seeds_with_every_invariant_holding() {
-    let ruleset = response();
-    let decks = response_decks(&ruleset);
-    let mut failures = Vec::new();
-    let mut longest = 0;
-    let mut digests = Vec::new();
-    let mut used = ResponseUse::default();
-    for seed in 0..PINNED_SEEDS {
-        match self_play(&ruleset, &decks, Seed(seed), MAX_STEPS, Checks::On) {
-            Ok(game) => {
-                let game_use = response_use(&game);
-                used.add(game_use);
-                let pushed = ability_pushes(&game);
-                if pushed != game_use.abilities_used {
-                    failures.push(format!(
-                        "seed {seed}: {} Activate Actions, but {pushed} Ability items pushed",
-                        game_use.abilities_used
-                    ));
-                }
-                if game.state.outcome().is_none() {
-                    failures.push(format!("seed {seed}: the Game has no Terminal Outcome"));
-                }
-                if !game.state.stack().is_empty() {
-                    failures.push(format!("seed {seed}: the Stack is not empty at the end"));
-                }
-                if game.trigger_cap_rejections != TriggerCapRejections::Counted(0) {
-                    failures.push(format!(
-                        "seed {seed}: {}, but no shipped deck lists a card that reaches the cap",
-                        game.trigger_cap_rejections
-                    ));
-                }
-                if seed < VERIFIED_SEEDS {
-                    if let Err(failure) = verify_record(&ruleset, &game.record) {
-                        failures.push(format!(
-                            "seed {seed}: the record does not verify: {:?}",
-                            failure.kind
-                        ));
-                    }
-                }
-                longest = longest.max(game.record.actions().len());
-                digests.push(digest_line(seed, &game));
-            }
-            Err(failure) => failures.push(format!(
-                "seed {}: failed after Action index {:?}: {:?}",
-                failure.seed.0, failure.action_index, failure.kind
-            )),
-        }
+fn response_self_play_ends_every_game_over_seeds_0_to_125_with_every_invariant_holding() {
+    assert_seed_range_holds(0);
+}
+
+#[test]
+fn response_self_play_ends_every_game_over_seeds_125_to_250_with_every_invariant_holding() {
+    assert_seed_range_holds(1);
+}
+
+#[test]
+fn response_self_play_ends_every_game_over_seeds_250_to_375_with_every_invariant_holding() {
+    assert_seed_range_holds(2);
+}
+
+#[test]
+fn response_self_play_ends_every_game_over_seeds_375_to_500_with_every_invariant_holding() {
+    assert_seed_range_holds(3);
+}
+
+#[test]
+fn response_self_play_ends_every_game_over_seeds_500_to_625_with_every_invariant_holding() {
+    assert_seed_range_holds(4);
+}
+
+#[test]
+fn response_self_play_ends_every_game_over_seeds_625_to_750_with_every_invariant_holding() {
+    assert_seed_range_holds(5);
+}
+
+#[test]
+fn response_self_play_ends_every_game_over_seeds_750_to_875_with_every_invariant_holding() {
+    assert_seed_range_holds(6);
+}
+
+#[test]
+fn response_self_play_ends_every_game_over_seeds_875_to_1000_with_every_invariant_holding() {
+    assert_seed_range_holds(7);
+}
+
+#[test]
+fn the_response_seed_ranges_cover_seeds_0_to_1000_once() {
+    let mut next = 0;
+    for part in 0..PARTS {
+        let seeds = seeds_of_range(part);
+        assert_eq!(
+            seeds.start, next,
+            "the Seed Range {part} starts where the last one ended"
+        );
+        assert!(
+            seeds.start < seeds.end,
+            "the Seed Range {part} is not empty"
+        );
+        next = seeds.end;
     }
-    assert!(failures.is_empty(), "{}", failures.join("\n"));
+    assert_eq!(
+        next, PINNED_SEEDS,
+        "the Seed Ranges end at the last pinned Seed"
+    );
+}
+
+/// The last step: the five coverage counts summed over every Seed Range, and the Response
+/// Self-Play Pin compared whole over the digest lines of all 1,000 Seeds in Seed order. It plays
+/// no Game itself: it reads the Seed Ranges the part tests play (each is played once per process,
+/// by whichever test reaches it first).
+#[test]
+fn response_self_play_covers_every_response_use_and_matches_the_pin_over_1000_seeds() {
+    let plays: Vec<&SeedRangePlay> = (0..PARTS).map(seed_range).collect();
+    for (part, play) in plays.iter().enumerate() {
+        assert!(
+            play.failures.is_empty(),
+            "the Seeds {:?} have failures, listed by the part test for that Seed Range",
+            seeds_of_range(part)
+        );
+    }
+    let longest = plays.iter().map(|play| play.longest).max().unwrap_or(0);
+    let mut used = ResponseUse::default();
+    let mut digests = Vec::new();
+    for play in &plays {
+        used.add(play.used);
+        digests.extend(play.digests.iter().cloned());
+    }
     assert!(
         longest * 2 < MAX_STEPS,
         "the Step Cap of {MAX_STEPS} has no headroom over the longest Game ({longest} Actions)"
@@ -248,7 +293,7 @@ fn response_self_play_ends_every_game_over_1000_seeds_with_every_invariant_holdi
         "coverage count unanswered_windows is 0 over Seeds 0..1000: {used:?}"
     );
 
-    // The same Games, one pass: their Game Records and Event Traces are the pinned ones.
+    // The same Games, played once: their Game Records and Event Traces are the pinned ones.
     if let Some(difference) = pin_difference(DIGESTS, &digests) {
         panic!(
             "{difference}\nIf the change is deliberate, run: cargo test -p tcg-selfplay --test selfplay -- --ignored regenerate_response_self_play_digests\n(coverage so far: {used:?}, longest Game {longest} Actions)"
