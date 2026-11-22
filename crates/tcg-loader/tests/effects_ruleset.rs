@@ -200,48 +200,65 @@ fn answer(player: u32, answer: Answer) -> Action {
 /// Choices below and ends. The search is not committed: the script is the Game.
 const PAUSING_SEED: u64 = 204;
 
+/// The cards of the pausing Golden Game's script: their Card Instance Ids in the Opening Position of
+/// Seed 204 with the shipped Effects decks (Deck A numbers its main deck from 1 in file order,
+/// Deck B from 62, so seat 1's Leader is 61). The number in a name is the card's position among
+/// the copies of its definition in its deck.
+const PAUSING_LEADER_0: CardInstanceId = CardInstanceId(0);
+const PAUSING_GOBLIN_0: CardInstanceId = CardInstanceId(1);
+const PAUSING_GOBLIN_3: CardInstanceId = CardInstanceId(4);
+const PAUSING_OWL_0: CardInstanceId = CardInstanceId(11);
+const PAUSING_OTTER_0: CardInstanceId = CardInstanceId(13);
+const PAUSING_GOLEM_3: CardInstanceId = CardInstanceId(20);
+const PAUSING_CAT_1: CardInstanceId = CardInstanceId(22);
+const PAUSING_DAWN_0: CardInstanceId = CardInstanceId(34);
+const PAUSING_LEADER_1: CardInstanceId = CardInstanceId(61);
+const PAUSING_HOUND_0: CardInstanceId = CardInstanceId(66);
+const PAUSING_VINE_1: CardInstanceId = CardInstanceId(83);
+const PAUSING_LEECH_1: CardInstanceId = CardInstanceId(85);
+
 /// The pausing Golden Game: the Effects sample decks and Seed 204, 23 Actions, with the three kinds
 /// of Choice in it, each answered through `Action::Answer`:
 ///
-/// - `curious_owl` (11), an Option Choice of seat 0, answered with option 0 (draw);
-/// - `mind_leech` (85), played by seat 1, a Card Choice decided by its opponent, seat 0, who
-///   moves its own creature (4) to its trash;
-/// - `snare_vine` (83), played by seat 1 while seat 0 has creatures in the field, a Card Choice
-///   decided by its controller, who taps seat 0's `goblin_scout` (1).
+/// - `curious_owl`, an Option Choice of seat 0, answered with option 0 (draw);
+/// - `mind_leech`, played by seat 1, a Card Choice decided by its opponent, seat 0, who moves its
+///   own `goblin_scout` to its trash;
+/// - `snare_vine`, played by seat 1 while seat 0 has creatures in the field, a Card Choice decided
+///   by its controller, who taps seat 0's first `goblin_scout`.
 ///
 /// Seat 0 then kills seat 1's Leader (life 6) with four attackers in the last Turn.
 fn effects_pausing_script() -> Vec<Action> {
     vec![
         // Turn 1, seat 0: `curious_owl` pauses for its Option Choice.
-        play(0, CardInstanceId(11)),
+        play(0, PAUSING_OWL_0),
         answer(0, Answer::Option(0)),
-        play(0, CardInstanceId(1)), // goblin_scout
+        play(0, PAUSING_GOBLIN_0),
         pass(0),
         // Turn 2, seat 1: `mind_leech` pauses for seat 0, the opponent, to choose a creature of
         // its own hand.
-        play(1, CardInstanceId(85)),
-        answer(0, Answer::Card(CardInstanceId(4))), // goblin_scout, to seat 0's trash
+        play(1, PAUSING_LEECH_1),
+        answer(0, Answer::Card(PAUSING_GOBLIN_3)),
         pass(1),
         // Turn 3, seat 0.
-        play(0, CardInstanceId(13)), // river_otter
-        play(0, CardInstanceId(34)), // dawn_scout
-        attack(0, CardInstanceId(1), CardInstanceId(61)),
-        attack(0, CardInstanceId(11), CardInstanceId(61)),
+        play(0, PAUSING_OTTER_0),
+        play(0, PAUSING_DAWN_0),
+        attack(0, PAUSING_GOBLIN_0, PAUSING_LEADER_1),
+        attack(0, PAUSING_OWL_0, PAUSING_LEADER_1),
         pass(0),
         // Turn 4, seat 1: `snare_vine` pauses for its controller, who taps a creature in seat 0's
         // field.
-        play(1, CardInstanceId(83)),
-        answer(1, Answer::Card(CardInstanceId(1))), // goblin_scout, tapped
-        play(1, CardInstanceId(66)),                // ember_hound
-        attack(1, CardInstanceId(85), CardInstanceId(0)),
+        play(1, PAUSING_VINE_1),
+        answer(1, Answer::Card(PAUSING_GOBLIN_0)),
+        play(1, PAUSING_HOUND_0),
+        attack(1, PAUSING_LEECH_1, PAUSING_LEADER_0),
         pass(1),
         // Turn 5, seat 0: the last attacks land on seat 1's Leader.
-        play(0, CardInstanceId(20)), // stone_golem
-        play(0, CardInstanceId(22)), // shadow_cat
-        attack(0, CardInstanceId(1), CardInstanceId(61)),
-        attack(0, CardInstanceId(11), CardInstanceId(61)),
-        attack(0, CardInstanceId(13), CardInstanceId(61)),
-        attack(0, CardInstanceId(34), CardInstanceId(61)),
+        play(0, PAUSING_GOLEM_3),
+        play(0, PAUSING_CAT_1),
+        attack(0, PAUSING_GOBLIN_0, PAUSING_LEADER_1),
+        attack(0, PAUSING_OWL_0, PAUSING_LEADER_1),
+        attack(0, PAUSING_OTTER_0, PAUSING_LEADER_1),
+        attack(0, PAUSING_DAWN_0, PAUSING_LEADER_1),
     ]
 }
 
@@ -1129,6 +1146,13 @@ fn play_effects_pausing() -> Played {
 fn the_pausing_golden_game_matches_its_snapshot() {
     let played = play_effects_pausing();
     assert_eq!(played.steps.len(), effects_pausing_script().len());
+
+    // The script plays the Game to its end, caught here and not only by the snapshot: seat 0 wins.
+    let outcome = played
+        .final_state
+        .outcome()
+        .expect("the pausing Golden Game ends the Game");
+    assert_eq!(outcome.winners(), [PlayerId(0)]);
 
     // The Game holds a Card Choice decided by the controller of the carrying card, one decided by
     // its opponent and an Option Choice: each is a `DecisionPending` in the Event Traces.
