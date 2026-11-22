@@ -23,6 +23,9 @@ pub use observed_event::{
     ObservedAnswer, ObservedApplyError, ObservedEvent, ObservedTransition, TakenAction,
     TakenArgument,
 };
-pub use observed_state::{ObservedGameState, ObservedPendingDecision, ObservedZone, VisibleCard};
+pub use observed_state::{
+    ObservedBoundCard, ObservedGameState, ObservedPendingDecision, ObservedStackItem, ObservedZone,
+    VisibleCard,
+};
 pub use observer::Observer;
 pub use viewer::{ObservedCard, Viewer};

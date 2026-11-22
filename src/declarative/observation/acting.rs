@@ -28,6 +28,8 @@ pub enum ObservedAction {
         player: PlayerId,
         answer: ObservedAnswer,
     },
+    /// The Player with Priority passes.
+    Pass { player: PlayerId },
 }
 
 /// The value an Observed Action supplies for one param.
@@ -63,6 +65,10 @@ impl DeclarativeRuleset {
                 continue;
             }
             let (player, action, arguments) = match legal {
+                Action::Pass { player } => {
+                    listed.push(ObservedAction::Pass { player });
+                    continue;
+                }
                 Action::Answer {
                     player,
                     answer: Answer::Option(index),
@@ -129,6 +135,12 @@ impl DeclarativeRuleset {
     ) -> Result<Action, ObservationError> {
         let Viewer::Player(me) = observer.viewer();
         match action {
+            ObservedAction::Pass { player } => {
+                if *player != me {
+                    return Err(ObservationError::ActionOfAnotherPlayer { player: *player });
+                }
+                Ok(Action::Pass { player: *player })
+            }
             ObservedAction::Answer { player, answer } => {
                 if *player != me {
                     return Err(ObservationError::ActionOfAnotherPlayer { player: *player });

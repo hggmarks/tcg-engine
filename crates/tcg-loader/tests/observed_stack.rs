@@ -266,7 +266,7 @@ fn both_viewers_see_the_stack_and_priority() {
         // under the Observed Card the Viewer holds, in the zone it was bound from.
         let item = observed_attack(&observer, a, t, false);
         let after = &followed.state;
-        assert_eq!(after.stack(), [item.clone()], "seat {seat}");
+        assert_eq!(after.stack(), std::slice::from_ref(&item), "seat {seat}");
         // Priority is the attacker's opponent's, who is the Deciding Player.
         assert_eq!(after.priority(), Some(p(1)), "seat {seat}");
         assert_eq!(after.deciding_player(), p(1), "seat {seat}");
@@ -410,7 +410,11 @@ fn stack_events_are_observed_in_full() {
         // The attack item below now shows its attacker as gone: `None`, though the card sits in the
         // public trash and the Viewer still holds its handle.
         let gone = observed_attack(&follow.observer, a, t, true);
-        assert_eq!(follow.observed.stack(), [gone.clone()], "seat {seat}");
+        assert_eq!(
+            follow.observed.stack(),
+            std::slice::from_ref(&gone),
+            "seat {seat}"
+        );
 
         // Seat 1 passes: the attack Fizzles, `ItemFizzled` alone, with the item as it was.
         let fizzled = follow.step(&pass(1));

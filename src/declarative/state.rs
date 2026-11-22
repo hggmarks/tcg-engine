@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use super::decision::PendingDecision;
 use super::event::Event;
+use super::stack::StackItem;
 use crate::card_catalog::CardId;
 use crate::player::{PlayerId, PlayerOrder};
 use crate::random::RandomState;
@@ -165,6 +166,9 @@ pub struct GameState {
     outcome: Option<TerminalOutcome>,
     /// The decision a Resolution is paused at, if any (ADR-0033).
     pending: Option<PendingDecision>,
+    /// The Stack Items waiting to resolve, bottom first (ADR-0037). A Response Window is open
+    /// exactly while it is not empty.
+    stack: Vec<StackItem>,
 }
 
 /// Why an Event cannot be applied. The GameState is unchanged.
@@ -218,6 +222,17 @@ pub enum ApplyError {
     /// An Event other than `DecisionAnswered` and `GameEnded` was applied while a decision is
     /// pending: the Resolution is paused and nothing else happens until it is answered.
     DecisionPending,
+    /// An item resolved or Fizzled, but the Stack is empty (ADR-0037).
+    StackEmpty,
+    /// An item resolved or Fizzled, but it is not the top item of the Stack, or differs from it.
+    NotTopItem,
+    /// The flags of the item disagree with the Event: `ItemFizzled` of an item that does not
+    /// Fizzle, `ItemResolved` of one that does, or `ItemPushed` of one that already has a card that
+    /// left.
+    FizzleMismatch,
+    /// A Turn or a phase began while the Stack is not empty: a window closes before the Turn goes
+    /// on.
+    StackNotEmpty,
 }
 
 impl fmt::Display for ApplyError {
@@ -283,6 +298,12 @@ impl fmt::Display for ApplyError {
                 player.0, decider.0
             ),
             Self::DecisionPending => write!(f, "a decision is pending: only its Answer applies"),
+            Self::StackEmpty => write!(f, "the Stack is empty"),
+            Self::NotTopItem => write!(f, "the item is not the top item of the Stack"),
+            Self::FizzleMismatch => {
+                write!(f, "the item's Fizzle state does not fit the Event")
+            }
+            Self::StackNotEmpty => write!(f, "the Stack is not empty"),
         }
     }
 }
@@ -322,6 +343,7 @@ impl GameState {
             random_state,
             outcome: None,
             pending: None,
+            stack: Vec::new(),
         }
     }
 
@@ -399,11 +421,31 @@ impl GameState {
         self.pending.as_ref()
     }
 
-    /// The Player who acts next: the one asked while a decision is pending, else the Active Player.
+    /// The Stack Items waiting to resolve, bottom first; empty when no Response Window is open.
+    pub fn stack(&self) -> &[StackItem] {
+        &self.stack
+    }
+
+    /// The Player with Priority: the first Player in seat order other than the controller of the
+    /// top item, the same rule as `decider: opponent`; `None` when the Stack is empty. It is
+    /// derived, never stored.
+    pub fn priority(&self) -> Option<PlayerId> {
+        let top = self.stack.last()?;
+        self.player_order
+            .players()
+            .iter()
+            .copied()
+            .find(|&player| player != top.controller)
+    }
+
+    /// The Player who acts next: the one asked while a decision is pending, else the Player with
+    /// Priority while a window is open, else the Active Player.
     pub fn deciding_player(&self) -> PlayerId {
         self.pending
             .as_ref()
-            .map_or(self.active_player, PendingDecision::decider)
+            .map(PendingDecision::decider)
+            .or_else(|| self.priority())
+            .unwrap_or(self.active_player)
     }
 
     /// The single function through which a GameState changes.
@@ -468,6 +510,14 @@ impl GameState {
                 if let Some(held) = self.zone_mut(*player, to) {
                     held.cards.push(*card);
                 }
+                // The card left, even if it comes back: every item that bound it will Fizzle.
+                for item in &mut self.stack {
+                    for bound in &mut item.bound {
+                        if bound.card == *card {
+                            bound.left = true;
+                        }
+                    }
+                }
                 Ok(())
             }
             Event::ZoneShuffled {
@@ -494,6 +544,9 @@ impl GameState {
                 Ok(())
             }
             Event::TurnBegan { player, turn } => {
+                if !self.stack.is_empty() {
+                    return Err(ApplyError::StackNotEmpty);
+                }
                 if !self.player_order.contains(*player) {
                     return Err(ApplyError::UnknownPlayer { player: *player });
                 }
@@ -503,6 +556,9 @@ impl GameState {
                 Ok(())
             }
             Event::PhaseBegan { phase } => {
+                if !self.stack.is_empty() {
+                    return Err(ApplyError::StackNotEmpty);
+                }
                 if self.turn_number.is_none() {
                     return Err(ApplyError::NoTurnInProgress);
                 }
@@ -553,6 +609,7 @@ impl GameState {
             Event::GameEnded { losses } => {
                 self.outcome = Some(TerminalOutcome::of(&self.player_order, losses)?);
                 self.pending = None;
+                self.stack.clear();
                 Ok(())
             }
             Event::DecisionPending {
@@ -579,7 +636,57 @@ impl GameState {
                 self.pending = None;
                 Ok(())
             }
+            Event::ItemPushed { item } => {
+                if !self.player_order.contains(item.controller) {
+                    return Err(ApplyError::UnknownPlayer {
+                        player: item.controller,
+                    });
+                }
+                for bound in &item.bound {
+                    let owner = self
+                        .card(bound.card)
+                        .ok_or(ApplyError::UnknownCard { card: bound.card })?
+                        .owner;
+                    let in_zone = self.require_zone(owner, &bound.zone)?.contains(&bound.card);
+                    if !in_zone {
+                        return Err(ApplyError::CardNotInZone {
+                            card: bound.card,
+                            player: owner,
+                            zone: bound.zone.clone(),
+                        });
+                    }
+                }
+                if item.fizzles() {
+                    return Err(ApplyError::FizzleMismatch);
+                }
+                self.stack.push(item.clone());
+                Ok(())
+            }
+            Event::ItemResolved { item } => {
+                self.pop_top(item, false)?;
+                Ok(())
+            }
+            Event::ItemFizzled { item } => {
+                self.pop_top(item, true)?;
+                Ok(())
+            }
         }
+    }
+
+    /// Pops the top item of the Stack, which must be `item`; `item` Fizzles for `ItemFizzled` and
+    /// does not for `ItemResolved`. Checked before anything changes.
+    fn pop_top(&mut self, item: &StackItem, fizzles: bool) -> Result<(), ApplyError> {
+        let Some(top) = self.stack.last() else {
+            return Err(ApplyError::StackEmpty);
+        };
+        if top != item {
+            return Err(ApplyError::NotTopItem);
+        }
+        if item.fizzles() != fizzles {
+            return Err(ApplyError::FizzleMismatch);
+        }
+        self.stack.pop();
+        Ok(())
     }
 
     /// Applies `events` in order to a clone of this state and returns the result; this state is

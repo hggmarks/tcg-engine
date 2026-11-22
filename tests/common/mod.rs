@@ -127,6 +127,7 @@ pub fn small_draft() -> RulesetDraft {
             },
         ],
         actions: vec![],
+        windows: Vec::new(),
         turn: None,
         win_conditions: vec![],
         effects: None,

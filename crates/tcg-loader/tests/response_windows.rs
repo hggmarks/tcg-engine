@@ -55,8 +55,6 @@ const SCRIPT_CAP: usize = 400;
 
 // ---- test-only rulesets
 
-const DRAW: &str = "{ draw: { player: controller, from: deck, to: hand, count: 1 } }";
-
 /// Fast creatures of cost 0 with a trigger each. `lurker` draws when it enters the `holding` zone,
 /// which the cost of its `fast_play` does; `settler` draws when it enters the field, which the
 /// resolution of its `fast_play` does; `asker` asks its controller whether to draw when it enters
@@ -1039,7 +1037,7 @@ fn a_resolution_that_meets_a_win_condition_ends_the_game() {
 /// Plays a scripted Game of `seed` and returns its record, the Event Trace of each Action and the
 /// final GameState. The script is a deterministic rule over the Legal Actions: with the Stack
 /// non-empty take a `fast_play` if one is Legal, else `Pass`; otherwise an `attack`, else a
-/// `play_creature`, else `pass_turn`. It stops when the Game ends or after `SCRIPT_CAP` Actions.
+/// `play_creature` (once per Turn), else `pass_turn`. It stops when the Game ends or after `SCRIPT_CAP` Actions.
 fn scripted_game(
     ruleset: &DeclarativeRuleset,
     decks: &[DeckList],
@@ -1052,6 +1050,7 @@ fn scripted_game(
         .opening
         .state;
     let mut traces = Vec::new();
+    let mut last_play = None;
     for _ in 0..SCRIPT_CAP {
         let legal = ruleset.legal_actions(&state);
         let named = |id: &str| {
@@ -1063,9 +1062,17 @@ fn scripted_game(
         let chosen = if any_answer.is_some() {
             any_answer
         } else if state.stack().is_empty() {
-            named("attack")
-                .or_else(|| named("play_creature"))
-                .or_else(|| named("pass_turn"))
+            // At most one creature is played per Turn, so mana is left for a response.
+            let turn = state.turn_number();
+            let play = if last_play == Some(turn) {
+                None
+            } else {
+                named("play_creature")
+            };
+            if play.is_some() {
+                last_play = Some(turn);
+            }
+            named("attack").or(play).or_else(|| named("pass_turn"))
         } else {
             named("fast_play").or_else(|| legal.iter().find(|a| matches!(a, Action::Pass { .. })))
         };

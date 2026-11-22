@@ -34,6 +34,13 @@ const EFFECTS_CATALOG: &str =
 const EFFECTS_DECK_A: &str = include_str!("../../../rulesets/effects-ruleset/decks/deck-a.yaml");
 const EFFECTS_DECK_B: &str = include_str!("../../../rulesets/effects-ruleset/decks/deck-b.yaml");
 
+const RESPONSE_RULESET: &str =
+    include_str!("../../../rulesets/response-ruleset/response-ruleset.yaml");
+const RESPONSE_CATALOG: &str =
+    include_str!("../../../rulesets/response-ruleset/response-catalog.yaml");
+const RESPONSE_DECK_A: &str = include_str!("../../../rulesets/response-ruleset/decks/deck-a.yaml");
+const RESPONSE_DECK_B: &str = include_str!("../../../rulesets/response-ruleset/decks/deck-b.yaml");
+
 /// The Seed of the Games that are printed.
 const LOG_SEED: u64 = 2026;
 /// The Step Cap of every Game of the example.
@@ -79,6 +86,12 @@ fn main() {
             EFFECTS_RULESET,
             EFFECTS_CATALOG,
             [EFFECTS_DECK_A, EFFECTS_DECK_B],
+        ),
+        load(
+            "Response Ruleset",
+            RESPONSE_RULESET,
+            RESPONSE_CATALOG,
+            [RESPONSE_DECK_A, RESPONSE_DECK_B],
         ),
     ];
 
@@ -157,6 +170,7 @@ fn print_game_log(loaded: &Loaded) {
                 answer: Answer::Card(card),
                 ..
             } => ("answers card".to_string(), vec![card_name(&game, *card)]),
+            Action::Pass { .. } => ("passes".to_string(), Vec::new()),
         };
         println!(
             "  {index:>3}. Player {} {name}{}",
@@ -252,6 +266,9 @@ fn describe(game: &SelfPlayGame, event: &Event) -> String {
         Event::CardCreated { card, .. } => format!("{} is created", card_name(game, *card)),
         Event::DecisionPending { decider, .. } => format!("Player {} is asked", decider.0),
         Event::DecisionAnswered { player, .. } => format!("Player {} answers", player.0),
+        Event::ItemPushed { item } => format!("Player {} pushes an item", item.controller.0),
+        Event::ItemResolved { item } => format!("Player {}'s item resolves", item.controller.0),
+        Event::ItemFizzled { item } => format!("Player {}'s item fizzles", item.controller.0),
     }
 }
 

@@ -7,7 +7,7 @@ use super::draft::{
     ActionDraft, AutomaticStepDraft, CardTypeDraft, ConditionDraft, CostDraft, DeckInputDraft,
     EffectDraft, ExpressionDraft, FieldTypeDraft, InitializerDraft, InstanceStateDraft,
     ParamAlternativeDraft, ParamCardsDraft, ParamDraft, PhaseDraft, RulesetDraft, SetupStepDraft,
-    TurnDraft, WinConditionDraft, WinConditionWhenDraft,
+    TurnDraft, WinConditionDraft, WinConditionWhenDraft, WindowDraft,
 };
 use super::error::{DefinitionError, DefinitionErrorKind, ReferenceTarget};
 use super::expression::{
@@ -19,7 +19,7 @@ use super::model::{
     Initializer, InstanceStateSchema, Loser, Meta, Param, ParamAlternative, ParamName, ParamOwner,
     Parameters, Phase, PhaseId, PhaseKind, PlayerCount, PlayerPosition, PlayerSelector, Position,
     RulesetDefinition, RulesetId, RulesetVersion, SetupStep, StateName, TurnStructure, Visibility,
-    WinCondition, WinConditionId, WinConditionWhen, Zone, ZoneId,
+    WinCondition, WinConditionId, WinConditionWhen, Window, WindowId, Zone, ZoneId,
 };
 use crate::definition_path::DefinitionPath;
 use crate::id::is_valid_id;
@@ -97,6 +97,7 @@ pub(super) fn validate(draft: RulesetDraft) -> Result<RulesetDefinition, Definit
         inputs,
         setup,
         actions,
+        windows,
         turn,
         win_conditions,
         effects,
@@ -176,6 +177,14 @@ pub(super) fn validate(draft: RulesetDraft) -> Result<RulesetDefinition, Definit
         valid_actions.push(validate_action(action, &valid_zones, &valid_card_types)?);
     }
 
+    let valid_windows = validate_windows(
+        &windows,
+        &actions,
+        &valid_actions,
+        &valid_zones,
+        players.get(),
+    )?;
+
     let valid_turn = match &turn {
         Some(turn) => {
             let context = Context {
@@ -188,14 +197,17 @@ pub(super) fn validate(draft: RulesetDraft) -> Result<RulesetDefinition, Definit
         None => None,
     };
 
-    // Every action is listed by a phase; without a `turn` no phase lists anything (ADR-0027).
+    // Every action is listed by a phase or by a window's `actions`; without a `turn` no phase lists
+    // anything (ADR-0027, ADR-0037). Being in a window's `opened_by` lists nothing.
     for (index, action) in valid_actions.iter().enumerate() {
         let listed = valid_turn.as_ref().is_some_and(|turn| {
             turn.phases.iter().any(|phase| match &phase.kind {
                 PhaseKind::Actions(ids) => ids.contains(&action.id),
                 PhaseKind::Automatic(_) => false,
             })
-        });
+        }) || valid_windows
+            .iter()
+            .any(|window| window.actions.contains(&action.id));
         if !listed {
             return fail(
                 actions_path.clone().id(&actions[index].id),
@@ -242,6 +254,7 @@ pub(super) fn validate(draft: RulesetDraft) -> Result<RulesetDefinition, Definit
         deck_inputs: valid_inputs,
         setup: valid_setup,
         actions: valid_actions,
+        windows: valid_windows,
         turn: valid_turn,
         win_conditions: valid_win_conditions,
         effects_active_zone,
@@ -641,7 +654,180 @@ fn validate_cost(
             check_state_value(refs.card_types, "tapped", FieldType::Bool, (at.clone(), at))?;
             Ok(Cost::Tap { zone, count })
         }
+        CostDraft::TapCard { card } => {
+            let at = at.key("tap").key("card");
+            let card = validate_card_ref(card, refs, at.clone())?;
+            // Every card type the param may take must declare a bool `tapped`, so the cost can
+            // always read it and set it.
+            for id in refs.types_of(&card.param) {
+                let declares = refs
+                    .card_types
+                    .iter()
+                    .find(|card_type| &card_type.id == id)
+                    .is_some_and(|card_type| {
+                        card_type.instance_state.iter().any(|schema| {
+                            schema.name.as_str() == "tapped" && schema.state_type == FieldType::Bool
+                        })
+                    });
+                if !declares {
+                    return fail(
+                        at,
+                        DefinitionErrorKind::TapCardWithoutTappedState {
+                            card_type: id.as_str().to_string(),
+                        },
+                    );
+                }
+            }
+            Ok(Cost::TapCard { card })
+        }
+        CostDraft::Move { card, to } => {
+            let at = at.key("move");
+            let card = validate_card_ref(card, refs, at.clone().key("card"))?;
+            let to = validate_zone_reference(to, refs.zones, at.key("to"))?;
+            Ok(Cost::Move { card, to })
+        }
     }
+}
+
+/// The Response Windows (ADR-0037), after the actions they name: with exactly 2 players; per window
+/// in order its id (grammar, duplicate), its `opened_by` (each action declared, and opening no other
+/// window), then its `actions` (each declared, none repeated); then the checks of the pushed
+/// actions, in declaration order: their card params, then their effects.
+fn validate_windows(
+    windows: &[WindowDraft],
+    action_drafts: &[ActionDraft],
+    actions: &[ActionDefinition],
+    zones: &[Zone],
+    players: u32,
+) -> Result<Vec<Window>, DefinitionError> {
+    let list = DefinitionPath::root().key("windows");
+    if !windows.is_empty() && players != 2 {
+        return fail(
+            list,
+            DefinitionErrorKind::WindowsNeedTwoPlayers {
+                players: u64::from(players),
+            },
+        );
+    }
+    let declared = |id: &str| actions.iter().any(|action| action.id.as_str() == id);
+    let dangling = |at: DefinitionPath, id: &str| {
+        fail(
+            at,
+            DefinitionErrorKind::DanglingReference {
+                target: ReferenceTarget::Action,
+                id: id.to_string(),
+            },
+        )
+    };
+    let mut seen = Seen::new(list.clone());
+    let mut openers: BTreeMap<&str, DefinitionPath> = BTreeMap::new();
+    let mut valid = Vec::with_capacity(windows.len());
+    for (index, window) in windows.iter().enumerate() {
+        check_id(&list, index, "id", &window.id)?;
+        seen.insert(&window.id, index)?;
+        let at = list.clone().id(&window.id);
+        let opened_at = at.clone().key("opened_by");
+        for (position, id) in window.opened_by.iter().enumerate() {
+            let here = opened_at.clone().index(position);
+            if !declared(id) {
+                return dangling(here, id);
+            }
+            if let Some(first) = openers.get(id.as_str()) {
+                return fail(
+                    here,
+                    DefinitionErrorKind::DuplicateWindowOpener {
+                        action: id.clone(),
+                        first: first.clone(),
+                    },
+                );
+            }
+            openers.insert(id, here);
+        }
+        let actions_at = at.key("actions");
+        let mut listed = Seen::new(actions_at.clone());
+        for (position, id) in window.actions.iter().enumerate() {
+            if !declared(id) {
+                return dangling(actions_at.clone().index(position), id);
+            }
+            listed.insert(id, position)?;
+        }
+        valid.push(Window {
+            id: WindowId::new(&window.id),
+            opened_by: window.opened_by.iter().map(ActionId::new).collect(),
+            actions: window.actions.iter().map(ActionId::new).collect(),
+        });
+    }
+
+    let pushed = |id: &ActionId| {
+        valid
+            .iter()
+            .any(|window| window.opened_by.contains(id) || window.actions.contains(id))
+    };
+    for (action, draft) in actions.iter().zip(action_drafts) {
+        if !pushed(&action.id) {
+            continue;
+        }
+        check_pushed_params(action, draft, zones)?;
+        if let Some(position) = action
+            .effects
+            .iter()
+            .position(|effect| *effect == Effect::EndTurn)
+        {
+            return fail(
+                DefinitionPath::root()
+                    .key("actions")
+                    .id(action.id.as_str())
+                    .key("effects")
+                    .index(position),
+                DefinitionErrorKind::EndTurnInPushedAction,
+            );
+        }
+    }
+    Ok(valid)
+}
+
+/// The card params of a pushed action must be public: each alternative binds from a `public` zone,
+/// unless a `move` cost of the action moves the param to a `public` zone (ADR-0037).
+fn check_pushed_params(
+    action: &ActionDefinition,
+    draft: &ActionDraft,
+    zones: &[Zone],
+) -> Result<(), DefinitionError> {
+    let is_public = |zone: &ZoneId| {
+        zones
+            .iter()
+            .any(|declared| &declared.id == zone && declared.visibility == Visibility::Public)
+    };
+    for (param, param_draft) in action.params.iter().zip(&draft.params) {
+        let moved_to_public = action.costs.iter().any(|cost| {
+            matches!(cost, Cost::Move { card, to } if card.param == param.name && is_public(to))
+        });
+        if moved_to_public {
+            continue;
+        }
+        let at = DefinitionPath::root()
+            .key("actions")
+            .id(action.id.as_str())
+            .key("params")
+            .id(param.name.as_str());
+        for (index, alternative) in param.alternatives.iter().enumerate() {
+            if is_public(&alternative.zone) {
+                continue;
+            }
+            let at = match &param_draft.cards {
+                ParamCardsDraft::Single(_) => at.clone(),
+                ParamCardsDraft::OneOf(_) => at.clone().key("one_of").index(index),
+            };
+            return fail(
+                at,
+                DefinitionErrorKind::PushedCardNotPublic {
+                    param: param.name.as_str().to_string(),
+                    zone: alternative.zone.as_str().to_string(),
+                },
+            );
+        }
+    }
+    Ok(())
 }
 
 /// The effects of the list at `list`, in order. A Card Choice binds its name for the effects after

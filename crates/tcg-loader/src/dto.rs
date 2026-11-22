@@ -14,7 +14,7 @@ use tcg_engine::ruleset_definition::{
     EffectDraft, EffectsDraft, ExpressionDraft, FieldDraft, FieldTypeDraft, FieldValue,
     InitializerDraft, InstanceStateDraft, MetaDraft, ParamAlternativeDraft, ParamCardsDraft,
     ParamDraft, ParametersDraft, PhaseDraft, RefDraft, RulesetDraft, SetupStepDraft, TurnDraft,
-    Visibility, WinConditionDraft, WinConditionWhenDraft, ZoneDraft,
+    Visibility, WinConditionDraft, WinConditionWhenDraft, WindowDraft, ZoneDraft,
 };
 
 #[derive(Deserialize)]
@@ -29,6 +29,8 @@ pub(crate) struct RulesetDto {
     setup: Vec<SetupStepDto>,
     #[serde(default)]
     actions: Vec<ActionDto>,
+    #[serde(default)]
+    windows: Vec<WindowDto>,
     // An absent key is `None`; a present key must be a turn, so `turn:` with nothing after it is an
     // error, not `None`.
     #[serde(default, deserialize_with = "some")]
@@ -333,6 +335,15 @@ pub(crate) struct DrawDto {
     count: u32,
 }
 
+/// A Response Window: `{ id, opened_by: [action ids], actions: [action ids] }`.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WindowDto {
+    id: String,
+    opened_by: Vec<String>,
+    actions: Vec<String>,
+}
+
 /// `{}`: the argument of a primitive that has none.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -501,13 +512,48 @@ struct RefDto {
 #[serde(rename_all = "snake_case")]
 enum CostDto {
     Tap(TapDto),
+    Move(MoveEffectDto),
 }
+
+/// `tap: { zone, count }` taps mana, `tap: { card }` taps one card. The keys are read into
+/// `RawTapDto` and the combination is checked when it becomes a `TapDto`, so a wrong one is a
+/// syntax error at the `tap`, and a missing key is reported as it always was.
+struct TapDto(CostDraft);
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct TapDto {
-    zone: String,
-    count: RefDto,
+struct RawTapDto {
+    #[serde(default, deserialize_with = "some")]
+    zone: Option<String>,
+    #[serde(default, deserialize_with = "some")]
+    count: Option<RefDto>,
+    #[serde(default, deserialize_with = "some")]
+    card: Option<RefDto>,
+}
+
+impl<'de> Deserialize<'de> for TapDto {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let raw = RawTapDto::deserialize(deserializer)?;
+        let cost = match (raw.zone, raw.count, raw.card) {
+            (Some(zone), Some(count), None) => CostDraft::Tap {
+                zone,
+                count: RefDraft(count.reference),
+            },
+            (None, None, Some(card)) => CostDraft::TapCard {
+                card: RefDraft(card.reference),
+            },
+            (Some(_), None, None) => return Err(de::Error::missing_field("count")),
+            (None, Some(_), None) | (None, None, None) => {
+                return Err(de::Error::missing_field("zone"))
+            }
+            _ => {
+                return Err(de::Error::custom(
+                    "a `tap` takes `zone` and `count`, or `card`, not both",
+                ))
+            }
+        };
+        Ok(TapDto(cost))
+    }
 }
 
 /// One effect of an action: either a single-key map `{ <primitive>: { ... } }`, or the sibling-key
@@ -972,6 +1018,15 @@ impl RulesetDto {
                 .into_iter()
                 .map(ActionDto::into_draft)
                 .collect(),
+            windows: self
+                .windows
+                .into_iter()
+                .map(|window| WindowDraft {
+                    id: window.id,
+                    opened_by: window.opened_by,
+                    actions: window.actions,
+                })
+                .collect(),
             turn: self.turn.map(TurnDto::into_draft),
             win_conditions: self
                 .win_conditions
@@ -1011,9 +1066,10 @@ impl ActionDto {
                 .cost
                 .into_iter()
                 .map(|cost| match cost {
-                    CostDto::Tap(tap) => CostDraft::Tap {
-                        zone: tap.zone,
-                        count: RefDraft(tap.count.reference),
+                    CostDto::Tap(tap) => tap.0,
+                    CostDto::Move(step) => CostDraft::Move {
+                        card: RefDraft(step.card.reference),
+                        to: step.to,
                     },
                 })
                 .collect(),

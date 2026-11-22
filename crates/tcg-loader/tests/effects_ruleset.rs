@@ -400,6 +400,14 @@ fn render(played: &Played) -> String {
                     player.0
                 ));
             }
+            // No Golden Game of this ruleset holds a Pass: it has no Response Window.
+            Action::Pass { player } => {
+                text.push_str(&format!(
+                    "== action {}: player {} pass\n",
+                    index + 1,
+                    player.0
+                ));
+            }
         }
         for event in events {
             text.push_str(&format!("{event:?}\n"));
@@ -1022,7 +1030,7 @@ fn taken_line(taken: &TakenAction) -> String {
         } => format!(
             "TakenAction {{ player: {player:?}, action: {action:?}, arguments: {arguments:?} }}"
         ),
-        TakenAction::Answer { .. } => format!("{taken:?}"),
+        TakenAction::Answer { .. } | TakenAction::Pass { .. } => format!("{taken:?}"),
     }
 }
 

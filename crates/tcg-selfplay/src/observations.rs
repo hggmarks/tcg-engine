@@ -253,6 +253,8 @@ pub(crate) fn relabel(
                 .map(|&Argument::Card(card)| Argument::Card(map(card)))
                 .collect(),
         },
+        // A Pass names no card.
+        Action::Pass { .. } => action.clone(),
         // An option Answer names no card; a card Answer names one, through the same permutation.
         Action::Answer {
             player,
@@ -331,6 +333,12 @@ fn relabel_ids(event: &mut Event, map: &impl Fn(CardInstanceId) -> CardInstanceI
             ..
         } => {
             *card = map(*card);
+        }
+        // The Stack Items name the cards they bound (ADR-0037).
+        Event::ItemPushed { item } | Event::ItemResolved { item } | Event::ItemFizzled { item } => {
+            for bound in &mut item.bound {
+                bound.card = map(bound.card);
+            }
         }
         Event::CardCreated { .. }
         | Event::TurnBegan { .. }

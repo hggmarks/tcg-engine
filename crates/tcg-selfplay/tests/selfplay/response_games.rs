@@ -43,14 +43,11 @@ fn the_response_ruleset_loads_and_self_plays_with_checks_on() {
             .filter(|action| matches!(action, Action::Pass { .. }))
             .count();
         for event in game.traces.iter().flat_map(|trace| trace.events()) {
-            match event {
-                Event::ItemPushed { item } => {
-                    pushes += 1;
-                    if item.source == StackSource::Action(ActionId::new("fast_play")) {
-                        responses += 1;
-                    }
+            if let Event::ItemPushed { item } = event {
+                pushes += 1;
+                if item.source == StackSource::Action(ActionId::new("fast_play")) {
+                    responses += 1;
                 }
-                _ => {}
             }
         }
         // The record verifies, with every Invariant checked at each step.

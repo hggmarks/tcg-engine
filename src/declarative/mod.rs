@@ -19,6 +19,7 @@ mod legal_actions;
 mod modifiers;
 mod observation;
 mod record;
+mod stack;
 mod state;
 mod triggers;
 mod turn_cycle;
@@ -32,10 +33,12 @@ pub use decision::{
 pub use event::Event;
 pub use observation::{
     ObservationError, ObservedAction, ObservedAnswer, ObservedApplyError, ObservedArgument,
-    ObservedCard, ObservedEvent, ObservedGameState, ObservedPendingDecision, ObservedTransition,
-    ObservedZone, Observer, TakenAction, TakenArgument, Viewer, VisibleCard,
+    ObservedBoundCard, ObservedCard, ObservedEvent, ObservedGameState, ObservedPendingDecision,
+    ObservedStackItem, ObservedTransition, ObservedZone, Observer, TakenAction, TakenArgument,
+    Viewer, VisibleCard,
 };
 pub use record::{GameRecord, Replay, ReplayError};
+pub use stack::{BoundCard, StackItem, StackSource};
 pub use state::{
     ApplyError, CardInstance, CardInstanceId, GameState, Loss, TerminalOutcome, ZoneCards,
 };

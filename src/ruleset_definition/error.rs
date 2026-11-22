@@ -188,6 +188,28 @@ pub enum DefinitionErrorKind {
     /// the card type `card_type` is none that `param` can have, so `then` could never run and the
     /// test would retype the param (ADR-0032).
     ImpossibleCardType { param: String, card_type: String },
+    /// `windows`, in a ruleset that does not have exactly 2 Players: Priority is "the opponent of
+    /// the top item's controller", defined for two Players only (ADR-0037); `players` is how many
+    /// the ruleset has.
+    WindowsNeedTwoPlayers { players: u64 },
+    /// An action named in the `opened_by` of two windows, or twice in one, at the later one, such
+    /// as `windows[second].opened_by[0]`; `first` is the earlier one (ADR-0037).
+    DuplicateWindowOpener {
+        action: String,
+        first: DefinitionPath,
+    },
+    /// An `end_turn` in the effects of a pushed action (one a window lists or opens), at its own
+    /// path, such as `actions[x].effects[1]`: a Stack Item's effects run on a Pass, which does not
+    /// leave the Action phase (ADR-0037).
+    EndTurnInPushedAction,
+    /// A card param of a pushed action that is neither bound from a `public` zone nor moved to one
+    /// by a `move` cost, at the param or at its `one_of[i]` alternative, such as
+    /// `actions[fast_play].params[card]`: the Stack is public, so the bound cards must be seen by
+    /// every Player (ADR-0037). `zone` is the zone the alternative binds from.
+    PushedCardNotPublic { param: String, zone: String },
+    /// The card of a `tap: { card }` cost, such as `actions[attack].cost[0].tap.card`: a card type
+    /// its param may take has no bool `tapped` instance state; `card_type` is the first such one.
+    TapCardWithoutTappedState { card_type: String },
 }
 
 impl fmt::Display for DefinitionErrorKind {
@@ -340,6 +362,26 @@ impl fmt::Display for DefinitionErrorKind {
             Self::ImpossibleCardType { param, card_type } => write!(
                 f,
                 "`{param}` can never be a `{card_type}`: testing for it would retype the param"
+            ),
+            Self::WindowsNeedTwoPlayers { players } => write!(
+                f,
+                "Response Windows need exactly 2 players, the ruleset has {players}"
+            ),
+            Self::DuplicateWindowOpener { action, first } => write!(
+                f,
+                "the action `{action}` already opens a window, at `{first}`"
+            ),
+            Self::EndTurnInPushedAction => write!(
+                f,
+                "a pushed action cannot end the Turn: its effects run on a Pass"
+            ),
+            Self::PushedCardNotPublic { param, zone } => write!(
+                f,
+                "the card `{param}` of a pushed action is taken from the zone `{zone}`, which is not public, and no cost moves it to a public zone"
+            ),
+            Self::TapCardWithoutTappedState { card_type } => write!(
+                f,
+                "the card type `{card_type}` has no bool `tapped` state to tap"
             ),
             Self::UnsupportedFieldType { field_type } => {
                 write!(f, "the field type {field_type:?} is not supported yet")

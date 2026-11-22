@@ -53,6 +53,7 @@ fn draft_with_play_creature(count: &str) -> RulesetDraft {
         inputs: vec![],
         setup: vec![],
         actions: vec![],
+        windows: Vec::new(),
         turn: None,
         win_conditions: vec![],
         effects: None,

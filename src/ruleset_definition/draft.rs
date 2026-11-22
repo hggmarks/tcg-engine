@@ -14,6 +14,8 @@ pub struct RulesetDraft {
     pub setup: Vec<SetupStepDraft>,
     /// The actions, in order. Empty means none.
     pub actions: Vec<ActionDraft>,
+    /// The Response Windows, in order. Empty means none.
+    pub windows: Vec<WindowDraft>,
     /// The turn structure. `None` means the Game has no Turns.
     pub turn: Option<TurnDraft>,
     /// The win conditions, in order. Empty means none: the Game never ends.
@@ -111,6 +113,14 @@ pub enum SetupStepDraft {
     },
 }
 
+/// An unvalidated Response Window: the ids of the actions that open it and of the actions it lists.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowDraft {
+    pub id: String,
+    pub opened_by: Vec<String>,
+    pub actions: Vec<String>,
+}
+
 /// An unvalidated action, in the order validation checks it: params, then cost, then effects.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActionDraft {
@@ -171,7 +181,19 @@ pub struct RefDraft(pub String);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CostDraft {
-    Tap { zone: String, count: RefDraft },
+    Tap {
+        zone: String,
+        count: RefDraft,
+    },
+    /// `tap: { card: { ref: <param> } }`.
+    TapCard {
+        card: RefDraft,
+    },
+    /// `move: { card: { ref: <param> }, to: <zone> }`.
+    Move {
+        card: RefDraft,
+        to: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

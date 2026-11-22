@@ -6,7 +6,7 @@
 
 use std::fmt;
 
-use super::observed_state::ObservedGameState;
+use super::observed_state::{ObservedGameState, ObservedStackItem};
 use super::viewer::ObservedCard;
 use crate::card_catalog::CardId;
 use crate::declarative::decision::DecisionKind;
@@ -96,6 +96,12 @@ pub enum ObservedEvent {
         player: PlayerId,
         answer: ObservedAnswer,
     },
+    /// An Action was pushed onto the Stack, which is fully public (ADR-0037): the whole item.
+    ItemPushed { item: ObservedStackItem },
+    /// The top item resolved: the item as it was.
+    ItemResolved { item: ObservedStackItem },
+    /// The top item Fizzled, a card it bound having left: the item as it was.
+    ItemFizzled { item: ObservedStackItem },
 }
 
 /// The Action as a Viewer observes it taken (ADR-0029): the acting Player and, for a Declared
@@ -114,6 +120,8 @@ pub enum TakenAction {
         player: PlayerId,
         answer: ObservedAnswer,
     },
+    /// The Player with Priority passed.
+    Pass { player: PlayerId },
 }
 
 /// An Answer as a Viewer observes it (ADR-0033, ADR-0034): the index of the option picked, or the

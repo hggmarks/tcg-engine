@@ -15,17 +15,19 @@ use super::decision::{Answer, DecisionKind};
 use super::event::Event;
 use super::execution::Execution;
 use super::game_end;
+use super::stack::{BoundCard, StackItem, StackSource};
 use super::state::{ApplyError, CardInstanceId, GameState};
 use super::triggers;
 use crate::player::PlayerId;
 use crate::ruleset::{EventTrace, Ruleset, Transition};
 use crate::ruleset_definition::{
-    ActionId, CardTypeId, FieldName, ParamName, PhaseKind, StateName, ZoneId,
+    ActionId, CardTypeId, FieldName, ParamName, PhaseKind, StateName, Window, ZoneId,
 };
 
-/// An Action of the declarative Ruleset: either a Declared Action, or an Answer to the decision a
-/// Resolution is paused at (ADR-0033). While a decision is pending only Answers are Legal; while
-/// none is, only Declared Actions are.
+/// An Action of the declarative Ruleset: a Declared Action, an Answer to the decision a Resolution
+/// is paused at (ADR-0033), or a Pass, which resolves the top item of the Stack (ADR-0037). While a
+/// decision is pending only Answers are Legal. While none is and a Response Window is open, a Pass
+/// and the window's Declared Actions are; with no window open only Declared Actions are.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
     /// `player` takes the declared action `action`, with one argument for each of its params, in
@@ -38,13 +40,17 @@ pub enum Action {
     },
     /// `player` answers the pending decision.
     Answer { player: PlayerId, answer: Answer },
+    /// `player`, who has Priority, passes: the top item of the Stack resolves, or Fizzles.
+    Pass { player: PlayerId },
 }
 
 impl Action {
     /// The Player who takes the Action.
     pub fn player(&self) -> PlayerId {
         match self {
-            Self::Declared { player, .. } | Self::Answer { player, .. } => *player,
+            Self::Declared { player, .. } | Self::Answer { player, .. } | Self::Pass { player } => {
+                *player
+            }
         }
     }
 }
@@ -82,6 +88,14 @@ pub enum Rejection {
     CardNotCandidate { card: CardInstanceId },
     /// The ruleset declares no action with this id.
     UnknownAction { action: ActionId },
+    /// A Pass while a decision is pending: only an Answer is accepted.
+    PassWhileDecisionPending,
+    /// A Pass, but no Response Window is open: the Stack is empty (ADR-0037).
+    PassWithoutWindow,
+    /// A Declared Action while a Response Window is open, but the window does not list it.
+    ActionNotInWindow { action: ActionId },
+    /// A `tap: { card }` cost on a card that is tapped already.
+    CardAlreadyTapped { card: CardInstanceId },
     /// The action is declared, but the current phase does not list it: there is no current phase,
     /// the ruleset does not know it, or it is not a phase with actions.
     ActionNotInCurrentPhase { action: ActionId },
@@ -187,6 +201,18 @@ impl fmt::Display for Rejection {
                 write!(f, "a decision is pending: only an Answer is accepted")
             }
             Self::NoDecisionPending => write!(f, "no decision is pending to answer"),
+            Self::PassWhileDecisionPending => {
+                write!(f, "a decision is pending: only an Answer is accepted")
+            }
+            Self::PassWithoutWindow => write!(f, "no Response Window is open to pass in"),
+            Self::ActionNotInWindow { action } => write!(
+                f,
+                "the open Response Window does not list the action `{}`",
+                action.as_str()
+            ),
+            Self::CardAlreadyTapped { card } => {
+                write!(f, "the card instance {} is tapped already", card.0)
+            }
             Self::OptionOutOfRange { index, options } => {
                 write!(
                     f,
@@ -374,6 +400,12 @@ impl Ruleset for DeclarativeRuleset {
                 self.declare(state, *player, id, arguments)
             }
             Action::Answer { player, answer } => self.answer(state, *player, *answer),
+            Action::Pass { .. } => {
+                if state.pending_decision().is_some() {
+                    return Err(Rejection::PassWhileDecisionPending);
+                }
+                self.pass(state)
+            }
         }
     }
 }
@@ -391,10 +423,20 @@ impl DeclarativeRuleset {
         let Some(declared) = definition.action(id) else {
             return Err(Rejection::UnknownAction { action: id.clone() });
         };
-        let listed_in_current_phase =
-            current_action_phase(self, state).is_some_and(|actions| actions.contains(id));
-        if !listed_in_current_phase {
-            return Err(Rejection::ActionNotInCurrentPhase { action: id.clone() });
+        // While a window is open its `actions` are what can be taken; otherwise the phase's.
+        let window = self.open_window(state);
+        match window {
+            Some(window) if !window.actions().contains(id) => {
+                return Err(Rejection::ActionNotInWindow { action: id.clone() });
+            }
+            None => {
+                let listed =
+                    current_action_phase(self, state).is_some_and(|actions| actions.contains(id));
+                if !listed {
+                    return Err(Rejection::ActionNotInCurrentPhase { action: id.clone() });
+                }
+            }
+            Some(_) => {}
         }
 
         let bound = arguments::bind(self, state, declared, player, arguments)?;
@@ -403,8 +445,72 @@ impl DeclarativeRuleset {
         for cost in declared.costs() {
             action_effects::pay(self, &mut execution, &bound, player, cost)?;
         }
-        for effect in declared.effects() {
-            action_effects::run(self, &mut execution, &bound, effect)?;
+        // An action taken in a window, or one that opens a window, is pushed: its cost is paid, and
+        // its effects wait on the Stack as an item (ADR-0037).
+        let pushed = window.is_some() || self.definition().window_opened_by(id).is_some();
+        if pushed {
+            // The zones are read once the cost was paid: a cost may have moved the card.
+            let mut cards = Vec::with_capacity(declared.params().len());
+            for param in declared.params() {
+                let card = bound.card(param.name())?;
+                let Some(zone) = execution.state.zone_of(card) else {
+                    return Err(Rejection::CardDataMismatch { card });
+                };
+                cards.push(BoundCard {
+                    param: param.name().clone(),
+                    card,
+                    zone: zone.clone(),
+                    left: false,
+                });
+            }
+            let item = StackItem {
+                controller: player,
+                source: StackSource::Action(id.clone()),
+                bound: cards,
+            };
+            execution
+                .apply(Event::ItemPushed { item })
+                .map_err(Rejection::EventRejected)?;
+        } else {
+            for effect in declared.effects() {
+                action_effects::run(self, &mut execution, &bound, effect)?;
+            }
+        }
+        let paused = triggers::resolve(self, &mut execution)?;
+        self.finish(execution, paused)
+    }
+
+    /// The Response Window that is open: the one whose `opened_by` holds the source of the bottom
+    /// item of the Stack. `None` when the Stack is empty. Derived, never stored (ADR-0037).
+    pub(super) fn open_window(&self, state: &GameState) -> Option<&Window> {
+        let StackSource::Action(opener) = &state.stack().first()?.source;
+        self.definition().window_opened_by(opener)
+    }
+
+    /// A Pass: the top item of the Stack resolves, or Fizzles when a card it bound has left. A
+    /// resolving item is popped first, so its effects never mark it; then the effects run, then the
+    /// triggers they wake resolve.
+    fn pass(&self, state: &GameState) -> Result<Transition<GameState, Event>, Rejection> {
+        let Some(item) = state.stack().last() else {
+            return Err(Rejection::PassWithoutWindow);
+        };
+        let mut execution = Execution::new(state.clone());
+        if item.fizzles() {
+            execution
+                .apply(Event::ItemFizzled { item: item.clone() })
+                .map_err(Rejection::EventRejected)?;
+        } else {
+            execution
+                .apply(Event::ItemResolved { item: item.clone() })
+                .map_err(Rejection::EventRejected)?;
+            let StackSource::Action(id) = &item.source;
+            let Some(declared) = self.definition().action(id) else {
+                return Err(Rejection::UnknownAction { action: id.clone() });
+            };
+            let bound = arguments::BoundCards::of_item(&item.bound);
+            for effect in declared.effects() {
+                action_effects::run(self, &mut execution, &bound, effect)?;
+            }
         }
         let paused = triggers::resolve(self, &mut execution)?;
         self.finish(execution, paused)

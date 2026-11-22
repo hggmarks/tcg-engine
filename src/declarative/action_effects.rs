@@ -28,7 +28,57 @@ pub(super) fn pay(
 ) -> Result<(), Rejection> {
     match cost {
         Cost::Tap { zone, count } => tap(ruleset, execution, bound, player, zone, count),
+        Cost::TapCard { card } => tap_card(execution, bound, card.param()),
+        Cost::Move { card, to } => move_card(execution, bound, card.param(), to),
     }
+}
+
+/// Taps the card bound to `param`, which must be untapped.
+fn tap_card(
+    execution: &mut Execution,
+    bound: &BoundCards,
+    param: &ParamName,
+) -> Result<(), Rejection> {
+    let card = bound.card(param)?;
+    let tapped = StateName::new("tapped");
+    match execution
+        .state
+        .card(card)
+        .and_then(|instance| instance.state_value(&tapped))
+    {
+        Some(FieldValue::Bool(false)) => {}
+        Some(FieldValue::Bool(true)) => return Err(Rejection::CardAlreadyTapped { card }),
+        _ => return Err(Rejection::CardDataMismatch { card }),
+    }
+    execution
+        .apply(Event::CardStateChanged {
+            card,
+            state: tapped,
+            value: FieldValue::Bool(true),
+        })
+        .map_err(Rejection::EventRejected)
+}
+
+/// Moves the card bound to `param` from the zone it is in onto the Top of `to`, a zone of its
+/// owner.
+fn move_card(
+    execution: &mut Execution,
+    bound: &BoundCards,
+    param: &ParamName,
+    to: &ZoneId,
+) -> Result<(), Rejection> {
+    let card = bound.card(param)?;
+    let (Some(from), Some(instance)) = (execution.state.zone_of(card), execution.state.card(card))
+    else {
+        return Err(Rejection::CardDataMismatch { card });
+    };
+    let event = Event::CardMoved {
+        card,
+        player: instance.owner(),
+        from: from.clone(),
+        to: to.clone(),
+    };
+    execution.apply(event).map_err(Rejection::EventRejected)
 }
 
 /// Taps the first `count` untapped cards of the acting Player's `zone`, in list order. A card is
@@ -307,22 +357,8 @@ fn run_at(
     match effect {
         Effect::EndTurn => turn_cycle::end_turn(ruleset.definition(), execution).map(done),
         Effect::Move { card, to } => {
-            let card = bound.card(card.param())?;
-            let (Some(from), Some(instance)) =
-                (execution.state.zone_of(card), execution.state.card(card))
-            else {
-                return Err(Rejection::CardDataMismatch { card });
-            };
-            let event = Event::CardMoved {
-                card,
-                player: instance.owner(),
-                from: from.clone(),
-                to: to.clone(),
-            };
-            execution
-                .apply(event)
-                .map(done)
-                .map_err(Rejection::EventRejected)
+            move_card(execution, bound, card.param(), to)?;
+            Ok(Flow::Done)
         }
         Effect::SetState { card, state, value } => {
             let card = bound.card(card.param())?;

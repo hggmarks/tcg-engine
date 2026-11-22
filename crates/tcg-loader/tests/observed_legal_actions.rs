@@ -110,6 +110,7 @@ fn declared(action: &Action) -> (&ActionId, &[Argument]) {
             action, arguments, ..
         } => (action, arguments),
         Action::Answer { .. } => panic!("an Answer is listed, but no decision is pending"),
+        Action::Pass { .. } => panic!("a Pass is listed, but no window is open"),
     }
 }
 
@@ -120,6 +121,7 @@ fn observed_declared(action: &ObservedAction) -> (&ActionId, &[ObservedArgument]
             action, arguments, ..
         } => (action, arguments),
         ObservedAction::Answer { .. } => panic!("an Observed Answer is listed"),
+        ObservedAction::Pass { .. } => panic!("an Observed Pass is listed"),
     }
 }
 

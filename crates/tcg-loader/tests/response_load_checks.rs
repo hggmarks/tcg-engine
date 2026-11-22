@@ -537,7 +537,7 @@ fn a_window_has_an_id_opened_by_and_actions_and_nothing_else() {
             key: "extra".to_string()
         }
     );
-    assert_eq!(error.path, path().key("windows").index(0));
+    assert_eq!(error.path, path().key("windows").index(0).key("extra"));
 
     let yaml = edit(RESPONSE_RULESET, "    actions: [fast_play]\n", "");
     let error = yaml_error(&yaml);

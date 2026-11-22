@@ -122,7 +122,10 @@ impl Observer {
             | Event::DrawFromEmptyZone { .. }
             | Event::GameEnded { .. }
             | Event::DecisionPending { .. }
-            | Event::DecisionAnswered { .. } => Ok(Sight::NoCard),
+            | Event::DecisionAnswered { .. }
+            | Event::ItemPushed { .. }
+            | Event::ItemResolved { .. }
+            | Event::ItemFizzled { .. } => Ok(Sight::NoCard),
         }
     }
 
@@ -237,6 +240,7 @@ mod tests {
             inputs: Vec::new(),
             setup: Vec::new(),
             actions: Vec::new(),
+            windows: Vec::new(),
             turn: None,
             win_conditions: Vec::new(),
             effects: None,

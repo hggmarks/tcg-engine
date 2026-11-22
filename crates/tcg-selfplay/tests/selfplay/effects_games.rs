@@ -26,8 +26,8 @@ use tcg_selfplay::{
 
 use crate::common::{
     declared, digest_line, effects, effects_deck, effects_decks, effects_with_ruleset, fnv1a,
-    pin_difference, steps, DECK_A, DECK_B, EFFECTS_DECK_A, EFFECTS_DECK_B, FNV_START, MAX_STEPS,
-    SMALL_CATALOG, SMALL_RULESET,
+    pin_difference, steps, DECK_A, DECK_B, EFFECTS_CATALOG, EFFECTS_DECK_A, EFFECTS_DECK_B,
+    EFFECTS_RULESET, FNV_START, MAX_STEPS, SMALL_CATALOG, SMALL_RULESET,
 };
 
 /// The Seeds of the Effects self-play pin: `0..PINNED_SEEDS`.
@@ -98,7 +98,7 @@ const EFFECTS_RULESET_FREEZE: [(&str, &str, u64); 13] = [
     (
         "rulesets/effects-ruleset/effects-ruleset.md",
         include_str!("../../../../rulesets/effects-ruleset/effects-ruleset.md"),
-        0xd293_23a0_4799_2ea9,
+        0xf864_0b31_328c_761c,
     ),
     (
         "rulesets/effects-ruleset/effects-catalog.yaml",
