@@ -32,7 +32,7 @@ Self-play and a Golden Game now exercise Response Windows, the Stack and activat
 | Effects | 116 (5,779) | 99 (4,936) | 12 (623) |
 | Response | 103 (7,814) | 83 (6,324) | 8 (631) |
 
-Not optimised. The Small and Effects cells are the same code on the same Games as ADR-0035's table (190, 150, 18 and 110, 97, 12): the difference is the machine and noise. The Response Games are longer (75,929 Actions over 1,000 Games, against 49,880 for Effects: every attack opens a window and costs a Pass, and a response costs more), so Games per second fall while Actions per second with checks off are the highest of the three (7,814); with every check on, a Game costs about 120 ms per Game-second of checks, the observation checks scaling with the number of Actions as ADR-0031 found.
+Not optimised. The Small and Effects cells are the same code on the same Games as ADR-0035's table (190, 150, 18 and 110, 97, 12): the difference is the machine and noise. The Response Games are longer (75,929 Actions over 1,000 Games, against 49,880 for Effects: every attack opens a window and costs a Pass, and a response costs more), so Games per second fall while Actions per second with checks off are the highest of the three (7,814); with every check on they take 120 s per 1,000 Games (80 s for Effects), the observation checks scaling with the number of Actions (and their square, ADR-0031).
 
 **The test profile.** Measured the same way on both, warm (everything compiled, then `cargo test --workspace` timed): TEST_TIME
 
