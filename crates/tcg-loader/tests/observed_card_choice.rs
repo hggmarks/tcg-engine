@@ -712,6 +712,64 @@ fn follow_events_gives_the_same_observed_events_however_a_trace_is_sliced() {
     }));
 }
 
+#[test]
+fn a_card_chosen_in_a_hidden_hand_and_played_later_stays_hidden_in_every_slice() {
+    // `hand_picker` picks a goblin that stays in Player 0's hand, which Player 1 cannot see; in a
+    // later transition Player 0 plays it, and Player 1 sees it arrive in the public field.
+    let mut game = Game::new();
+    let picker = game.card(0, "hand_picker", 0);
+    let goblin = game.card(0, "goblin_scout", 0);
+    game.put(picker, "hand");
+    game.put(goblin, "hand");
+    let before = game.state.clone();
+    let first = game
+        .ruleset
+        .transition(&before, &play(0, picker))
+        .expect("the play is accepted");
+    let second = game
+        .ruleset
+        .transition(&first.state, &answer_card(0, goblin))
+        .expect("the Answer is accepted");
+    let third = game
+        .ruleset
+        .transition(&second.state, &play(0, goblin))
+        .expect("the later play is accepted");
+    let whole: Vec<Event> = [&first, &second, &third]
+        .iter()
+        .flat_map(|transition| transition.trace.events().iter().cloned())
+        .collect();
+
+    let hidden = ObservedEvent::DecisionAnswered {
+        player: p(0),
+        answer: ObservedAnswer::Card(TakenArgument::HiddenCard),
+    };
+    // Player 1 never sees the card at the Answer, however the Events are sliced.
+    let mut together = game.observers[1].clone();
+    let all = game
+        .ruleset
+        .follow_events(&mut together, &before, &whole)
+        .expect("the slice is followed");
+    let mut apart = game.observers[1].clone();
+    let mut pieces = Vec::new();
+    for (previous, transition) in [
+        (&before, &first),
+        (&first.state, &second),
+        (&second.state, &third),
+    ] {
+        pieces.extend(
+            game.ruleset
+                .follow_events(&mut apart, previous, transition.trace.events())
+                .expect("the trace is followed"),
+        );
+    }
+    assert_eq!(all, pieces);
+    assert_eq!(together, apart);
+    assert!(all.contains(&hidden), "{all:?}");
+    // The card does come into Player 1's sight in the third transition.
+    assert!(game.observers[1].observed_card(goblin).is_none());
+    assert!(together.observed_card(goblin).is_some());
+}
+
 // ---- the fold of Observed Events
 
 #[test]

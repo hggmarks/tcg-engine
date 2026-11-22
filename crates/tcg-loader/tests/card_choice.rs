@@ -1119,6 +1119,29 @@ fn applying_card_decision_events_stores_and_clears_the_pending_decision() {
     assert_eq!(after.deciding_player(), p(0));
 }
 
+#[test]
+fn a_pending_kind_that_is_not_the_kind_of_its_choice_is_a_data_mismatch() {
+    let ruleset = ruleset();
+    let (state, snare) = with_in_hand(&start(&ruleset), 0, "snare_vine");
+    let (state, theirs) = with_opponent_creatures(&state, &[("moss_sprite", 0)]);
+    let (paused_state, _) = accepted(&ruleset, &state, &play(0, snare));
+    let at_a_card_choice = pending_paused(&paused_state);
+
+    // A crafted `DecisionPending` that says `Option` for a Card Choice: the Answers of either kind
+    // are an inconsistency, not a `WrongAnswerKind`.
+    let mut crafted = state.clone();
+    crafted
+        .apply(&pending_event(0, DecisionKind::Option, at_a_card_choice))
+        .expect("the crafted decision is applied");
+    for action in [answer_option(0, 0), answer_card(0, theirs[0])] {
+        assert_eq!(
+            ruleset.transition(&crafted, &action).map(|_| ()),
+            Err(Rejection::CardDataMismatch { card: snare }),
+            "{action:?}"
+        );
+    }
+}
+
 // ---- replay and determinism
 
 /// The Actions of a Game from `seed` in which Player 1 plays a creature with no Card Effect, and

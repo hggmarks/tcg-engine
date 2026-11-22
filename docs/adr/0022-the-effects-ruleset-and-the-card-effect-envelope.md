@@ -19,6 +19,8 @@
 
 **Amended by ADR-0032:** the `self` narrowing (marked above).
 
+**Amended by ADR-0034:** `self` is no longer the only name in scope of the effects of a `do`: the Bound Names of Card Choices join it after their Choice (marked above).
+
 **Amended by ADR-0023, ADR-0024, ADR-0025 and ADR-0026:** both unsupported rejections are lifted, so `UnsupportedTriggeredCardEffect` and `UnsupportedContinuousCardEffect` are both deleted (unreachable) and `CardDefinition::effects()` holds Card Effects of either shape: triggered ones are resolved from Events (ADR-0023) and continuous ones read as Field Modifiers (ADR-0024), over the carrying card or, with an optional `scope`, over the cards of a Modifier Scope (ADR-0025). Every other check of the envelope stands. The derivation described above now has a third difference, `effects.active_zone: field`, and the Effects catalog carries effect-bearing creatures (the Small decks still list none, so the golden games stay equal; *amended by ADR-0026: the Effects sample decks now list them, so the Effects Golden Game is its own*).
 
 **Status**: accepted

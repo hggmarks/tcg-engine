@@ -194,9 +194,13 @@ impl fmt::Display for Rejection {
                 )
             }
             Self::WrongAnswerKind { kind } => {
+                let asked = match kind {
+                    DecisionKind::Option => "an option",
+                    DecisionKind::Card => "a card",
+                };
                 write!(
                     f,
-                    "the pending decision asks for {kind:?}, not this kind of Answer"
+                    "the pending decision asks for {asked}, not this kind of Answer"
                 )
             }
             Self::CardNotCandidate { card } => {
@@ -418,7 +422,19 @@ impl DeclarativeRuleset {
             return Err(Rejection::NoDecisionPending);
         };
         let paused = pending.paused();
-        match (triggers::asked(self, state, paused)?, answer) {
+        let asked = triggers::asked(self, state, paused)?;
+        // The kind the GameState holds must be the one of the Choice at the path.
+        let consistent = matches!(
+            (&asked, pending.kind()),
+            (triggers::Asked::Options(_), DecisionKind::Option)
+                | (triggers::Asked::Candidates(_), DecisionKind::Card)
+        );
+        if !consistent {
+            return Err(Rejection::CardDataMismatch {
+                card: paused.trigger.card,
+            });
+        }
+        match (asked, answer) {
             (triggers::Asked::Options(options), Answer::Option(index)) => {
                 if index >= options {
                     return Err(Rejection::OptionOutOfRange { index, options });
