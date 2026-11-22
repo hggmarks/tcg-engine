@@ -1,6 +1,6 @@
 # The correctness net over the Effects Ruleset
 
-Amended by ADR-0039: the Response Ruleset has the same net over its Games: a third Self-Play Pin, coverage counts in the same 1,000-Seed pass and a Golden Game of its own. The Effects pin and Golden Games stay frozen.
+Amended by ADR-0039: the Response Ruleset has the same net over its Games: a third Self-Play Pin, coverage counts in the same 1,000-Seed pass *(Amended by ADR-0040: summed over four Seed Ranges by a joining test)* and a Golden Game of its own. The Effects pin and Golden Games stay frozen.
 
 Amended by ADR-0040: the Response Ruleset's 1,000 Seeds are played in four Seed Ranges, one test each, and its counts and pin are joined by a last test; the Effects test is unchanged.
 

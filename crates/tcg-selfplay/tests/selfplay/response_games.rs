@@ -280,6 +280,13 @@ fn assert_seed_range_holds(part: usize) {
     );
 }
 
+/// The part tests below are written by hand for four Seed Ranges: changing `PARTS` means renaming
+/// them (ADR-0040).
+const _: () = assert!(
+    PARTS == 4,
+    "the part tests are written for four Seed Ranges: add or remove part tests and rename them"
+);
+
 #[test]
 fn response_self_play_ends_every_game_over_seeds_0_to_250_with_every_invariant_holding() {
     assert_seed_range_holds(0);
@@ -322,9 +329,10 @@ fn the_response_seed_ranges_cover_seeds_0_to_1000_once() {
 }
 
 /// The last step: the five coverage counts summed over every Seed Range, and the Response
-/// Self-Play Pin compared whole over the digest lines of all 1,000 Seeds in Seed order. It plays
-/// no Game itself: it reads the Seed Ranges the part tests play (each is played once per process,
-/// by whichever test reaches it first).
+/// Self-Play Pin compared whole over the digest lines of all 1,000 Seeds in Seed order. It reads
+/// the Seed Ranges through the same cache as the part tests: it plays any range that no other test
+/// has started (usually range 0, and all of them under a name filter), and each range is played
+/// only once per process, by whichever test reaches it first.
 #[test]
 fn response_self_play_covers_every_response_use_and_matches_the_pin_over_1000_seeds() {
     let plays: Vec<&SeedRangePlay> = (0..PARTS).map(seed_range).collect();
@@ -368,6 +376,21 @@ fn response_self_play_covers_every_response_use_and_matches_the_pin_over_1000_se
     assert!(
         used.unanswered_windows >= 1,
         "coverage count unanswered_windows is 0 over Seeds 0..1000: {used:?}"
+    );
+
+    // The summed counts are exactly the ones ADR-0039 measured, so a broken sum over the Seed
+    // Ranges fails here and not only a count of 0. If the decks or the policy change on purpose,
+    // update the values with the pin.
+    assert_eq!(
+        used,
+        ResponseUse {
+            responses_pushed: 1684,
+            responses_to_responses: 305,
+            fizzles: 143,
+            abilities_used: 952,
+            unanswered_windows: 18835,
+        },
+        "the coverage counts over Seeds 0..1000 are not the ones of ADR-0039's table"
     );
 
     // The same Games, played once: their Game Records and Event Traces are the pinned ones.
