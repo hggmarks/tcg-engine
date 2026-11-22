@@ -228,8 +228,10 @@ fn the_response_fizzle_golden_game_holds_a_fizzle_and_a_response_to_a_response()
         fizzled_attacks[0]
             .bound
             .iter()
-            .any(|bound| bound.card == FIZZLE_HARE_1 && bound.param.as_str() == "target"),
-        "the attack that Fizzles targeted the hare: {:?}",
+            .any(|bound| bound.card == FIZZLE_HARE_1
+                && bound.param.as_str() == "target"
+                && bound.left),
+        "the attack that Fizzles targeted the hare, which had left: {:?}",
         fizzled_attacks[0]
     );
 
@@ -261,7 +263,25 @@ fn the_response_fizzle_golden_game_holds_a_fizzle_and_a_response_to_a_response()
         script: response_fizzle_script()[..=fox_push].to_vec(),
     };
     let at_depth_3 = play_game(&ruleset, &decks, &up_to_the_fox);
-    assert_eq!(at_depth_3.final_state.stack().len(), 3);
+    let stack = at_depth_3.final_state.stack();
+    assert_eq!(stack.len(), 3);
+    // Bottom to top: seat 0's attack, seat 1's hare ability, seat 0's `fast_play` of the fox.
+    assert!(is_attack(&stack[0]) && stack[0].controller == PlayerId(0));
+    assert!(
+        matches!(
+            stack[1].source,
+            StackSource::Ability { card, ability } if card == FIZZLE_HARE_1 && ability == HARE_ABILITY
+        ) && stack[1].controller == PlayerId(1)
+    );
+    assert_eq!(
+        stack[2].source,
+        StackSource::Action(ActionId::new("fast_play"))
+    );
+    assert_eq!(stack[2].controller, PlayerId(0));
+    assert!(stack[2]
+        .bound
+        .iter()
+        .any(|bound| bound.card == FIZZLE_FOX_0));
 
     // An ability was used and a fast creature was pushed as a response.
     assert!(

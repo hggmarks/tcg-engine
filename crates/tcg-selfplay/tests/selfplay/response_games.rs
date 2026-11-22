@@ -5,14 +5,15 @@
 //!
 //! Everything runs on the real Response Ruleset, catalog and sample decks.
 
+use tcg_engine::card_catalog::CardId;
 use tcg_engine::declarative::{Action, Event, StackItem, StackSource};
 use tcg_engine::random::Seed;
-use tcg_engine::ruleset_definition::ActionId;
+use tcg_engine::ruleset_definition::{ActionId, DeckInputId};
 use tcg_selfplay::{self_play, verify_record, Checks, SelfPlayGame, TriggerCapRejections};
 
 use crate::common::{
     decks, digest_line, effects, effects_decks, pin_difference, response, response_decks, small,
-    MAX_STEPS, RESPONSE_DECK_A, RESPONSE_DECK_B,
+    MAX_STEPS,
 };
 
 /// The Seeds of the Response Self-Play Pin: `0..PINNED_SEEDS`.
@@ -111,6 +112,8 @@ fn response_use(game: &SelfPlayGame) -> ResponseUse {
                         .checked_sub(1)
                         .expect("a fizzled item was on the Stack");
                 }
+                // A Terminal Outcome clears the Stack (ADR-0037).
+                Event::GameEnded { .. } => depth = 0,
                 _ => {}
             }
         }
@@ -148,9 +151,21 @@ fn response_use(game: &SelfPlayGame) -> ResponseUse {
 
 #[test]
 fn the_response_sample_decks_hold_the_fast_cards_and_the_ability_card() {
-    for deck in [RESPONSE_DECK_A, RESPONSE_DECK_B] {
+    let ruleset = response();
+    let main_deck = DeckInputId::new("main_deck");
+    for (seat, deck) in response_decks(&ruleset).iter().enumerate() {
+        let entries = deck
+            .input(&main_deck)
+            .expect("a Response deck has a main deck")
+            .entries();
         for card in ["swift_sparrow", "flash_fox", "skittish_hare"] {
-            assert!(deck.contains(card), "a Response sample deck lacks {card}");
+            let card = CardId::new(card);
+            assert!(
+                entries
+                    .iter()
+                    .any(|entry| *entry.card() == card && entry.count().get() >= 1),
+                "the main deck of seat {seat} lacks {card:?}"
+            );
         }
     }
 }
