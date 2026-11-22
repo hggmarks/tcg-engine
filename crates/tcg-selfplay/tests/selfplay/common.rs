@@ -191,8 +191,8 @@ pub fn digest_line(seed: u64, game: &SelfPlayGame) -> String {
 
 /// The line of an Action in the pin (ADR-0033). A Declared Action keeps the `Debug` line of the struct
 /// it was before `Action` became an enum, `Action { player: .., action: .., arguments: [..] }`, so the
-/// committed pins stay byte for byte what they were; an Answer, which no committed Game holds, is
-/// its own `Debug`.
+/// committed pins stay byte for byte what they were; an Answer, a Pass and an Activate, which the
+/// Response pin holds (ADR-0039), are their own `Debug`.
 fn action_line(action: &Action) -> String {
     match action {
         Action::Declared {

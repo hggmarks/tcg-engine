@@ -30,7 +30,7 @@ An option is empty when `options[i].is_empty()` in the catalog, read through the
 
 **One existing test changed.** `invariant_observations_stay_consistent_detects_a_violation` picked the first transition with at least 3 Observed Events, which with the new decks is a paused step, and while a decision is pending only its Answer applies (ADR-0033), so its part (b) could not add a card. It now picks the first such transition that does not end paused; its assertions are the same.
 
-**Throughput, measured.** Release, `cargo run --release -p tcg-selfplay --example self_play`, 1,000 Games per cell, Games per second (Actions per second), in ADR-0031's layout:
+**Throughput, measured.** Release, `cargo run --release -p tcg-selfplay --example self_play`, 1,000 Games per cell, Games per second (Actions per second), in ADR-0031's layout *(Amended by ADR-0039: its table has a Response row, and the Small and Effects cells were measured again on the same Games)*:
 
 | Ruleset | Off | EngineOnly | On |
 |---|---|---|---|
