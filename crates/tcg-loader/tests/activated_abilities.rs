@@ -1,8 +1,9 @@
 //! Acceptance tests for ticket #86: activated abilities (ADR-0038), on the real Response Ruleset,
 //! its real catalog (`skittish_hare`) and its real sample decks, with test-only cards appended to
 //! the catalog and test-only actions in the window where the real ones cannot produce a behaviour:
-//! a card that dodges for free, a card with several effects of several kinds, a cost that cannot
-//! be paid, a cost that moves its card, a response that removes the ability's card.
+//! a card whose ability costs nothing, a card with several effects of several kinds (one of them
+//! taps the card itself), a cost that cannot be paid, a cost that moves its card, a response that
+//! removes the ability's card.
 //!
 //! An activated ability is a Card Effect `activated: { cost, do }`. Its controller uses it as a
 //! response: only while its card is in the Active Zone, only in a Response Window whose
@@ -17,9 +18,10 @@
 //! so it wakes no trigger): the hands are cleared, seat 0 has an attacker on the field and seat 1
 //! a tapped target, and each test puts the cards it needs in place.
 //!
-//! The real `skittish_hare` taps itself as its cost and so cannot be the target of an attack (a
-//! target is tapped) nor the attacker of the opponent: a test where the attack beneath an ability
-//! must Fizzle uses the test-only `dodger`, whose ability costs nothing.
+//! The real `skittish_hare` pays 1 mana (`tap: { zone: mana_zone, count: { ref: self.cost } }`)
+//! rather than tapping itself: the target of an attack is tapped, so a hare that taps itself as its
+//! cost could never dodge the attack that targets it. `CardAlreadyTapped` is covered by the
+//! test-only `juggler`, whose second ability taps the card.
 
 use tcg_engine::card_catalog::{CardEffect, CardId, CatalogError, CatalogErrorKind};
 use tcg_engine::deck_list::DeckList;
@@ -34,8 +36,8 @@ use tcg_engine::player::PlayerId;
 use tcg_engine::random::Seed;
 use tcg_engine::ruleset::{LegalActions, Observations, Ruleset, Transition};
 use tcg_engine::ruleset_definition::{
-    ActionId, Cost, DefinitionError, DefinitionErrorKind, Effect, FieldValue, ParamName,
-    RulesetDefinition, StateName, WindowId, ZoneId,
+    ActionId, CardValue, Cost, DefinitionError, DefinitionErrorKind, Effect, FieldName, FieldValue,
+    ParamName, RulesetDefinition, StateName, WindowId, ZoneId,
 };
 use tcg_loader::{
     load_card_catalog, load_deck_list, load_ruleset_definition, CatalogLoadError, LoadError,
@@ -63,7 +65,7 @@ const SCRIPT_CAP: usize = 400;
 
 /// Test-only creatures, none of them fast.
 ///
-/// - `dodger`: its ability is free and moves the card to the hand.
+/// - `dodger`: its ability costs nothing and moves the card to the hand.
 /// - `juggler`: three effects, a triggered one (index 0) and two activated ones (indexes 1 and 2:
 ///   a free one and one that taps the card), each of them draws.
 /// - `phoenix`: its ability costs moving the card to the trash, where a trigger draws, and its
@@ -490,13 +492,20 @@ fn an_activated_ability_is_a_legal_action_of_the_player_with_priority_in_an_atta
     let sparrow = scene.place("swift_sparrow", 1, "hand");
     let hare = scene.hare(1, "field");
     let juggler = scene.place("juggler", 1, "field");
-    // Not listed: a second hare that is tapped (its cost cannot be paid), a phoenix in the hand
-    // (not in the Active Zone), and the hare of the Player who has no Priority.
+    // Not listed: a `pricey` (its cost of 3 mana cannot be paid with two), a phoenix in the hand
+    // (not in the Active Zone), and the hare of the Player who has no Priority. A hare that is
+    // tapped is listed: its cost is mana, not its own tap.
     let tapped_hare = scene.hare(1, "field");
     scene.apply(tapped(tapped_hare));
+    let _pricey = scene.place("pricey", 1, "field");
     let _phoenix_in_hand = scene.place("phoenix", 1, "hand");
     let _other_players_hare = scene.hare(0, "field");
     let (a, t) = (scene.attacker, scene.target);
+    // The same position with seat 1's mana all tapped: no cost of mana can be paid.
+    let mut dry = scene.state.clone();
+    for mana in in_zone(&dry, 1, "mana_zone") {
+        apply_all(&mut dry, &[tapped(mana)]);
+    }
 
     // Outside a window, in the Action phase, no ability is listed.
     assert!(ruleset
@@ -508,9 +517,9 @@ fn an_activated_ability_is_a_legal_action_of_the_player_with_priority_in_an_atta
 
     // `Pass`, then the window's Actions, then the abilities in ascending Card Instance Id, then
     // ability index. The juggler's effects are [triggered, activated, activated]: its abilities
-    // are the indexes 1 and 2, the index counts every kind of effect. The tapped hare, the phoenix in
-    // the hand and the other Player's hare are absent.
-    let mut abilities = [(hare, 0), (juggler, 1), (juggler, 2)];
+    // are the indexes 1 and 2, the index counts every kind of effect. The pricey, the phoenix in the
+    // hand and the other Player's hare are absent.
+    let mut abilities = [(hare, 0), (tapped_hare, 0), (juggler, 1), (juggler, 2)];
     abilities.sort();
     let mut expected = vec![pass(1), fast_play(1, sparrow)];
     expected.extend(
@@ -519,6 +528,18 @@ fn an_activated_ability_is_a_legal_action_of_the_player_with_priority_in_an_atta
             .map(|&(card, ability)| activate(1, card, ability)),
     );
     assert_eq!(ruleset.legal_actions(&state), expected);
+
+    // With no untapped mana the hares are not listed, nor is the `fast_play`; the juggler's
+    // abilities, which cost nothing or tap the card, still are.
+    let (dry, _) = accept_all(&ruleset, &dry, &[attack(a, t)]);
+    let mut kept = [(juggler, 1), (juggler, 2)];
+    kept.sort();
+    let mut expected = vec![pass(1)];
+    expected.extend(
+        kept.iter()
+            .map(|&(card, ability)| activate(1, card, ability)),
+    );
+    assert_eq!(ruleset.legal_actions(&dry), expected);
 
     // The Active Player has no Legal Action while the window is open.
     assert!(ruleset
@@ -534,20 +555,27 @@ fn activating_pays_the_cost_and_pushes_an_ability_item() {
     let hare = scene.hare(1, "field");
     let (a, t) = (scene.attacker, scene.target);
     let (state, _) = accept_all(&ruleset, &scene.state, &[attack(a, t)]);
+    // The hare costs 1: the first of seat 1's untapped mana, in the order it entered the zone.
+    let mana = in_zone(&state, 1, "mana_zone")[0];
 
     let transition = accepted(&ruleset, &state, &activate(1, hare, 0));
 
-    // The cost's tap, then `ItemPushed` last, naming the card and the ability.
+    // The cost's tap of one mana, then `ItemPushed` last, naming the card and the ability, with
+    // `self` bound in the field. The hare itself is not tapped.
     let item = ability_item(1, hare, 0, "field", false);
     assert_eq!(
         transition.trace.events(),
-        [tapped(hare), pushed(item.clone())]
+        [tapped(mana), pushed(item.clone())]
     );
     let next = &transition.state;
     assert_eq!(next.stack(), [attack_item(a, t, false, false), item]);
     assert_eq!(
-        state_value(next, hare, "tapped"),
+        state_value(next, mana, "tapped"),
         Some(FieldValue::Bool(true))
+    );
+    assert_eq!(
+        state_value(next, hare, "tapped"),
+        Some(FieldValue::Bool(false))
     );
     // Priority flips to the attacker, who is the Deciding Player and may pass.
     assert_eq!(next.priority(), Some(p(0)));
@@ -594,18 +622,26 @@ fn a_cost_that_wakes_a_trigger_resolves_it_after_the_push() {
 
 #[test]
 fn passing_resolves_the_ability_do() {
+    // The target of the attack is a hare: tapped, as every target is. Its ability costs mana, so
+    // it can still be used, and its `do` moves the targeted card away.
     let ruleset = response();
-    let mut scene = arrange_real(&ruleset);
-    let hare = scene.hare(1, "field");
-    let (a, t) = (scene.attacker, scene.target);
+    let scene = arrange(&ruleset, &response_decks(&ruleset), "skittish_hare");
+    let (a, hare) = (scene.attacker, scene.target);
     let (state, _) = accept_all(
         &ruleset,
         &scene.state,
-        &[attack(a, t), activate(1, hare, 0)],
+        &[attack(a, hare), activate(1, hare, 0)],
+    );
+    assert_eq!(
+        state.stack(),
+        [
+            attack_item(a, hare, false, false),
+            ability_item(1, hare, 0, "field", false)
+        ]
     );
 
-    // Seat 0 passes: `ItemResolved` first, then the `do`, which moves the hare to the hand. The tap
-    // paid by the cost stands.
+    // Seat 0 passes: `ItemResolved` first, then the `do`, which moves the hare to the hand. The
+    // attack item below records that its target left.
     let transition = accepted(&ruleset, &state, &pass(0));
     assert_eq!(
         transition.trace.events(),
@@ -615,72 +651,41 @@ fn passing_resolves_the_ability_do() {
         ]
     );
     let next = transition.state;
-    assert_eq!(next.stack(), [attack_item(a, t, false, false)]);
+    assert_eq!(next.stack(), [attack_item(a, hare, false, true)]);
     assert!(in_zone(&next, 1, "hand").contains(&hare));
-    assert!(!in_zone(&next, 1, "field").contains(&hare));
-    assert_eq!(
-        state_value(&next, hare, "tapped"),
-        Some(FieldValue::Bool(true))
-    );
+    assert!(in_zone(&next, 1, "field").is_empty());
     // Priority is seat 1's again: the attack, controlled by seat 0, is on top.
     assert_eq!(next.priority(), Some(p(1)));
 
-    // The hare was not part of the attack: the attack resolves as it would have.
-    let resolving = accepted(&ruleset, &next, &pass(1));
+    // Seat 1 passes: the attack Fizzles. Nothing of the combat happens, and the attacker's tap, a
+    // cost, stands.
+    let fizzling = accepted(&ruleset, &next, &pass(1));
     assert_eq!(
-        resolving.trace.events(),
-        [
-            resolved(attack_item(a, t, false, false)),
-            moved(t, 1, "field", "trash")
-        ]
+        fizzling.trace.events(),
+        [fizzled(attack_item(a, hare, false, true))]
     );
+    let end = fizzling.state;
+    assert!(end.stack().is_empty());
+    assert!(in_zone(&end, 1, "hand").contains(&hare));
+    assert!(in_zone(&end, 1, "trash").is_empty());
+    assert_eq!(state_value(&end, a, "tapped"), Some(FieldValue::Bool(true)));
+    assert_eq!(end.deciding_player(), p(0));
 }
 
 #[test]
-fn a_resolved_ability_that_moves_the_attack_target_makes_the_attack_fizzle() {
-    // The target is a `dodger`, whose ability is free: the real hare taps as its cost, and a target
-    // is tapped already.
+fn an_ability_without_a_cost_pushes_with_item_pushed_alone() {
     let ruleset = response_with_test_cards();
     let scene = arrange(&ruleset, &test_card_decks(&ruleset), "dodger");
     let (a, dodger) = (scene.attacker, scene.target);
+    let (state, _) = accept_all(&ruleset, &scene.state, &[attack(a, dodger)]);
 
-    // An ability with no cost pushes with `ItemPushed` alone.
-    let (state, trace) = accept_all(
-        &ruleset,
-        &scene.state,
-        &[attack(a, dodger), activate(1, dodger, 0)],
-    );
-    assert_eq!(trace, [pushed(ability_item(1, dodger, 0, "field", false))]);
+    let transition = accepted(&ruleset, &state, &activate(1, dodger, 0));
 
-    // Seat 0 passes: the ability resolves and the dodger goes to the hand, which the attack item
-    // below records.
-    let resolving = accepted(&ruleset, &state, &pass(0));
     assert_eq!(
-        resolving.trace.events(),
-        [
-            resolved(ability_item(1, dodger, 0, "field", false)),
-            moved(dodger, 1, "field", "hand")
-        ]
+        transition.trace.events(),
+        [pushed(ability_item(1, dodger, 0, "field", false))]
     );
-    let state = resolving.state;
-    assert_eq!(state.stack(), [attack_item(a, dodger, false, true)]);
-
-    // Seat 1 passes: the attack Fizzles. Nothing of the combat happens, and the attacker's tap, a
-    // cost, stands.
-    let fizzling = accepted(&ruleset, &state, &pass(1));
-    assert_eq!(
-        fizzling.trace.events(),
-        [fizzled(attack_item(a, dodger, false, true))]
-    );
-    let next = fizzling.state;
-    assert!(next.stack().is_empty());
-    assert!(in_zone(&next, 1, "hand").contains(&dodger));
-    assert!(in_zone(&next, 1, "trash").is_empty());
-    assert_eq!(
-        state_value(&next, a, "tapped"),
-        Some(FieldValue::Bool(true))
-    );
-    assert_eq!(next.deciding_player(), p(0));
+    assert_eq!(transition.state.priority(), Some(p(0)));
 }
 
 #[test]
@@ -689,6 +694,7 @@ fn an_ability_fizzles_when_its_card_left_the_active_zone() {
     let mut scene = arrange_with_test_cards(&ruleset);
     let hare = scene.hare(1, "field");
     let (a, t) = (scene.attacker, scene.target);
+    let mana = in_zone(&scene.state, 1, "mana_zone")[0];
     let (state, _) = accept_all(
         &ruleset,
         &scene.state,
@@ -728,8 +734,8 @@ fn an_ability_fizzles_when_its_card_left_the_active_zone() {
         ]
     );
 
-    // Seat 0 passes: the ability Fizzles, `ItemFizzled` first and alone: no `do` Events. The tap,
-    // a cost, stands.
+    // Seat 0 passes: the ability Fizzles, `ItemFizzled` first and alone: no `do` Events. The mana
+    // tap, a cost, stands.
     let fizzling = accepted(&ruleset, &state, &pass(0));
     assert_eq!(
         fizzling.trace.events(),
@@ -739,7 +745,7 @@ fn an_ability_fizzles_when_its_card_left_the_active_zone() {
     assert_eq!(next.stack(), [attack_item(a, t, false, false)]);
     assert_eq!(in_zone(&next, 1, "trash"), [hare]);
     assert_eq!(
-        state_value(&next, hare, "tapped"),
+        state_value(&next, mana, "tapped"),
         Some(FieldValue::Bool(true))
     );
     assert_eq!(next.priority(), Some(p(1)));
@@ -843,18 +849,19 @@ fn activate_is_rejected_for_a_card_outside_the_active_zone() {
 fn activate_is_rejected_when_its_cost_cannot_be_paid() {
     let ruleset = response_with_test_cards();
     let mut scene = arrange_with_test_cards(&ruleset);
-    let tapped_hare = scene.hare(1, "field");
-    scene.apply(tapped(tapped_hare));
+    let juggler = scene.place("juggler", 1, "field");
+    scene.apply(tapped(juggler));
     let pricey = scene.place("pricey", 1, "field");
+    let hare = scene.hare(1, "field");
     let (a, t) = (scene.attacker, scene.target);
     let (state, _) = accept_all(&ruleset, &scene.state, &[attack(a, t)]);
 
-    // The `tap: self` cost on a tapped card.
+    // The `tap: self` cost on a tapped card: the juggler's second ability (index 2).
     assert_rejected(
         &ruleset,
         &state,
-        &activate(1, tapped_hare, 0),
-        Rejection::CardAlreadyTapped { card: tapped_hare },
+        &activate(1, juggler, 2),
+        Rejection::CardAlreadyTapped { card: juggler },
     );
     // A cost of 3 mana, with two untapped.
     assert_rejected(
@@ -865,6 +872,22 @@ fn activate_is_rejected_when_its_cost_cannot_be_paid() {
             zone: zone("mana_zone"),
             required: 3,
             available: 2,
+        },
+    );
+
+    // The hare's cost of 1 mana, with none untapped.
+    for mana in in_zone(&scene.state, 1, "mana_zone") {
+        scene.apply(tapped(mana));
+    }
+    let (dry, _) = accept_all(&ruleset, &scene.state, &[attack(a, t)]);
+    assert_rejected(
+        &ruleset,
+        &dry,
+        &activate(1, hare, 0),
+        Rejection::NotEnoughUntappedCards {
+            zone: zone("mana_zone"),
+            required: 1,
+            available: 0,
         },
     );
 }
@@ -1086,17 +1109,23 @@ fn the_real_response_files_declare_the_hare_and_the_ability_window() {
         .catalog()
         .card(&CardId::new("skittish_hare"))
         .expect("the real catalog has the hare");
-    // One effect, activated: it taps the hare as its cost and moves it to the hand.
+    // One effect, activated: it taps `cost` mana (its own cost, 1) and moves the hare to the hand.
     let [CardEffect::Activated(ability)] = hare.effects() else {
         panic!(
             "the hare has one activated effect, got {:?}",
             hare.effects()
         );
     };
-    let [Cost::TapCard { card }] = ability.costs() else {
-        panic!("its cost taps a card, got {:?}", ability.costs());
+    let [Cost::Tap {
+        zone: tapped_zone,
+        count,
+    }] = ability.costs()
+    else {
+        panic!("its cost taps mana, got {:?}", ability.costs());
     };
-    assert_eq!(card.param(), &ParamName::new("self"));
+    assert_eq!(tapped_zone.as_str(), "mana_zone");
+    assert_eq!(count.param(), &ParamName::new("self"));
+    assert_eq!(count.value(), &CardValue::Field(FieldName::new("cost")));
     let [Effect::Move { card, to }] = ability.body() else {
         panic!("its do moves a card, got {:?}", ability.body());
     };
@@ -1316,6 +1345,8 @@ fn an_observed_activate_round_trips() {
     let sparrow = scene.place("swift_sparrow", 1, "hand");
     let hare = scene.hare(1, "field");
     let (a, t) = (scene.attacker, scene.target);
+    // The hare costs 1: the first of seat 1's mana, which is public.
+    let mana = in_zone(&scene.state, 1, "mana_zone")[0];
 
     let mut follows = [0, 1].map(|seat| Follow::new(&ruleset, &scene, seat));
     for follow in &mut follows {
@@ -1374,11 +1405,13 @@ fn an_observed_activate_round_trips() {
     );
 
     // Taking it: the Taken Action shows the card as the Observed Card, to both Viewers (it is in
-    // the public Active Zone), and the item's source shows the same card and the ability index.
+    // the public Active Zone), the cost shows the tap of the mana, and the item's source shows the
+    // same card and the ability index.
     for follow in &mut follows {
         let seat = follow.seat;
         let (taken, events) = follow.step(&activate(1, hare, 0));
         let handle = follow.handle(hare);
+        let mana_handle = follow.handle(mana);
         assert_eq!(
             taken,
             TakenAction::Activate {
@@ -1393,7 +1426,7 @@ fn an_observed_activate_round_trips() {
             events,
             [
                 ObservedEvent::CardStateChanged {
-                    card: handle,
+                    card: mana_handle,
                     state: StateName::new("tapped"),
                     value: FieldValue::Bool(true)
                 },
