@@ -9,7 +9,7 @@
 use std::fmt;
 
 use super::action_effects;
-use super::arguments;
+use super::arguments::{self, BoundCards};
 use super::creation::DeclarativeRuleset;
 use super::decision::{Answer, DecisionKind};
 use super::event::Event;
@@ -18,16 +18,19 @@ use super::game_end;
 use super::stack::{BoundCard, StackItem, StackSource};
 use super::state::{ApplyError, CardInstanceId, GameState};
 use super::triggers;
+use crate::card_catalog::{ActivatedCardEffect, CardEffect};
 use crate::player::PlayerId;
 use crate::ruleset::{EventTrace, Ruleset, Transition};
 use crate::ruleset_definition::{
-    ActionId, CardTypeId, FieldName, ParamName, PhaseKind, StateName, Window, ZoneId,
+    ActionId, CardTypeId, FieldName, ParamName, PhaseKind, StateName, Window, WindowId, ZoneId,
 };
 
 /// An Action of the declarative Ruleset: a Declared Action, an Answer to the decision a Resolution
-/// is paused at (ADR-0033), or a Pass, which resolves the top item of the Stack (ADR-0037). While a
-/// decision is pending only Answers are Legal. While none is and a Response Window is open, a Pass
-/// and the window's Declared Actions are; with no window open only Declared Actions are.
+/// is paused at (ADR-0033), a Pass, which resolves the top item of the Stack (ADR-0037), or an
+/// Activate, which uses an activated ability (ADR-0038). While a decision is pending only Answers
+/// are Legal. While none is and a Response Window is open, a Pass, the window's Declared Actions
+/// and the Activates of cards in the Active Zone are, if the window allows abilities; with no
+/// window open only Declared Actions are.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
     /// `player` takes the declared action `action`, with one argument for each of its params, in
@@ -42,15 +45,23 @@ pub enum Action {
     Answer { player: PlayerId, answer: Answer },
     /// `player`, who has Priority, passes: the top item of the Stack resolves, or Fizzles.
     Pass { player: PlayerId },
+    /// `player`, who has Priority, uses the activated ability of `card` at Ability Index `ability`
+    /// (ADR-0038): its cost is paid at once and its effects are pushed as a Stack Item.
+    Activate {
+        player: PlayerId,
+        card: CardInstanceId,
+        ability: u32,
+    },
 }
 
 impl Action {
     /// The Player who takes the Action.
     pub fn player(&self) -> PlayerId {
         match self {
-            Self::Declared { player, .. } | Self::Answer { player, .. } | Self::Pass { player } => {
-                *player
-            }
+            Self::Declared { player, .. }
+            | Self::Answer { player, .. }
+            | Self::Pass { player }
+            | Self::Activate { player, .. } => *player,
         }
     }
 }
@@ -94,6 +105,17 @@ pub enum Rejection {
     PassWithoutWindow,
     /// A Declared Action while a Response Window is open, but the window does not list it.
     ActionNotInWindow { action: ActionId },
+    /// An Activate while a decision is pending: only an Answer is accepted (ADR-0038).
+    ActivateWhileDecisionPending,
+    /// An Activate, but no Response Window is open: the Stack is empty, which includes the Action
+    /// phase (ADR-0038).
+    ActivateWithoutWindow,
+    /// An Activate in the open Response Window `window`, whose declaration does not have
+    /// `abilities: true` (ADR-0038).
+    AbilitiesNotInWindow { window: WindowId },
+    /// An Activate whose Ability Index is out of range for the card's definition, or names an
+    /// effect that is not activated (ADR-0038).
+    NotAnActivatedAbility { card: CardInstanceId, ability: u32 },
     /// A `tap: { card }` cost on a card that is tapped already.
     CardAlreadyTapped { card: CardInstanceId },
     /// The action is declared, but the current phase does not list it: there is no current phase,
@@ -206,6 +228,22 @@ impl fmt::Display for Rejection {
                 write!(f, "a decision is pending: only an Answer is accepted")
             }
             Self::PassWithoutWindow => write!(f, "no Response Window is open to pass in"),
+            Self::ActivateWhileDecisionPending => {
+                write!(f, "a decision is pending: only an Answer is accepted")
+            }
+            Self::ActivateWithoutWindow => {
+                write!(f, "no Response Window is open to activate an ability in")
+            }
+            Self::AbilitiesNotInWindow { window } => write!(
+                f,
+                "the open Response Window `{}` does not allow abilities",
+                window.as_str()
+            ),
+            Self::NotAnActivatedAbility { card, ability } => write!(
+                f,
+                "the effect {ability} of the card instance {} is not an activated ability",
+                card.0
+            ),
             Self::ActionNotInWindow { action } => write!(
                 f,
                 "the open Response Window does not list the action `{}`",
@@ -407,6 +445,16 @@ impl Ruleset for DeclarativeRuleset {
                 }
                 self.pass(state)
             }
+            Action::Activate {
+                player,
+                card,
+                ability,
+            } => {
+                if state.pending_decision().is_some() {
+                    return Err(Rejection::ActivateWhileDecisionPending);
+                }
+                self.activate(state, *player, *card, *ability)
+            }
         }
     }
 }
@@ -484,8 +532,103 @@ impl DeclarativeRuleset {
     /// The Response Window that is open: the one whose `opened_by` holds the source of the bottom
     /// item of the Stack. `None` when the Stack is empty. Derived, never stored (ADR-0037).
     pub(super) fn open_window(&self, state: &GameState) -> Option<&Window> {
-        let StackSource::Action(opener) = &state.stack().first()?.source;
+        // An ability is never at the bottom: it can only be used inside a window. Never a panic.
+        let StackSource::Action(opener) = &state.stack().first()?.source else {
+            return None;
+        };
         self.definition().window_opened_by(opener)
+    }
+
+    /// An Activate: uses the activated ability of `card` at Ability Index `ability` for `player`,
+    /// who has Priority (ADR-0038). The checks run in this order: a window is open, it allows
+    /// abilities, the card exists, the index is an activated effect, the Player owns the card, the
+    /// card is in the Active Zone, then each cost in order. The costs are paid at once with `self`
+    /// bound to the card, then the ability is pushed as a Stack Item that binds `self` in the zone
+    /// the card is in once the cost was paid, then the triggers the cost woke resolve.
+    fn activate(
+        &self,
+        state: &GameState,
+        player: PlayerId,
+        card: CardInstanceId,
+        ability: u32,
+    ) -> Result<Transition<GameState, Event>, Rejection> {
+        let Some(window) = self.open_window(state) else {
+            return Err(Rejection::ActivateWithoutWindow);
+        };
+        if !window.abilities() {
+            return Err(Rejection::AbilitiesNotInWindow {
+                window: window.id().clone(),
+            });
+        }
+        let this = ParamName::new("self");
+        let Some(instance) = state.card(card) else {
+            return Err(Rejection::UnknownCard { param: this, card });
+        };
+        let activated = self.activated_effect(state, card, ability)?;
+        if instance.owner() != player {
+            return Err(Rejection::NotCardOwner {
+                param: this,
+                card,
+                owner: instance.owner(),
+            });
+        }
+        let Some(active) = self.definition().effects_active_zone() else {
+            return Err(Rejection::CardDataMismatch { card });
+        };
+        if state.zone_of(card) != Some(active) {
+            return Err(Rejection::CardNotInZone {
+                param: this,
+                card,
+                zone: active.clone(),
+            });
+        }
+
+        let bound = BoundCards::of(this.clone(), card);
+        let mut execution = Execution::new(state.clone());
+        for cost in activated.costs() {
+            action_effects::pay(self, &mut execution, &bound, player, cost)?;
+        }
+        // The zone is read once the cost was paid: a cost may have moved the card.
+        let Some(zone) = execution.state.zone_of(card) else {
+            return Err(Rejection::CardDataMismatch { card });
+        };
+        let item = StackItem {
+            controller: player,
+            source: StackSource::Ability { card, ability },
+            bound: vec![BoundCard {
+                param: this,
+                card,
+                zone: zone.clone(),
+                left: false,
+            }],
+        };
+        execution
+            .apply(Event::ItemPushed { item })
+            .map_err(Rejection::EventRejected)?;
+        let paused = triggers::resolve(self, &mut execution)?;
+        self.finish(execution, paused)
+    }
+
+    /// The activated Card Effect at Ability Index `ability` of `card`: a typed Rejection when the
+    /// catalog has no such card or the index is not an activated effect.
+    fn activated_effect(
+        &self,
+        state: &GameState,
+        card: CardInstanceId,
+        ability: u32,
+    ) -> Result<&ActivatedCardEffect, Rejection> {
+        let instance = state
+            .card(card)
+            .ok_or(Rejection::CardDataMismatch { card })?;
+        let definition = self
+            .catalog()
+            .card(instance.definition())
+            .ok_or(Rejection::CardDataMismatch { card })?;
+        let index = usize::try_from(ability).ok();
+        match index.and_then(|index| definition.effects().get(index)) {
+            Some(CardEffect::Activated(activated)) => Ok(activated),
+            _ => Err(Rejection::NotAnActivatedAbility { card, ability }),
+        }
     }
 
     /// A Pass: the top item of the Stack resolves, or Fizzles when a card it bound has left. A
@@ -504,12 +647,19 @@ impl DeclarativeRuleset {
             execution
                 .apply(Event::ItemResolved { item: item.clone() })
                 .map_err(Rejection::EventRejected)?;
-            let StackSource::Action(id) = &item.source;
-            let Some(declared) = self.definition().action(id) else {
-                return Err(Rejection::UnknownAction { action: id.clone() });
+            let bound = BoundCards::of_item(&item.bound);
+            let effects = match &item.source {
+                StackSource::Action(id) => {
+                    let Some(declared) = self.definition().action(id) else {
+                        return Err(Rejection::UnknownAction { action: id.clone() });
+                    };
+                    declared.effects()
+                }
+                StackSource::Ability { card, ability } => {
+                    self.activated_effect(state, *card, *ability)?.body()
+                }
             };
-            let bound = arguments::BoundCards::of_item(&item.bound);
-            for effect in declared.effects() {
+            for effect in effects {
                 action_effects::run(self, &mut execution, &bound, effect)?;
             }
         }

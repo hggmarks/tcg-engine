@@ -15,8 +15,8 @@ use tcg_engine::deck_list::DeckList;
 use tcg_engine::declarative::{
     Action, Argument, CardInstanceId, DeclarativeRuleset, Event, GameCreation, GameState,
     ObservationError, ObservedAction, ObservedApplyError, ObservedArgument, ObservedBoundCard,
-    ObservedCard, ObservedEvent, ObservedGameState, ObservedStackItem, Observer, StackSource,
-    TakenAction, TakenArgument, Viewer,
+    ObservedCard, ObservedEvent, ObservedGameState, ObservedStackItem, ObservedStackSource,
+    Observer, TakenAction, TakenArgument, Viewer,
 };
 use tcg_engine::player::PlayerId;
 use tcg_engine::random::Seed;
@@ -217,7 +217,7 @@ fn observed_attack(
 ) -> ObservedStackItem {
     ObservedStackItem {
         controller: p(0),
-        source: StackSource::Action(ActionId::new("attack")),
+        source: ObservedStackSource::Action(ActionId::new("attack")),
         bound: vec![
             observed_bound(
                 "attacker",
@@ -380,7 +380,7 @@ fn stack_events_are_observed_in_full() {
         // Seat 1 snipes the attacker; seat 0 passes, which resolves the snipe.
         let snipe_item = ObservedStackItem {
             controller: p(1),
-            source: StackSource::Action(ActionId::new("snipe")),
+            source: ObservedStackSource::Action(ActionId::new("snipe")),
             bound: vec![observed_bound("victim", "field", Some(follow.handle(a)))],
         };
         let pushed_snipe = follow.step(&declared(1, "snipe", &[a]));

@@ -24,8 +24,8 @@ pub use observed_event::{
     TakenArgument,
 };
 pub use observed_state::{
-    ObservedBoundCard, ObservedGameState, ObservedPendingDecision, ObservedStackItem, ObservedZone,
-    VisibleCard,
+    ObservedBoundCard, ObservedGameState, ObservedPendingDecision, ObservedStackItem,
+    ObservedStackSource, ObservedZone, VisibleCard,
 };
 pub use observer::Observer;
 pub use viewer::{ObservedCard, Viewer};

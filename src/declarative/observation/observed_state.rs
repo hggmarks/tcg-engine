@@ -11,9 +11,10 @@ use crate::card_catalog::CardId;
 use crate::declarative::creation::DeclarativeRuleset;
 use crate::declarative::decision::DecisionKind;
 use crate::declarative::stack::{StackItem, StackSource};
+use crate::declarative::state::CardInstanceId;
 use crate::declarative::state::{GameState, TerminalOutcome};
 use crate::player::{PlayerId, PlayerOrder};
-use crate::ruleset_definition::{FieldValue, ParamName, PhaseId, StateName, ZoneId};
+use crate::ruleset_definition::{ActionId, FieldValue, ParamName, PhaseId, StateName, ZoneId};
 use crate::turn::TurnNumber;
 
 /// A GameState as one Viewer sees it: the facts every Viewer sees, each zone as the Viewer's
@@ -50,12 +51,27 @@ pub struct ObservedBoundCard {
     pub card: Option<ObservedCard>,
 }
 
+/// What put a Stack Item on the Stack, as every Viewer sees it (ADR-0037, ADR-0038). An ability's
+/// card is an Observed Card while the card is in the Active Zone, and `None` once it has left: a
+/// handle names a card only while the Viewer sees it, as for an Observed Bound Card, so the source
+/// never shows a card that went to a zone the Viewer cannot see.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ObservedStackSource {
+    /// A pushed Action of the ruleset.
+    Action(ActionId),
+    /// The activated ability at Ability Index `ability` of `card`.
+    Ability {
+        card: Option<ObservedCard>,
+        ability: u32,
+    },
+}
+
 /// A Stack Item as every Viewer sees it: the Stack is fully public (ADR-0037). The bound cards are
 /// in param order.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ObservedStackItem {
     pub controller: PlayerId,
-    pub source: StackSource,
+    pub source: ObservedStackSource,
     pub bound: Vec<ObservedBoundCard>,
 }
 
@@ -89,11 +105,33 @@ pub(super) fn observed_item(
             card,
         });
     }
+    let source = match &item.source {
+        StackSource::Action(id) => ObservedStackSource::Action(id.clone()),
+        StackSource::Ability { card, ability } => ObservedStackSource::Ability {
+            card: source_card(item, &bound, *card)?,
+            ability: *ability,
+        },
+    };
     Ok(ObservedStackItem {
         controller: item.controller,
-        source: item.source.clone(),
+        source,
         bound,
     })
+}
+
+/// The Observed Card of the card that carries an ability, as its own bound card (`self`) shows it:
+/// `None` once that card left. The item must bind it.
+fn source_card(
+    item: &StackItem,
+    bound: &[ObservedBoundCard],
+    card: CardInstanceId,
+) -> Result<Option<ObservedCard>, ObservationError> {
+    item.bound
+        .iter()
+        .zip(bound)
+        .find(|(held, _)| held.card == card)
+        .map(|(_, observed)| observed.card)
+        .ok_or(ObservationError::ObserverOutOfStep)
 }
 
 impl ObservedGameState {
@@ -441,7 +479,16 @@ impl ObservedGameState {
                     .bound
                     .iter()
                     .all(|bound| bound.card.is_some_and(|card| self.card(card).is_some()));
-                if !self.player_order.contains(item.controller) || !sees_every_card {
+                // An ability's card is seen too, and is one of the bound cards.
+                let source_fits = match &item.source {
+                    ObservedStackSource::Action(_) => true,
+                    ObservedStackSource::Ability { card, .. } => {
+                        card.is_some_and(|card| self.card(card).is_some())
+                            && item.bound.iter().any(|bound| bound.card == *card)
+                    }
+                };
+                if !self.player_order.contains(item.controller) || !sees_every_card || !source_fits
+                {
                     return Err(misfit);
                 }
                 self.stack.push(item.clone());
@@ -472,6 +519,11 @@ impl ObservedGameState {
             for bound in &mut item.bound {
                 if bound.card == Some(card) {
                     bound.card = None;
+                }
+            }
+            if let ObservedStackSource::Ability { card: source, .. } = &mut item.source {
+                if *source == Some(card) {
+                    *source = None;
                 }
             }
         }

@@ -4,8 +4,9 @@ use super::action::{current_action_phase, Action, Argument, Rejection};
 use super::arguments;
 use super::creation::DeclarativeRuleset;
 use super::decision::Answer;
-use super::state::GameState;
+use super::state::{CardInstance, CardInstanceId, GameState};
 use super::triggers;
+use crate::card_catalog::CardEffect;
 use crate::ruleset::{LegalActions, Ruleset};
 
 impl LegalActions for DeclarativeRuleset {
@@ -30,7 +31,8 @@ impl DeclarativeRuleset {
     /// candidate is dropped on the spot, so `legal_actions` allocates nothing for it. While a
     /// decision is pending the candidates are the Answers of its Deciding Player, in index order
     /// (ADR-0033); otherwise, while a Response Window is open, they are a Pass and then the
-    /// window's Declared Actions, for the Player with Priority (ADR-0037); otherwise they are the
+    /// window's Declared Actions and then, if it allows abilities, the Activates of the Player's cards in
+    /// the Active Zone, for the Player with Priority (ADR-0037, ADR-0038); otherwise they are the
     /// Declared Actions the current phase lists, of the Active Player.
     fn walk(&self, state: &GameState, keep_rejected: bool) -> Vec<(Action, Option<Rejection>)> {
         if state.outcome().is_some() {
@@ -62,17 +64,17 @@ impl DeclarativeRuleset {
         }
         // While a window is open the Player with Priority may Pass, then take the window's
         // Actions in the order it lists them (ADR-0037).
-        let (listed, actor) = if let Some(window) = self.open_window(state) {
+        let (listed, actor, abilities) = if let Some(window) = self.open_window(state) {
             let Some(priority) = state.priority() else {
                 return Vec::new();
             };
             consider(Action::Pass { player: priority });
-            (window.actions(), priority)
+            (window.actions(), priority, window.abilities())
         } else {
             let Some(listed) = current_action_phase(self, state) else {
                 return Vec::new();
             };
-            (listed, state.active_player())
+            (listed, state.active_player(), false)
         };
         for id in listed {
             let Some(declared) = self.definition().action(id) else {
@@ -84,6 +86,35 @@ impl DeclarativeRuleset {
                     action: id.clone(),
                     arguments: filling.into_iter().map(Argument::Card).collect(),
                 });
+            }
+        }
+        // Then, in a window that allows abilities, the activated abilities of the actor's cards in
+        // the Active Zone, in ascending Card Instance Id, then Ability Index (ADR-0038).
+        if let (true, Some(active)) = (abilities, self.definition().effects_active_zone()) {
+            let mut mine: Vec<CardInstanceId> = state
+                .cards()
+                .iter()
+                .filter(|card| card.owner() == actor && state.zone_of(card.id()) == Some(active))
+                .map(CardInstance::id)
+                .collect();
+            mine.sort();
+            for card in mine {
+                let Some(definition) = state
+                    .card(card)
+                    .and_then(|instance| self.catalog().card(instance.definition()))
+                else {
+                    continue;
+                };
+                for (index, effect) in definition.effects().iter().enumerate() {
+                    if let (CardEffect::Activated(_), Ok(ability)) = (effect, u32::try_from(index))
+                    {
+                        consider(Action::Activate {
+                            player: actor,
+                            card,
+                            ability,
+                        });
+                    }
+                }
             }
         }
         walked

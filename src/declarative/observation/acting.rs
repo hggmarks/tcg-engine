@@ -30,6 +30,13 @@ pub enum ObservedAction {
     },
     /// The Player with Priority passes.
     Pass { player: PlayerId },
+    /// The Player with Priority uses the activated ability of `card`, an Observed Card (it is in
+    /// the Active Zone the Viewer sees), at Ability Index `ability` (ADR-0038).
+    Activate {
+        player: PlayerId,
+        card: ObservedCard,
+        ability: u32,
+    },
 }
 
 /// The value an Observed Action supplies for one param.
@@ -67,6 +74,23 @@ impl DeclarativeRuleset {
             let (player, action, arguments) = match legal {
                 Action::Pass { player } => {
                     listed.push(ObservedAction::Pass { player });
+                    continue;
+                }
+                // The card is in the Active Zone, which the Viewer must see to hold a handle for
+                // it; a missing one is an inconsistency, not a leak.
+                Action::Activate {
+                    player,
+                    card,
+                    ability,
+                } => {
+                    let handle = observer
+                        .observed_card(card)
+                        .ok_or(ObservationError::ObserverOutOfStep)?;
+                    listed.push(ObservedAction::Activate {
+                        player,
+                        card: handle,
+                        ability,
+                    });
                     continue;
                 }
                 Action::Answer {
@@ -140,6 +164,23 @@ impl DeclarativeRuleset {
                     return Err(ObservationError::ActionOfAnotherPlayer { player: *player });
                 }
                 Ok(Action::Pass { player: *player })
+            }
+            ObservedAction::Activate {
+                player,
+                card,
+                ability,
+            } => {
+                if *player != me {
+                    return Err(ObservationError::ActionOfAnotherPlayer { player: *player });
+                }
+                let id = observer
+                    .card_instance(*card)
+                    .ok_or(ObservationError::UnknownObservedCard { card: *card })?;
+                Ok(Action::Activate {
+                    player: *player,
+                    card: id,
+                    ability: *ability,
+                })
             }
             ObservedAction::Answer { player, answer } => {
                 if *player != me {

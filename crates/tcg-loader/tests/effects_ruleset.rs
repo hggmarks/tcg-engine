@@ -400,12 +400,24 @@ fn render(played: &Played) -> String {
                     player.0
                 ));
             }
-            // No Golden Game of this ruleset holds a Pass: it has no Response Window.
+            // No Golden Game of this ruleset holds a Pass or an Activate: it has no Response Window.
             Action::Pass { player } => {
                 text.push_str(&format!(
                     "== action {}: player {} pass\n",
                     index + 1,
                     player.0
+                ));
+            }
+            Action::Activate {
+                player,
+                card,
+                ability,
+            } => {
+                text.push_str(&format!(
+                    "== action {}: player {} activate card {} ability {ability}\n",
+                    index + 1,
+                    player.0,
+                    card.0
                 ));
             }
         }
@@ -807,6 +819,7 @@ fn card_effect_envelope_loads_into_the_draft() {
                 while_condition: None,
                 modify: None,
                 scope: None,
+                activated: None,
             },
             CardEffectDraft {
                 on: Some(TriggerMatcherDraft::TurnStart),
@@ -819,6 +832,7 @@ fn card_effect_envelope_loads_into_the_draft() {
                 while_condition: None,
                 modify: None,
                 scope: None,
+                activated: None,
             },
             CardEffectDraft {
                 on: None,
@@ -830,6 +844,7 @@ fn card_effect_envelope_loads_into_the_draft() {
                     amount: 1,
                 }),
                 scope: None,
+                activated: None,
             },
         ]
     );
@@ -1030,7 +1045,9 @@ fn taken_line(taken: &TakenAction) -> String {
         } => format!(
             "TakenAction {{ player: {player:?}, action: {action:?}, arguments: {arguments:?} }}"
         ),
-        TakenAction::Answer { .. } | TakenAction::Pass { .. } => format!("{taken:?}"),
+        TakenAction::Answer { .. } | TakenAction::Pass { .. } | TakenAction::Activate { .. } => {
+            format!("{taken:?}")
+        }
     }
 }
 

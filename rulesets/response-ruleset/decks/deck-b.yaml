@@ -1,5 +1,6 @@
 # Sample deck B for the Response Ruleset: the Effects deck B with two moss_sprites and both
-# ember_hounds swapped for the fast creatures swift_sparrow and flash_fox. 1 Leader, 50 creatures
+# ember_hounds swapped for the fast creatures swift_sparrow and flash_fox, and two stone_golems for
+# two skittish_hares, which carry an activated ability. 1 Leader, 50 creatures
 # (at most 4 of each), 10 mana. It plays the three families of Card Effects: triggered (lamp_keeper, dawn_scout, grave_jackal,
 # eager_recruit, pyre_imp), self-continuous (battle_veteran, weary_ox) and aura (dread_herald). It
 # also holds the three cards that pause a Resolution for a Choice: curious_owl (an Option Choice),
@@ -17,7 +18,8 @@ inputs:
       - { card: flash_fox,      count: 2 }
       - { card: curious_owl,    count: 2 }
       - { card: river_otter,    count: 4 }
-      - { card: stone_golem,    count: 4 }
+      - { card: stone_golem,    count: 2 }
+      - { card: skittish_hare,  count: 2 }
       - { card: shadow_cat,     count: 4 }
       - { card: snare_vine,     count: 2 }
       - { card: mind_leech,     count: 2 }

@@ -192,6 +192,10 @@ pub enum DefinitionErrorKind {
     /// the top item's controller", defined for two Players only (ADR-0037); `players` is how many
     /// the ruleset has.
     WindowsNeedTwoPlayers { players: u64 },
+    /// `windows[attack_response].abilities`: a window with `abilities: true` in a ruleset without
+    /// `effects.active_zone`, where no Card Effect is ever active, so the flag could never do
+    /// anything (ADR-0038).
+    AbilitiesWithoutActiveZone,
     /// An action named in the `opened_by` of two windows, or twice in one, at the later one, such
     /// as `windows[second].opened_by[0]`; `first` is the earlier one (ADR-0037).
     DuplicateWindowOpener {
@@ -363,6 +367,10 @@ impl fmt::Display for DefinitionErrorKind {
             Self::ImpossibleCardType { param, card_type } => write!(
                 f,
                 "`{param}` can never be a `{card_type}`: testing for it would retype the param"
+            ),
+            Self::AbilitiesWithoutActiveZone => write!(
+                f,
+                "a window allows abilities, but the ruleset declares no `effects.active_zone`"
             ),
             Self::WindowsNeedTwoPlayers { players } => write!(
                 f,

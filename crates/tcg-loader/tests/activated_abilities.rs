@@ -504,7 +504,8 @@ fn an_activated_ability_is_a_legal_action_of_the_player_with_priority_in_an_atta
     // The same position with seat 1's mana all tapped: no cost of mana can be paid.
     let mut dry = scene.state.clone();
     for mana in in_zone(&dry, 1, "mana_zone") {
-        apply_all(&mut dry, &[tapped(mana)]);
+        dry.apply(&tapped(mana))
+            .expect("the scenario Event is accepted");
     }
 
     // Outside a window, in the Action phase, no ability is listed.
@@ -1342,7 +1343,7 @@ impl<'a> Follow<'a> {
 fn an_observed_activate_round_trips() {
     let ruleset = response();
     let mut scene = arrange_real(&ruleset);
-    let sparrow = scene.place("swift_sparrow", 1, "hand");
+    scene.place("swift_sparrow", 1, "hand");
     let hare = scene.hare(1, "field");
     let (a, t) = (scene.attacker, scene.target);
     // The hare costs 1: the first of seat 1's mana, which is public.

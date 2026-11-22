@@ -46,14 +46,15 @@ pub enum CatalogErrorKind {
     MissingField { field: FieldName },
     /// `cards[goblin].effects`: the card type is declared with `effects: false`.
     EffectsNotAllowed,
-    /// `cards[goblin].effects[0]`: the element has keys of both shapes (`on` or `if` or `do` with
-    /// `while` or `modify`).
+    /// `cards[goblin].effects[0]`: the element has keys of two shapes (`on` or `if` or `do`; `while`
+    /// or `modify` or `scope`; `activated`).
     MixedCardEffectShapes,
-    /// `cards[goblin].effects[0]`: the element has neither `on` nor `while`.
+    /// `cards[goblin].effects[0]`: the element has none of `on`, `while` and `activated`.
     MissingCardEffectShape,
-    /// `cards[goblin].effects[0].do`: a triggered Card Effect without `do`.
+    /// `cards[goblin].effects[0].do`: a triggered Card Effect without `do`; or
+    /// `cards[goblin].effects[0].activated.do`, an activated one.
     MissingDo,
-    /// `cards[goblin].effects[0].do`: the list is empty.
+    /// `cards[goblin].effects[0].do` (or `.activated.do`): the list is empty.
     EmptyDo,
     /// `cards[goblin].effects[0].modify`: a continuous Card Effect without `modify`.
     MissingModify,
@@ -122,10 +123,10 @@ impl fmt::Display for CatalogErrorKind {
             }
             Self::MixedCardEffectShapes => write!(
                 f,
-                "a Card Effect is triggered (`on`, `if`, `do`) or continuous (`while`, `modify`), not both"
+                "a Card Effect is triggered (`on`, `if`, `do`), continuous (`while`, `modify`) or activated (`activated`), not a mix"
             ),
             Self::MissingCardEffectShape => {
-                write!(f, "a Card Effect needs an `on` or a `while`")
+                write!(f, "a Card Effect needs an `on`, a `while` or an `activated`")
             }
             Self::MissingDo => write!(f, "a triggered Card Effect needs a `do`"),
             Self::EmptyDo => write!(f, "`do` must list at least one effect"),
