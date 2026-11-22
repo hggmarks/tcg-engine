@@ -174,7 +174,7 @@ fn the_response_sample_decks_hold_the_fast_cards_and_the_ability_card() {
 
 /// The number of Seed Ranges the pinned Seeds are split into (ADR-0040): one test each, run on
 /// parallel threads by the test harness. Chosen by measurement.
-const PARTS: usize = 8;
+const PARTS: usize = 4;
 
 const _: () = assert!(
     PINNED_SEEDS.is_multiple_of(PARTS as u64),
@@ -281,43 +281,23 @@ fn assert_seed_range_holds(part: usize) {
 }
 
 #[test]
-fn response_self_play_ends_every_game_over_seeds_0_to_125_with_every_invariant_holding() {
+fn response_self_play_ends_every_game_over_seeds_0_to_250_with_every_invariant_holding() {
     assert_seed_range_holds(0);
 }
 
 #[test]
-fn response_self_play_ends_every_game_over_seeds_125_to_250_with_every_invariant_holding() {
+fn response_self_play_ends_every_game_over_seeds_250_to_500_with_every_invariant_holding() {
     assert_seed_range_holds(1);
 }
 
 #[test]
-fn response_self_play_ends_every_game_over_seeds_250_to_375_with_every_invariant_holding() {
+fn response_self_play_ends_every_game_over_seeds_500_to_750_with_every_invariant_holding() {
     assert_seed_range_holds(2);
 }
 
 #[test]
-fn response_self_play_ends_every_game_over_seeds_375_to_500_with_every_invariant_holding() {
+fn response_self_play_ends_every_game_over_seeds_750_to_1000_with_every_invariant_holding() {
     assert_seed_range_holds(3);
-}
-
-#[test]
-fn response_self_play_ends_every_game_over_seeds_500_to_625_with_every_invariant_holding() {
-    assert_seed_range_holds(4);
-}
-
-#[test]
-fn response_self_play_ends_every_game_over_seeds_625_to_750_with_every_invariant_holding() {
-    assert_seed_range_holds(5);
-}
-
-#[test]
-fn response_self_play_ends_every_game_over_seeds_750_to_875_with_every_invariant_holding() {
-    assert_seed_range_holds(6);
-}
-
-#[test]
-fn response_self_play_ends_every_game_over_seeds_875_to_1000_with_every_invariant_holding() {
-    assert_seed_range_holds(7);
 }
 
 #[test]
