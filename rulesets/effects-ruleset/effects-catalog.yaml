@@ -1,9 +1,8 @@
 # Starter card catalog for the Effects Ruleset (rulesets/effects-ruleset/effects-ruleset.yaml): the
 # cards of the Small Ruleset catalog, then nine creatures that carry a triggered Card Effect, two that
 # carry a continuous one and three auras, which carry a continuous one over a matched set. The sample
-# decks list all the effect cards but restless_shade, which exists only to reach the Trigger Cap,
-# curious_owl, whose Option Choice is not in a shipped deck yet, and snare_vine and mind_leech, whose
-# Card Choices are not either.
+# decks list all the effect cards but restless_shade, which exists only to reach the Trigger Cap.
+# curious_owl, snare_vine and mind_leech, the cards that pause a Resolution for a Choice, are in both.
 # Format: rulesets/formats.md.
 
 meta: { ruleset: effects, ruleset_version: 1 }
@@ -88,7 +87,7 @@ cards:
         do: [ { draw: { player: controller, from: deck, to: hand, count: 1 } } ]
   # An Option Choice (ADR-0033): when it enters the field its controller may draw a card. The
   # Resolution pauses until the controller answers: option 0 draws, option 1 (empty) does nothing.
-  # Not in the shipped sample decks.
+  # In both sample decks, two copies each.
   - id: curious_owl
     type: creature
     fields: { name: "Curious Owl", cost: 1, power: 1 }
@@ -103,7 +102,7 @@ cards:
 
   # A Card Choice (ADR-0034): when it enters the field its controller picks a creature in an
   # opponent's field, which becomes `target` for the rest of the `do`, and taps it. With no such
-  # creature nothing is asked and the rest of the `do` is skipped. Not in the shipped sample decks.
+  # creature nothing is asked and the rest of the `do` is skipped. In both sample decks, two copies each.
   - id: snare_vine
     type: creature
     fields: { name: "Snare Vine", cost: 2, power: 1 }
@@ -114,8 +113,8 @@ cards:
           - set_state: { card: { ref: target }, state: tapped, value: true }
   # A Card Choice decided by the controller's opponent: when it enters the field the opponent
   # picks a creature from its own hand, which goes to its trash. `owner: opponent` is the
-  # controller's opponent whoever decides, and the opponent sees its own hand. Not in the shipped
-  # sample decks.
+  # controller's opponent whoever decides, and the opponent sees its own hand. In both sample decks,
+  # two copies each.
   - id: mind_leech
     type: creature
     fields: { name: "Mind Leech", cost: 2, power: 2 }

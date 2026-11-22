@@ -110,12 +110,14 @@ fn invariant_observations_stay_consistent_detects_a_violation() {
     for seat in 0..2 {
         let who = viewer(seat);
         let observed = observed_steps(&ruleset, &game, who);
-        // The Opening Position, and the first transition with several Observed Events.
+        // The Opening Position, and the first transition with several Observed Events that does
+        // not end paused: while a decision is pending no Event but its Answer applies (ADR-0033),
+        // so (b) could not alter such a `next` with one more card.
         let transition = observed
             .iter()
             .skip(1)
-            .find(|step| step.events.len() >= 3)
-            .expect("a transition with several Observed Events");
+            .find(|step| step.events.len() >= 3 && step.next.pending_decision().is_none())
+            .expect("a transition with several Observed Events that does not pause");
         for step in [&observed[0], transition] {
             // The real step is consistent.
             assert_eq!(

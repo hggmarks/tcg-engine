@@ -2,7 +2,7 @@
 //! and are answered by the Uniform Random Policy, with every Invariant checked, including the three
 //! over Observations, so the Relabelling of the Paused Resolution is exercised.
 //!
-//! The deck lists `curious_owl`, which the real catalog defines and no shipped deck lists: on
+//! The deck lists four `curious_owl`s, more than the shipped decks do: on
 //! entering the field the controller may draw a card, which pauses the Resolution.
 
 use tcg_engine::deck_list::DeckList;

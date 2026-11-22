@@ -154,7 +154,7 @@ TakenAction { player: PlayerId(0), action: ActionId("pass_turn"), arguments: [] 
 PhaseBegan { phase: PhaseId("end") }
 TurnBegan { player: PlayerId(1), turn: TurnNumber(2) }
 PhaseBegan { phase: PhaseId("start") }
-CardMovedIntoSight { card: ObservedCard(11), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand"), definition: CardId("wind_hawk"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
+CardMovedIntoSight { card: ObservedCard(11), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand"), definition: CardId("mind_leech"), state: [(StateName("tapped"), Bool(false)), (StateName("recently_played"), Bool(false))] }
 CardMovedIntoSight { card: ObservedCard(12), player: PlayerId(1), from: ZoneId("mana_deck"), to: ZoneId("mana_zone"), definition: CardId("mana"), state: [(StateName("tapped"), Bool(false))] }
 CardMovedIntoSight { card: ObservedCard(13), player: PlayerId(1), from: ZoneId("mana_deck"), to: ZoneId("mana_zone"), definition: CardId("mana"), state: [(StateName("tapped"), Bool(false))] }
 PhaseBegan { phase: PhaseId("main") }

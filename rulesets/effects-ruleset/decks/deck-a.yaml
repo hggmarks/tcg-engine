@@ -1,7 +1,9 @@
 # Sample deck A for the Effects Ruleset: 1 Leader, 50 creatures (at most 4 of each), 10 mana. It
 # plays the three families of Card Effects: triggered (lamp_keeper, dawn_scout, grave_jackal,
 # eager_recruit, pyre_imp), self-continuous (battle_veteran, weary_ox) and aura (banner_bearer,
-# rally_captain).
+# rally_captain). It also holds the three cards that pause a Resolution for a Choice: curious_owl
+# (an Option Choice), snare_vine (a Card Choice decided by the controller) and mind_leech (decided
+# by the opponent).
 # Format: rulesets/formats.md.
 
 inputs:
@@ -12,12 +14,13 @@ inputs:
     cards:
       - { card: goblin_scout,   count: 4 }
       - { card: moss_sprite,    count: 4 }
-      - { card: ember_hound,    count: 4 }
+      - { card: ember_hound,    count: 2 }
+      - { card: curious_owl,    count: 2 }
       - { card: river_otter,    count: 4 }
       - { card: stone_golem,    count: 4 }
       - { card: shadow_cat,     count: 4 }
-      - { card: iron_guard,     count: 2 }
-      - { card: wind_hawk,      count: 2 }
+      - { card: snare_vine,     count: 2 }
+      - { card: mind_leech,     count: 2 }
       - { card: lamp_keeper,    count: 4 }
       - { card: dawn_scout,     count: 4 }
       - { card: grave_jackal,   count: 2 }

@@ -10,12 +10,15 @@ use std::collections::BTreeSet;
 use tcg_engine::card_catalog::{CardEffect, CardId};
 use tcg_engine::deck_list::DeckList;
 use tcg_engine::declarative::{
-    Action, Argument, CardInstanceId, DeclarativeRuleset, Event, GameState, Rejection,
+    Action, Answer, Argument, BranchKind, CardInstanceId, DeclarativeRuleset, EffectPath, Event,
+    GameState, PausedResolution, Rejection,
 };
 use tcg_engine::player::PlayerId;
 use tcg_engine::random::Seed;
 use tcg_engine::ruleset::{LegalActions, Ruleset};
-use tcg_engine::ruleset_definition::{ActionId, DeckInputId, FieldValue, StateName, ZoneId};
+use tcg_engine::ruleset_definition::{
+    ActionId, DeckInputId, Effect, FieldValue, StateName, ZoneId,
+};
 use tcg_selfplay::{
     check_recomputation, check_rejection, self_play, verify_record, Checks, FailureKind, Invariant,
     SelfPlayGame,
@@ -228,6 +231,194 @@ fn effect_use(ruleset: &DeclarativeRuleset, game: &SelfPlayGame) -> EffectUse {
     used
 }
 
+/// Which Choices a Game answered or skipped, read from its Event Traces and the catalog only
+/// (ADR-0035), as `EffectUse` reads the effect cards. It adds up over Games.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct ChoiceUse {
+    /// Card Choices answered by the Deciding Player who is the owner of the carrying card.
+    card_choices_by_controller: usize,
+    /// Card Choices answered by the controller's opponent.
+    card_choices_by_opponent: usize,
+    /// Option Choices answered with an option that holds effects.
+    option_choices_with_a_non_empty_option: usize,
+    /// Option Choices answered with an empty option.
+    option_choices_with_an_empty_option: usize,
+    /// Card Choices never asked, for want of a candidate: a card that holds a `choose_card` entered
+    /// the field and its Resolution completed without pausing for it.
+    card_choices_skipped: usize,
+}
+
+impl ChoiceUse {
+    fn add(&mut self, other: ChoiceUse) {
+        self.card_choices_by_controller += other.card_choices_by_controller;
+        self.card_choices_by_opponent += other.card_choices_by_opponent;
+        self.option_choices_with_a_non_empty_option += other.option_choices_with_a_non_empty_option;
+        self.option_choices_with_an_empty_option += other.option_choices_with_an_empty_option;
+        self.card_choices_skipped += other.card_choices_skipped;
+    }
+}
+
+/// The Choice at `at` in `body`, the `do` of a Triggered Card Effect: the branches entered from the
+/// `do`, then the index in the innermost list. `None` when `at` leads nowhere.
+fn effect_at<'a>(body: &'a [Effect], at: &EffectPath) -> Option<&'a Effect> {
+    let mut list = body;
+    for branch in &at.branches {
+        let effect = list.get(usize::try_from(branch.effect).ok()?)?;
+        list = match (effect, &branch.into) {
+            (Effect::If { then, .. }, BranchKind::Then) => then,
+            (Effect::If { otherwise, .. }, BranchKind::Else) => otherwise,
+            (Effect::ChooseOne { options, .. }, BranchKind::Option(option)) => {
+                options.get(usize::try_from(*option).ok()?)?
+            }
+            _ => return None,
+        };
+    }
+    list.get(usize::try_from(at.choice).ok()?)
+}
+
+/// Whether the option `index` of the Option Choice `paused` stopped at holds no effect, read from
+/// the catalog through the Paused Resolution's trigger and path, never from the length of a trace.
+fn option_is_empty(
+    ruleset: &DeclarativeRuleset,
+    game: &SelfPlayGame,
+    paused: &PausedResolution,
+    index: u32,
+) -> bool {
+    let carrier = game
+        .state
+        .card(paused.trigger.card)
+        .expect("the paused trigger's card exists");
+    let effect = effects_of(ruleset, carrier.definition())
+        .get(usize::try_from(paused.trigger.effect).expect("an index"))
+        .expect("the paused trigger names an effect of its card");
+    let CardEffect::Triggered(triggered) = effect else {
+        panic!("a Resolution pauses only in a Triggered Card Effect");
+    };
+    let Some(Effect::ChooseOne { options, .. }) = effect_at(triggered.body(), &paused.at) else {
+        panic!("the Paused Resolution of an Option Choice stops at a `choose_one`");
+    };
+    options
+        .get(usize::try_from(index).expect("an index"))
+        .expect("the Answer names an option of the Choice")
+        .is_empty()
+}
+
+/// Whether a Card Definition holds a `choose_card` anywhere in the `do` of a triggered effect.
+fn holds_a_card_choice(effects: &[Effect]) -> bool {
+    effects.iter().any(|effect| match effect {
+        Effect::ChooseCard { .. } => true,
+        Effect::If {
+            then, otherwise, ..
+        } => holds_a_card_choice(then) || holds_a_card_choice(otherwise),
+        Effect::ChooseOne { options, .. } => {
+            options.iter().any(|option| holds_a_card_choice(option))
+        }
+        _ => false,
+    })
+}
+
+/// Whether the Resolution that began when `card` entered the field certainly completed without
+/// ever pausing for `card`'s own trigger. `traces` start at the trace in which it entered. The
+/// Resolution is certainly complete only at the first trace that ends with no Pending Decision and
+/// no `GameEnded` (a trigger queued behind another pause is asked in a later trace); a Game that
+/// ends first proves nothing.
+fn completed_without_pausing_for(card: CardInstanceId, traces: &[&[Event]]) -> bool {
+    let mut paused = false;
+    let mut asked = false;
+    for trace in traces {
+        for event in *trace {
+            match event {
+                Event::DecisionPending {
+                    paused: stopped, ..
+                } => {
+                    paused = true;
+                    asked |= stopped.trigger.card == card;
+                }
+                Event::DecisionAnswered { .. } => paused = false,
+                Event::GameEnded { .. } => return false,
+                _ => {}
+            }
+        }
+        if !paused {
+            return !asked;
+        }
+    }
+    false
+}
+
+/// The Choices of `game`, counted from its Event Traces: each `DecisionAnswered` is paired with the
+/// `DecisionPending` that preceded it.
+fn choice_use(ruleset: &DeclarativeRuleset, game: &SelfPlayGame) -> ChoiceUse {
+    let mut used = ChoiceUse::default();
+    let traces: Vec<&[Event]> = game.traces.iter().map(|trace| trace.events()).collect();
+    let mut pending: Option<(PlayerId, &PausedResolution)> = None;
+    for (index, trace) in traces.iter().enumerate() {
+        for event in *trace {
+            match event {
+                Event::DecisionPending {
+                    decider, paused, ..
+                } => pending = Some((*decider, paused)),
+                Event::DecisionAnswered { answer, .. } => {
+                    let (decider, paused) = pending
+                        .take()
+                        .expect("an Answer follows the decision it answers");
+                    match answer {
+                        Answer::Card(_) => {
+                            let owner = game
+                                .state
+                                .card(paused.trigger.card)
+                                .expect("the paused trigger's card exists")
+                                .owner();
+                            if decider == owner {
+                                used.card_choices_by_controller += 1;
+                            } else {
+                                used.card_choices_by_opponent += 1;
+                            }
+                        }
+                        Answer::Option(option) => {
+                            if option_is_empty(ruleset, game, paused, *option) {
+                                used.option_choices_with_an_empty_option += 1;
+                            } else {
+                                used.option_choices_with_a_non_empty_option += 1;
+                            }
+                        }
+                    }
+                }
+                Event::CardMoved { card, to, .. } if to.as_str() == "field" => {
+                    let holds = game.state.card(*card).is_some_and(|instance| {
+                        effects_of(ruleset, instance.definition())
+                            .iter()
+                            .any(|effect| {
+                                matches!(effect, CardEffect::Triggered(triggered)
+                                    if holds_a_card_choice(triggered.body()))
+                            })
+                    });
+                    if holds && completed_without_pausing_for(*card, &traces[index..]) {
+                        used.card_choices_skipped += 1;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    used
+}
+
+/// The Card Answers and the Option Answers of the Game Record of `game`.
+fn answers_of_each_kind(game: &SelfPlayGame) -> (usize, usize) {
+    let answers = |wanted: fn(&Answer) -> bool| {
+        game.record
+            .actions()
+            .iter()
+            .filter(|action| matches!(action, Action::Answer { answer, .. } if wanted(answer)))
+            .count()
+    };
+    (
+        answers(|answer| matches!(answer, Answer::Card(_))),
+        answers(|answer| matches!(answer, Answer::Option(_))),
+    )
+}
+
 /// The least number of the 1,000 pinned Games in which each kind of effect card was used. A drop
 /// under a minimum means the sample decks stopped exercising that family. Measured when the
 /// minimums were set: 988 Games played a triggered card, 759 had an aura in the field and 795 had a
@@ -244,6 +435,7 @@ fn effects_self_play_ends_every_game_over_1000_seeds_with_every_invariant_holdin
     let mut longest = 0;
     let mut digests = Vec::new();
     let (mut triggered, mut auras, mut self_continuous) = (0_usize, 0_usize, 0_usize);
+    let mut choices = ChoiceUse::default();
     for seed in 0..PINNED_SEEDS {
         match self_play(&ruleset, &decks, Seed(seed), MAX_STEPS, Checks::On) {
             Ok(game) => {
@@ -251,6 +443,7 @@ fn effects_self_play_ends_every_game_over_1000_seeds_with_every_invariant_holdin
                 triggered += usize::from(used.triggered_card_played);
                 auras += usize::from(used.aura_in_field);
                 self_continuous += usize::from(used.self_continuous_in_field);
+                choices.add(choice_use(&ruleset, &game));
                 if game.state.outcome().is_none() {
                     failures.push(format!("seed {seed}: the Game has no Terminal Outcome"));
                 }
@@ -288,6 +481,34 @@ fn effects_self_play_ends_every_game_over_1000_seeds_with_every_invariant_holdin
         self_continuous >= MIN_GAMES_WITH_A_SELF_CONTINUOUS_CARD_IN_THE_FIELD,
         "only {self_continuous} Games had a self-continuous card in the field"
     );
+
+    // The Uniform Random Policy reaches every kind of Choice over the 1,000 Games (ADR-0035). A
+    // count of 0 means a swap of the shipped decks stopped reaching a card; change the swap, not
+    // the policy.
+    for (count, name) in [
+        (
+            choices.card_choices_by_controller,
+            "Card Choices answered by the controller",
+        ),
+        (
+            choices.card_choices_by_opponent,
+            "Card Choices answered by the opponent",
+        ),
+        (
+            choices.option_choices_with_a_non_empty_option,
+            "Option Choices answered with a non-empty option",
+        ),
+        (
+            choices.option_choices_with_an_empty_option,
+            "Option Choices answered with an empty option",
+        ),
+        (
+            choices.card_choices_skipped,
+            "Card Choices skipped for want of a candidate",
+        ),
+    ] {
+        assert!(count >= 1, "no Game of the 1,000 had {name}: {choices:?}");
+    }
 
     // The same Games, one pass: their Game Records and Event Traces are the pinned ones.
     if let Some(difference) = pin_difference(DIGESTS, &digests) {
@@ -811,6 +1032,11 @@ fn the_small_ruleset_is_frozen_since_phase_c() {
     assert_ne!(EFFECTS_DECK_B, DECK_B);
 }
 
+/// The Seeds of the check-mode equality over the Effects Ruleset: Seeds whose Games hold a Card
+/// Answer and an Option Answer, so that `On`, `EngineOnly` and `Off` are compared on Games that
+/// pause.
+const OBSERVING_SEEDS: [u64; 5] = [7, 8, 9, 10, 11];
+
 #[test]
 fn effects_observing_never_changes_a_game() {
     // The same Seed gives the same Game with every check on, with the engine's checks only, and
@@ -818,8 +1044,12 @@ fn effects_observing_never_changes_a_game() {
     // Rejections is the same; `Off` lists through `legal_actions` and sees none (ADR-0026).
     let ruleset = effects();
     let decks = effects_decks(&ruleset);
-    for seed in [7, 8, 9, 10, 11] {
+    let (mut card_answers, mut option_answers) = (0, 0);
+    for seed in OBSERVING_SEEDS {
         let on = self_play(&ruleset, &decks, Seed(seed), MAX_STEPS, Checks::On).expect("played");
+        let (cards, options) = answers_of_each_kind(&on);
+        card_answers += cards;
+        option_answers += options;
         let engine_only =
             self_play(&ruleset, &decks, Seed(seed), MAX_STEPS, Checks::EngineOnly).expect("played");
         let off = self_play(&ruleset, &decks, Seed(seed), MAX_STEPS, Checks::Off).expect("played");
@@ -830,4 +1060,7 @@ fn effects_observing_never_changes_a_game() {
         assert!(on.state == off.state, "seed {seed}: final GameState");
         assert_eq!(off.trigger_cap_rejections, 0);
     }
+    // The Seeds include Answers of both kinds, so the equality above covers Games that pause.
+    assert!(card_answers >= 1, "the Seeds hold no Card Answer");
+    assert!(option_answers >= 1, "the Seeds hold no Option Answer");
 }

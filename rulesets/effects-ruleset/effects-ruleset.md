@@ -2,7 +2,7 @@
 
 The ruleset of Phase C. It is **derived from the Small Ruleset** (`../small-ruleset/small-ruleset.md`), which is frozen as the canonical ruleset of Phase B: from now on a rule decision is made here, and the Small Ruleset files do not change (ADR-0022).
 
-Every rule not stated on this page is the Small Ruleset's, word for word: parameters, zones, deck inputs, setup, the turn, combat and win conditions. A Game of the Effects Ruleset with the same Seed, Deck Lists of Small cards and Actions plays identically to a Game of the Small Ruleset, Event for Event (a test plays the Small Ruleset's Leader-kill script with the Small sample decks under both). Its sample decks play the effect cards (see Sample decks), so its own golden game, `crates/tcg-loader/tests/golden/effects-leader-kill.trace`, is not the Small Ruleset's: it is a Leader-kill with a trigger resolution in it.
+Every rule not stated on this page is the Small Ruleset's, word for word: parameters, zones, deck inputs, setup, the turn, combat and win conditions. A Game of the Effects Ruleset with the same Seed, Deck Lists of Small cards and Actions plays identically to a Game of the Small Ruleset, Event for Event (a test plays the Small Ruleset's Leader-kill script with the Small sample decks under both). Its sample decks play the effect cards (see Sample decks), so its own golden game, `crates/tcg-loader/tests/golden/effects-leader-kill.trace`, is not the Small Ruleset's: it is a Leader-kill with a trigger resolution in it. A second Effects Golden Game, `crates/tcg-loader/tests/golden/effects-pausing.trace`, pauses for each kind of Choice (ADR-0035).
 
 ## What differs
 
@@ -116,7 +116,7 @@ A Card Effect acts only on cards in the **Active Zone**, `effects.active_zone`, 
 
 ### Catalog cards
 
-One creature per family, in `effects-catalog.yaml`, and `pyre_imp`, the bounded cascade. Every one is in a sample deck except `restless_shade`, `curious_owl`, `snare_vine` and `mind_leech`.
+One creature per family, in `effects-catalog.yaml`, and `pyre_imp`, the bounded cascade. Every one is in a sample deck except `restless_shade`.
 
 | Card | Effect | Shows |
 |---|---|---|
@@ -125,21 +125,21 @@ One creature per family, in `effects-catalog.yaml`, and `pyre_imp`, the bounded 
 | `grave_jackal` | `enter: trash` → draw 1 | the `enter` exception to the Active Zone: it fires on dying in combat |
 | `eager_recruit` | `enter: field`, `if` `self.recently_played` → draw 1 | an `if` read at fire time: true when played, false when `recently_played` is false, for example on an arrival after the Turn it was played (a false `if` at fire time is exercised by the engine tests; no shipped card or deck reaches it) |
 | `restless_shade` | `enter: field` → move self to trash; `enter: trash` → move self to field | a cascade that exceeds the Trigger Cap: playing it is rejected. It is not in a sample deck |
-| `curious_owl` | `enter: field` → `choose_one` (controller): draw 1, or nothing | an Option Choice, the "may" pattern: playing it pauses, `Answer::Option(0)` draws and `Answer::Option(1)` does not. It is not in a sample deck |
-| `snare_vine` | `enter: field` → `choose_card` `target` (controller): a creature in an opponent's field; `set_state` `target` tapped | a Card Choice: playing it pauses (cost 2, power 1) when an opponent has a creature in the field, `Answer::Card(c)` taps exactly `c`; with none nothing is asked and the rest of the `do` is skipped. It is not in a sample deck |
-| `mind_leech` | `enter: field` → `choose_card` `victim` (opponent): a creature in the opponent's own hand; `move` `victim` to trash | a Card Choice decided by the controller's opponent (cost 2, power 2): `owner: opponent` is the controller's opponent, who sees its own hand, so the opponent is the Deciding Player during the other Player's Turn and `Answer::Card(c)` moves `c` to its own trash. It is not in a sample deck |
+| `curious_owl` | `enter: field` → `choose_one` (controller): draw 1, or nothing | an Option Choice, the "may" pattern: playing it pauses, `Answer::Option(0)` draws and `Answer::Option(1)` does not. It is in both sample decks (2 copies each) |
+| `snare_vine` | `enter: field` → `choose_card` `target` (controller): a creature in an opponent's field; `set_state` `target` tapped | a Card Choice: playing it pauses (cost 2, power 1) when an opponent has a creature in the field, `Answer::Card(c)` taps exactly `c`; with none nothing is asked and the rest of the `do` is skipped. It is in both sample decks (2 copies each) |
+| `mind_leech` | `enter: field` → `choose_card` `victim` (opponent): a creature in the opponent's own hand; `move` `victim` to trash | a Card Choice decided by the controller's opponent (cost 2, power 2): `owner: opponent` is the controller's opponent, who sees its own hand, so the opponent is the Deciding Player during the other Player's Turn and `Answer::Card(c)` moves `c` to its own trash. It is in both sample decks (2 copies each) |
 | `pyre_imp` | `enter: field` → move self to trash; `enter: trash` → draw 1 | a bounded cascade: the first trigger's own Event (the move) wakes the second, which draws and stops. Playing it moves the card to the field, then the trash, then draws one card, in one transition |
 
-Self-play never reaches the cap with the sample decks, because `restless_shade` is in none. A one-off count over Seeds 0..1000, made when the sample decks were written and not pinned by a test per card, found every effect card of the sample decks played and the cards that act only after another Event (the `grave_jackal` that dies, the `dawn_scout` that stays for a Turn) acting: no card turned out dead or unreachable, so the catalog needed no fix. The tests pin only per-family minimums (see ADR-0026).
+Self-play never reaches the cap with the sample decks, because `restless_shade` is in none. A one-off count over Seeds 0..1000, made when the sample decks were first written (before the Choice cards joined them) and not pinned by a test per card, found every effect card of the sample decks played and the cards that act only after another Event (the `grave_jackal` that dies, the `dawn_scout` that stays for a Turn) acting: no card turned out dead or unreachable, so the catalog needed no fix. The tests pin per-family minimums (see ADR-0026) and, since the Choice cards joined the decks, that each kind of Choice is answered or skipped at least once over those 1,000 Seeds (see ADR-0035).
 
 ## Sample decks
 
-Both are 1 Leader, 50 creatures (at most 4 of each) and 10 mana. They hold all three families of Card Effects, so a self-played Game plays them.
+Both are 1 Leader, 50 creatures (at most 4 of each) and 10 mana. They hold all three families of Card Effects and the three cards that pause a Resolution for a Choice, so a self-played Game plays them. The three joined by swapping vanilla creatures in place (ADR-0035): `iron_guard` 2 became `snare_vine` 2, `wind_hawk` 2 became `mind_leech` 2, and `ember_hound` 4 became `ember_hound` 2 followed by `curious_owl` 2, in both decks, so the decks stay 50 creatures and every other Card Instance Id stays where it was.
 
 | Deck | Main deck (count each) |
 |---|---|
-| A (`captain_ardel`) | `goblin_scout` 4, `moss_sprite` 4, `ember_hound` 4, `river_otter` 4, `stone_golem` 4, `shadow_cat` 4, `iron_guard` 2, `wind_hawk` 2, `lamp_keeper` 4, `dawn_scout` 4, `grave_jackal` 2, `eager_recruit` 2, `battle_veteran` 2, `weary_ox` 2, `pyre_imp` 2, `banner_bearer` 2, `rally_captain` 2 |
-| B (`warden_ilse`) | `moss_sprite` 4, `ember_hound` 4, `river_otter` 4, `stone_golem` 4, `shadow_cat` 4, `iron_guard` 2, `wind_hawk` 2, `thorn_boar` 4, `lamp_keeper` 4, `dawn_scout` 4, `grave_jackal` 2, `eager_recruit` 2, `battle_veteran` 2, `weary_ox` 2, `pyre_imp` 2, `dread_herald` 4 |
+| A (`captain_ardel`) | `goblin_scout` 4, `moss_sprite` 4, `ember_hound` 2, `curious_owl` 2, `river_otter` 4, `stone_golem` 4, `shadow_cat` 4, `snare_vine` 2, `mind_leech` 2, `lamp_keeper` 4, `dawn_scout` 4, `grave_jackal` 2, `eager_recruit` 2, `battle_veteran` 2, `weary_ox` 2, `pyre_imp` 2, `banner_bearer` 2, `rally_captain` 2 |
+| B (`warden_ilse`) | `moss_sprite` 4, `ember_hound` 2, `curious_owl` 2, `river_otter` 4, `stone_golem` 4, `shadow_cat` 4, `snare_vine` 2, `mind_leech` 2, `thorn_boar` 4, `lamp_keeper` 4, `dawn_scout` 4, `grave_jackal` 2, `eager_recruit` 2, `battle_veteran` 2, `weary_ox` 2, `pyre_imp` 2, `dread_herald` 4 |
 
 The leaders and the mana decks are the Small Ruleset's. The sample decks are the Effects Ruleset's own: the Small Ruleset's are frozen and still load here, since the catalog holds the Small cards.
 

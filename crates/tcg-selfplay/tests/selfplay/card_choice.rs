@@ -4,8 +4,8 @@
 //! the bound names of a Paused Resolution and the card of an Answer is pinned by the unit test
 //! `the_relabelling_maps_every_card_a_paused_resolution_and_an_answer_names` in the crate.
 //!
-//! The deck lists `snare_vine` and `mind_leech`, which the real catalog defines and no shipped deck
-//! lists: on entering the field the first lets its controller tap a creature in an opponent's
+//! The deck lists four `snare_vine`s and four `mind_leech`es, more than the shipped decks do: on
+//! entering the field the first lets its controller tap a creature in an opponent's
 //! field, the second lets the opponent move a creature of its own hand to its trash.
 
 use tcg_engine::deck_list::DeckList;
