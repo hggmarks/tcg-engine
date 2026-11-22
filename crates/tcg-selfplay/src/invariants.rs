@@ -220,6 +220,18 @@ fn state_difference(recomputed: &GameState, next: &GameState) -> Option<String> 
             next.active_player().0
         ));
     }
+    if recomputed.phase() != next.phase() {
+        let named = |state: &GameState| {
+            state
+                .phase()
+                .map_or("none".to_string(), |phase| format!("{:?}", phase.as_str()))
+        };
+        return Some(format!(
+            "the phase is {} in the Recomputed GameState and {} in the engine's",
+            named(recomputed),
+            named(next)
+        ));
+    }
     if recomputed.outcome() != next.outcome() {
         return Some("the Terminal Outcome differs".to_string());
     }

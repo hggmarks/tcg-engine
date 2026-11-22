@@ -128,7 +128,7 @@ fn print_game_log(loaded: &Loaded) {
         }
     };
     println!(
-        "{}, seed {LOG_SEED}, {} Actions, {} Trigger Cap Rejections",
+        "{}, seed {LOG_SEED}, {} Actions, {}",
         loaded.name,
         game.record.actions().len(),
         game.trigger_cap_rejections

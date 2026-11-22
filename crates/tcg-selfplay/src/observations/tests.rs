@@ -573,9 +573,11 @@ fn the_relabelling_maps_every_card_a_paused_resolution_and_an_answer_names() {
             resolutions: 1,
         },
     };
+    // The carried shuffle is of a zone Viewer 0 sees, so that only the ids in it move: a shuffle of
+    // an unseen zone is re-shuffled too (ADR-0036), which another test covers.
     let shuffled = |order: Vec<CardInstanceId>| Event::ZoneShuffled {
         player: PlayerId(0),
-        zone: ZoneId::new("deck"),
+        zone: ZoneId::new("hand"),
         order,
         random_state: RandomState::from_seed(Seed(1)),
     };
