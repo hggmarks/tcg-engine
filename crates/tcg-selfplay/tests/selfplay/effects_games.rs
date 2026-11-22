@@ -21,13 +21,13 @@ use tcg_engine::ruleset_definition::{
 };
 use tcg_selfplay::{
     check_recomputation, check_rejection, self_play, verify_record, Checks, FailureKind, Invariant,
-    SelfPlayGame,
+    SelfPlayGame, TriggerCapRejections,
 };
 
 use crate::common::{
-    declared, digest_line, effects, effects_deck, effects_decks, effects_with_ruleset, fnv1a,
-    pin_difference, steps, DECK_A, DECK_B, EFFECTS_DECK_A, EFFECTS_DECK_B, FNV_START, MAX_STEPS,
-    SMALL_CATALOG, SMALL_RULESET,
+    assert_same_game_but_for_cap_rejections, declared, digest_line, effects, effects_deck,
+    effects_decks, effects_with_ruleset, fnv1a, pin_difference, steps, DECK_A, DECK_B,
+    EFFECTS_DECK_A, EFFECTS_DECK_B, FNV_START, MAX_STEPS, SMALL_CATALOG, SMALL_RULESET,
 };
 
 /// The Seeds of the Effects self-play pin: `0..PINNED_SEEDS`.
@@ -447,9 +447,9 @@ fn effects_self_play_ends_every_game_over_1000_seeds_with_every_invariant_holdin
                 if game.state.outcome().is_none() {
                     failures.push(format!("seed {seed}: the Game has no Terminal Outcome"));
                 }
-                if game.trigger_cap_rejections != 0 {
+                if game.trigger_cap_rejections != TriggerCapRejections::Counted(0) {
                     failures.push(format!(
-                        "seed {seed}: {} Trigger Cap Rejections, but no shipped deck lists a card that reaches the cap",
+                        "seed {seed}: {}, but no shipped deck lists a card that reaches the cap",
                         game.trigger_cap_rejections
                     ));
                 }
@@ -786,23 +786,35 @@ fn self_play_counts_trigger_cap_rejections_without_failing_the_run() {
         "the Game has a Terminal Outcome"
     );
     assert_eq!(
-        game.trigger_cap_rejections, SHADE_GAME_TRIGGER_CAP_REJECTIONS,
+        game.trigger_cap_rejections,
+        TriggerCapRejections::Counted(SHADE_GAME_TRIGGER_CAP_REJECTIONS),
         "the Restless Shades in hand that the cap refused over the Game's listings"
     );
 
     // The count is what an independent walk over the Game's states sees.
     assert_eq!(
         game.trigger_cap_rejections,
-        trigger_cap_rejections_by_playing_every_card_in_hand(&ruleset, &game)
+        TriggerCapRejections::Counted(trigger_cap_rejections_by_playing_every_card_in_hand(
+            &ruleset, &game
+        ))
     );
 
-    // With checks off the Game is the same one, and the count is not kept.
+    // With the engine's checks only the listings still see the refused candidates.
+    let engine_only = self_play(&ruleset, &decks, Seed(3), MAX_STEPS, Checks::EngineOnly)
+        .expect("the Game is played");
+    assert_eq!(
+        engine_only.trigger_cap_rejections,
+        game.trigger_cap_rejections
+    );
+
+    // With checks off the Game is the same one, and the count is not measured, not zero.
     let unchecked =
         self_play(&ruleset, &decks, Seed(3), MAX_STEPS, Checks::Off).expect("the Game is played");
-    assert_eq!(unchecked.trigger_cap_rejections, 0);
-    assert!(unchecked.record == game.record, "the same Game Record");
-    assert!(unchecked.traces == game.traces, "the same Event Traces");
-    assert!(unchecked.state == game.state, "the same final GameState");
+    assert_eq!(
+        unchecked.trigger_cap_rejections,
+        TriggerCapRejections::NotMeasured
+    );
+    assert_same_game_but_for_cap_rejections(&unchecked, &game, "checks off and on");
 
     // The ordinary decks never reach the cap.
     let shipped = self_play(
@@ -813,7 +825,58 @@ fn self_play_counts_trigger_cap_rejections_without_failing_the_run() {
         Checks::On,
     )
     .expect("the Game is played");
-    assert_eq!(shipped.trigger_cap_rejections, 0);
+    assert_eq!(
+        shipped.trigger_cap_rejections,
+        TriggerCapRejections::Counted(0)
+    );
+}
+
+#[test]
+fn a_game_with_checks_off_reports_cap_rejections_as_not_measured() {
+    let ruleset = effects();
+    // Even a Game whose listings would see rejections: the shade decks of Seed 3.
+    for decks in [shade_decks(&ruleset), effects_decks(&ruleset)] {
+        let game = self_play(&ruleset, &decks, Seed(3), MAX_STEPS, Checks::Off)
+            .expect("the Game is played");
+        assert_eq!(
+            game.trigger_cap_rejections,
+            TriggerCapRejections::NotMeasured
+        );
+    }
+}
+
+#[test]
+fn a_game_with_checks_on_and_no_rejection_reports_zero() {
+    let ruleset = effects();
+    let decks = effects_decks(&ruleset);
+    for checks in [Checks::On, Checks::EngineOnly] {
+        let game =
+            self_play(&ruleset, &decks, Seed(3), MAX_STEPS, checks).expect("the Game is played");
+        assert_eq!(
+            game.trigger_cap_rejections,
+            TriggerCapRejections::Counted(0),
+            "{checks:?}: zero seen, which is not `NotMeasured`"
+        );
+    }
+}
+
+#[test]
+fn trigger_cap_rejections_are_described_distinctly() {
+    // The three cases the `self_play` example prints, with the texts it prints.
+    let described = [
+        TriggerCapRejections::NotMeasured,
+        TriggerCapRejections::Counted(0),
+        TriggerCapRejections::Counted(8),
+    ]
+    .map(|rejections| rejections.to_string());
+    assert_eq!(
+        described,
+        [
+            "Trigger Cap Rejections not measured",
+            "0 Trigger Cap Rejections",
+            "8 Trigger Cap Rejections",
+        ]
+    );
 }
 
 #[test]
@@ -1005,7 +1068,15 @@ fn effects_self_play_with_the_same_seed_is_deterministic() {
 
     // The checks only read: switching them off changes nothing.
     let unchecked = self_play(&ruleset, &decks, Seed(7), MAX_STEPS, Checks::Off).expect("played");
-    assert!(first == unchecked, "the same Game with checks off");
+    assert_same_game_but_for_cap_rejections(&first, &unchecked, "the same Game with checks off");
+    assert_eq!(
+        first.trigger_cap_rejections,
+        TriggerCapRejections::Counted(0)
+    );
+    assert_eq!(
+        unchecked.trigger_cap_rejections,
+        TriggerCapRejections::NotMeasured
+    );
 
     let other = self_play(&ruleset, &decks, Seed(8), MAX_STEPS, Checks::On).expect("played");
     assert_ne!(first.record.actions(), other.record.actions());
@@ -1058,7 +1129,10 @@ fn effects_observing_never_changes_a_game() {
         assert!(on.creation == off.creation, "seed {seed}: creation");
         assert!(on.traces == off.traces, "seed {seed}: Event Traces");
         assert!(on.state == off.state, "seed {seed}: final GameState");
-        assert_eq!(off.trigger_cap_rejections, 0);
+        assert_eq!(
+            off.trigger_cap_rejections,
+            TriggerCapRejections::NotMeasured
+        );
     }
     // The Seeds include Answers of both kinds, so the equality above covers Games that pause.
     assert!(card_answers >= 1, "the Seeds hold no Card Answer");

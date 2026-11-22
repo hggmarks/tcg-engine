@@ -421,6 +421,107 @@ fn the_relabelling_shuffles_only_the_hidden_positions_of_an_unseen_zones_shuffle
 }
 
 #[test]
+fn a_relabelling_reshuffles_a_shuffle_carried_in_a_paused_resolution() {
+    use tcg_engine::declarative::{DecisionKind, EffectPath, PausedResolution, QueuedTrigger};
+
+    let (ruleset, _) = effects();
+    // Seen from seat 0, as in the test of the shuffle in a trace: the Hidden Cards 0 and 1 are
+    // alone in their classes (ids and definitions cannot change), and the middle position of the
+    // shuffle of seat 1's hidden `deck` holds the seen card 2.
+    let shuffle = |zone: &str, order: &[u32]| Event::ZoneShuffled {
+        player: PlayerId(1),
+        zone: ZoneId::new(zone),
+        order: order.iter().copied().map(id).collect(),
+        random_state: RandomState::from_seed(Seed(1)),
+    };
+    let creation = vec![
+        created(0, 1, "deck"),
+        created(1, 1, "mana_deck"),
+        created(2, 1, "field"),
+        moved(1, 1, "mana_deck", "deck"),
+        moved(2, 1, "field", "deck"),
+    ];
+    // A shuffle of the unseen `deck`, and one of the public `field`, which the Viewer sees whole.
+    let carried = [shuffle("deck", &[0, 2, 1]), shuffle("field", &[1, 2, 0])];
+    let pause = |unscanned: Vec<Event>| Event::DecisionPending {
+        decider: PlayerId(0),
+        kind: DecisionKind::Option,
+        paused: PausedResolution {
+            trigger: QueuedTrigger {
+                card: id(2),
+                effect: 0,
+            },
+            at: EffectPath {
+                branches: Vec::new(),
+                choice: 0,
+            },
+            bound: Vec::new(),
+            queue: Vec::new(),
+            unscanned,
+            resolutions: 1,
+        },
+    };
+    // The same Events once in a trace and once carried by the pause at the same position.
+    let in_trace = GameEvents {
+        creation: creation.clone(),
+        traces: vec![vec![
+            moved(0, 1, "deck", "deck"),
+            carried[0].clone(),
+            carried[1].clone(),
+        ]],
+    };
+    let in_pause = GameEvents {
+        creation,
+        traces: vec![vec![moved(0, 1, "deck", "deck"), pause(carried.to_vec())]],
+    };
+    let hidden = set(&[0, 1]);
+    assert_eq!(hidden_cards(&ruleset, viewer(0), &in_pause), hidden);
+
+    let mut reordered = false;
+    for stream in 0..32 {
+        let relabel_of = |events: &GameEvents| {
+            let mut rng = RandomState::from_seed(Seed(stream));
+            relabel(&ruleset, viewer(0), &hidden, events, None, &mut rng)
+        };
+        let (plain, paused) = (relabel_of(&in_trace), relabel_of(&in_pause));
+        let Event::DecisionPending {
+            paused: resolution, ..
+        } = &paused.events.traces[0][1]
+        else {
+            panic!("the pause is still the last Event");
+        };
+        // Exactly what the same Events in a trace become with the same stream.
+        assert_eq!(
+            resolution.unscanned,
+            plain.events.traces[0][1..],
+            "stream {stream}: the carried shuffles"
+        );
+        let Event::ZoneShuffled { order, .. } = &resolution.unscanned[0] else {
+            panic!("the carried Events are still the shuffles");
+        };
+        // The seen card keeps its position; the Hidden Cards swap or keep theirs.
+        assert_eq!(order[1], id(2), "stream {stream}: a seen position moved");
+        assert!(
+            *order == [id(0), id(2), id(1)] || *order == [id(1), id(2), id(0)],
+            "stream {stream}: {order:?}"
+        );
+        reordered |= *order == [id(1), id(2), id(0)];
+        // The shuffle of a zone the Viewer sees is left as it was.
+        assert_eq!(
+            resolution.unscanned[1], carried[1],
+            "stream {stream}: a seen zone"
+        );
+        // Nothing else changed, and the draws after the pause are the same ones.
+        assert_eq!(paused.events.creation, in_pause.creation);
+        assert_eq!(paused.events.traces[0][0], in_pause.traces[0][0]);
+    }
+    assert!(
+        reordered,
+        "no stream changed the order of the carried shuffle"
+    );
+}
+
+#[test]
 fn the_relabelling_maps_every_card_a_paused_resolution_and_an_answer_names() {
     use tcg_engine::declarative::{
         Answer, BoundName, DecisionKind, EffectPath, PausedResolution, QueuedTrigger,

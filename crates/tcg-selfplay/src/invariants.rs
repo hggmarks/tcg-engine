@@ -635,3 +635,6 @@ fn turn_went_back(prior: &GameState, next: &GameState) -> Option<String> {
         )),
     }
 }
+
+#[cfg(test)]
+mod tests;
