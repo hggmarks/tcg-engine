@@ -5,6 +5,8 @@
 //!
 //! Everything runs on the real Response Ruleset, catalog and sample decks.
 
+use std::sync::OnceLock;
+
 use tcg_engine::card_catalog::CardId;
 use tcg_engine::declarative::{Action, Event, StackItem, StackSource};
 use tcg_engine::random::Seed;
@@ -168,6 +170,101 @@ fn the_response_sample_decks_hold_the_fast_cards_and_the_ability_card() {
             );
         }
     }
+}
+
+/// The number of Seed Ranges the pinned Seeds are split into (ADR-0040): one test each, run on
+/// parallel threads by the test harness. Chosen by measurement.
+const PARTS: usize = 8;
+
+const _: () = assert!(
+    PINNED_SEEDS.is_multiple_of(PARTS as u64),
+    "the Seed Ranges partition the pinned Seeds evenly"
+);
+
+/// The Seeds of Seed Range `part`: `part * LEN .. (part + 1) * LEN`, contiguous and in order.
+fn seeds_of_range(part: usize) -> std::ops::Range<u64> {
+    let len = PINNED_SEEDS / (PARTS as u64);
+    let part = part as u64;
+    part * len..(part + 1) * len
+}
+
+/// What one Seed Range's Games gave, computed once per test process by `seed_range` (ADR-0040).
+struct SeedRangePlay {
+    /// One line per failed check, as the single 1,000-Seed test collected them.
+    failures: Vec<String>,
+    /// The most Actions of any Game of the range.
+    longest: usize,
+    /// The `digest_line` of every Seed of the range, in Seed order.
+    digests: Vec<String>,
+    /// The coverage counts of the range's Games, summed.
+    used: ResponseUse,
+}
+
+/// Plays every Seed of Seed Range `part` under `Checks::On` and checks each Game. Failures are
+/// collected as data, never raised, so the part test reports its own lines.
+fn play_seed_range(part: usize) -> SeedRangePlay {
+    let ruleset = response();
+    let decks = response_decks(&ruleset);
+    let mut failures = Vec::new();
+    let mut longest = 0;
+    let mut digests = Vec::new();
+    let mut used = ResponseUse::default();
+    for seed in seeds_of_range(part) {
+        match self_play(&ruleset, &decks, Seed(seed), MAX_STEPS, Checks::On) {
+            Ok(game) => {
+                let game_use = response_use(&game);
+                used.add(game_use);
+                let pushed = ability_pushes(&game);
+                if pushed != game_use.abilities_used {
+                    failures.push(format!(
+                        "seed {seed}: {} Activate Actions, but {pushed} Ability items pushed",
+                        game_use.abilities_used
+                    ));
+                }
+                if game.state.outcome().is_none() {
+                    failures.push(format!("seed {seed}: the Game has no Terminal Outcome"));
+                }
+                if !game.state.stack().is_empty() {
+                    failures.push(format!("seed {seed}: the Stack is not empty at the end"));
+                }
+                if game.trigger_cap_rejections != TriggerCapRejections::Counted(0) {
+                    failures.push(format!(
+                        "seed {seed}: {}, but no shipped deck lists a card that reaches the cap",
+                        game.trigger_cap_rejections
+                    ));
+                }
+                if seed < VERIFIED_SEEDS {
+                    if let Err(failure) = verify_record(&ruleset, &game.record) {
+                        failures.push(format!(
+                            "seed {seed}: the record does not verify: {:?}",
+                            failure.kind
+                        ));
+                    }
+                }
+                longest = longest.max(game.record.actions().len());
+                digests.push(digest_line(seed, &game));
+            }
+            Err(failure) => failures.push(format!(
+                "seed {}: failed after Action index {:?}: {:?}",
+                failure.seed.0, failure.action_index, failure.kind
+            )),
+        }
+    }
+    SeedRangePlay {
+        failures,
+        longest,
+        digests,
+        used,
+    }
+}
+
+/// Each Seed Range is a pure function of its Seeds, played at most once per test process: the part
+/// test and the joining test both read it here, and whichever reaches a range first plays it while
+/// any other caller waits. Test scaffolding only; no engine state (ADR-0040).
+static SEED_RANGES: [OnceLock<SeedRangePlay>; PARTS] = [const { OnceLock::new() }; PARTS];
+
+fn seed_range(part: usize) -> &'static SeedRangePlay {
+    SEED_RANGES[part].get_or_init(|| play_seed_range(part))
 }
 
 /// The part tests assert, for every Game of their Seed Range, what the single 1,000-Seed test
