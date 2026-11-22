@@ -84,6 +84,83 @@ const SMALL_RULESET_FREEZE: [(&str, &str, u64); 7] = [
     ),
 ];
 
+/// The frozen Effects Ruleset (Phase F, ADR-0037): the files that make it up, then the files that
+/// pin its Games, each with the FNV-1a digest of its bytes. Rule decisions go to the Response
+/// Ruleset from Phase F's ticket [34] on, so none of these changes. The pinned files are the Golden
+/// Snapshots of `tcg-loader` and the self-play pin, so regenerating one of them by accident (which
+/// would leave it matching itself) changes a digest here.
+const EFFECTS_RULESET_FREEZE: [(&str, &str, u64); 13] = [
+    (
+        "rulesets/effects-ruleset/effects-ruleset.yaml",
+        EFFECTS_RULESET,
+        0xdc64_4930_11b7_e529,
+    ),
+    (
+        "rulesets/effects-ruleset/effects-ruleset.md",
+        include_str!("../../../../rulesets/effects-ruleset/effects-ruleset.md"),
+        0xd293_23a0_4799_2ea9,
+    ),
+    (
+        "rulesets/effects-ruleset/effects-catalog.yaml",
+        EFFECTS_CATALOG,
+        0x45da_d0a1_8f13_485c,
+    ),
+    (
+        "rulesets/effects-ruleset/decks/deck-a.yaml",
+        EFFECTS_DECK_A,
+        0xdf10_a941_9ccd_a33f,
+    ),
+    (
+        "rulesets/effects-ruleset/decks/deck-b.yaml",
+        EFFECTS_DECK_B,
+        0xe64d_67dd_9b89_4129,
+    ),
+    (
+        "crates/tcg-loader/tests/golden/effects-aura-combat.trace",
+        include_str!("../../../tcg-loader/tests/golden/effects-aura-combat.trace"),
+        0xd2ac_a4a6_99d6_36f6,
+    ),
+    (
+        "crates/tcg-loader/tests/golden/effects-leader-kill.trace",
+        include_str!("../../../tcg-loader/tests/golden/effects-leader-kill.trace"),
+        0x348b_e582_9434_5259,
+    ),
+    (
+        "crates/tcg-loader/tests/golden/effects-leader-kill.observed-by-player-0.trace",
+        include_str!(
+            "../../../tcg-loader/tests/golden/effects-leader-kill.observed-by-player-0.trace"
+        ),
+        0x6714_2c97_011d_0ef3,
+    ),
+    (
+        "crates/tcg-loader/tests/golden/effects-leader-kill.observed-by-player-1.trace",
+        include_str!(
+            "../../../tcg-loader/tests/golden/effects-leader-kill.observed-by-player-1.trace"
+        ),
+        0xcc11_3c87_224a_fb45,
+    ),
+    (
+        "crates/tcg-loader/tests/golden/effects-pausing.trace",
+        include_str!("../../../tcg-loader/tests/golden/effects-pausing.trace"),
+        0x2e22_8ef0_68c7_7421,
+    ),
+    (
+        "crates/tcg-loader/tests/golden/effects-pausing.observed-by-player-0.trace",
+        include_str!("../../../tcg-loader/tests/golden/effects-pausing.observed-by-player-0.trace"),
+        0xb61f_158e_3280_f320,
+    ),
+    (
+        "crates/tcg-loader/tests/golden/effects-pausing.observed-by-player-1.trace",
+        include_str!("../../../tcg-loader/tests/golden/effects-pausing.observed-by-player-1.trace"),
+        0x6cb3_dc76_fb7a_ca58,
+    ),
+    (
+        "crates/tcg-selfplay/tests/selfplay/golden/effects-self-play-seeds-0-1000.digest",
+        DIGESTS,
+        0xd383_f7bb_864b_a121,
+    ),
+];
+
 /// The Trigger Cap Rejections seen over the listings of the Game of two shade decks and Seed 3: a
 /// non-zero count, which the test also checks against an independent walk.
 const SHADE_GAME_TRIGGER_CAP_REJECTIONS: usize = 8;
@@ -1030,6 +1107,23 @@ fn the_small_ruleset_is_frozen_since_phase_c() {
     // The Effects sample decks are not the Small ones.
     assert_ne!(EFFECTS_DECK_A, DECK_A);
     assert_ne!(EFFECTS_DECK_B, DECK_B);
+}
+
+#[test]
+fn the_effects_ruleset_is_frozen_since_phase_f() {
+    let changed: Vec<String> = EFFECTS_RULESET_FREEZE
+        .iter()
+        .filter_map(|(name, text, pinned)| {
+            let digest = fnv1a(FNV_START, text.as_bytes());
+            (digest != *pinned)
+                .then(|| format!("{name}: digest {digest:016x}, pinned {pinned:016x}"))
+        })
+        .collect();
+    assert!(
+        changed.is_empty(),
+        "the Effects Ruleset is frozen since Phase F (ADR-0037), and its Games with it, but these changed:\n{}",
+        changed.join("\n")
+    );
 }
 
 /// The Seeds of the check-mode equality over the Effects Ruleset: Seeds whose Games hold a Card
