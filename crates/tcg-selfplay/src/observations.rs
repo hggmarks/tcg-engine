@@ -145,7 +145,9 @@ type At = (usize, usize);
 ///    that id; every other Event, and the Action's arguments, map their ids through the same
 ///    permutation.
 /// 3. *Unseen order*: in each `ZoneShuffled` of a zone `viewer` cannot see, in Event order, the
-///    positions that hold those cards are shuffled among themselves.
+///    positions that hold those cards are shuffled among themselves. A `ZoneShuffled` carried in
+///    the `unscanned` Events of a `DecisionPending` is visited at the position of that Event, the
+///    carried Events in their own order, and shuffled by the same code (ADR-0036).
 pub(crate) fn relabel(
     ruleset: &DeclarativeRuleset,
     viewer: Viewer,
@@ -270,25 +272,13 @@ pub(crate) fn relabel(
     // 3. The order of the zones the Viewer cannot see.
     for events in lists.iter_mut() {
         for event in events.iter_mut() {
-            if let Event::ZoneShuffled {
-                player,
-                zone,
-                order,
-                ..
-            } = event
-            {
-                if sees(ruleset, viewer, *player, zone) {
-                    continue;
+            match event {
+                Event::DecisionPending { paused, .. } => {
+                    for carried in &mut paused.unscanned {
+                        reshuffle_unseen_order(ruleset, viewer, to_relabel, carried, rng);
+                    }
                 }
-                let held: Vec<usize> = (0..order.len())
-                    .filter(|&index| to_relabel.contains(&order[index]))
-                    .collect();
-                let mut cards: Vec<CardInstanceId> =
-                    held.iter().map(|&index| order[index]).collect();
-                rng.shuffle(&mut cards);
-                for (&index, card) in held.iter().zip(cards) {
-                    order[index] = card;
-                }
+                other => reshuffle_unseen_order(ruleset, viewer, to_relabel, other, rng),
             }
         }
     }
@@ -296,6 +286,37 @@ pub(crate) fn relabel(
     Relabelled {
         events: out,
         action,
+    }
+}
+
+/// Step 3 of the Relabelling for one Event: if it is a `ZoneShuffled` of a zone `viewer` cannot
+/// see, the positions that hold cards of `to_relabel` are shuffled among themselves. Any other
+/// Event, and a shuffle of a zone the Viewer sees, is left as it is and draws nothing.
+fn reshuffle_unseen_order(
+    ruleset: &DeclarativeRuleset,
+    viewer: Viewer,
+    to_relabel: &BTreeSet<CardInstanceId>,
+    event: &mut Event,
+    rng: &mut RandomState,
+) {
+    if let Event::ZoneShuffled {
+        player,
+        zone,
+        order,
+        ..
+    } = event
+    {
+        if sees(ruleset, viewer, *player, zone) {
+            return;
+        }
+        let held: Vec<usize> = (0..order.len())
+            .filter(|&index| to_relabel.contains(&order[index]))
+            .collect();
+        let mut cards: Vec<CardInstanceId> = held.iter().map(|&index| order[index]).collect();
+        rng.shuffle(&mut cards);
+        for (&index, card) in held.iter().zip(cards) {
+            order[index] = card;
+        }
     }
 }
 

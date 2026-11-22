@@ -59,9 +59,28 @@ pub struct SelfPlayGame {
     pub state: GameState,
     /// How many Trigger Cap Rejections the listings of this Game saw: candidates that the Trigger
     /// Cap refused (ADR-0023), counted over every listing the policy drew from. It is a count of
-    /// an outcome, never a failure. It is `0` with [`Checks::Off`], which lists through
-    /// `legal_actions` and does not see the refused candidates.
-    pub trigger_cap_rejections: usize,
+    /// an outcome, never a failure. Only [`Checks::Off`] does not measure it: it lists through
+    /// `legal_actions` and does not see the refused candidates (ADR-0036).
+    pub trigger_cap_rejections: TriggerCapRejections,
+}
+
+/// How many Trigger Cap Rejections the listings of a Game saw (ADR-0023, ADR-0036).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TriggerCapRejections {
+    /// The Game ran with `Checks::Off`, whose listings never see refused candidates.
+    NotMeasured,
+    /// The Game ran with `Checks::On` or `Checks::EngineOnly`: this many candidates were refused,
+    /// zero included.
+    Counted(usize),
+}
+
+impl std::fmt::Display for TriggerCapRejections {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotMeasured => write!(formatter, "Trigger Cap Rejections not measured"),
+            Self::Counted(count) => write!(formatter, "{count} Trigger Cap Rejections"),
+        }
+    }
 }
 
 /// Why a Game did not end well.
@@ -414,7 +433,11 @@ fn play(
         creation,
         traces,
         state,
-        trigger_cap_rejections,
+        trigger_cap_rejections: if checker.is_some() {
+            TriggerCapRejections::Counted(trigger_cap_rejections)
+        } else {
+            TriggerCapRejections::NotMeasured
+        },
     })
 }
 

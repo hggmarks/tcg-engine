@@ -226,3 +226,14 @@ pub fn pin_difference(committed: &str, lines: &[String]) -> Option<String> {
         )
     })
 }
+
+/// Asserts that `one` and `other` are the same Game: the same record, creation, Event Traces and
+/// final GameState. Their Trigger Cap Rejections are the one field left out, because a Game run
+/// with `Checks::Off` does not measure them and one run with checks on does (ADR-0036); a test
+/// asserts the two values itself.
+pub fn assert_same_game_but_for_cap_rejections(one: &SelfPlayGame, other: &SelfPlayGame, at: &str) {
+    assert!(one.record == other.record, "{at}: records");
+    assert!(one.creation == other.creation, "{at}: creation");
+    assert!(one.traces == other.traces, "{at}: Event Traces");
+    assert!(one.state == other.state, "{at}: final GameState");
+}

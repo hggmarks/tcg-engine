@@ -5,11 +5,14 @@ use std::num::NonZeroU64;
 use tcg_engine::declarative::{GameRecord, Rejection, ReplayError};
 use tcg_engine::random::{RandomState, Seed};
 use tcg_engine::ruleset::{LegalActions, Ruleset};
-use tcg_selfplay::{self_play, verify_record, Checks, FailureKind, SelfPlayFailure, POLICY_STREAM};
+use tcg_selfplay::{
+    self_play, verify_record, Checks, FailureKind, SelfPlayFailure, TriggerCapRejections,
+    POLICY_STREAM,
+};
 
 use crate::common::{
-    decks, digest_line, edit, p, pass, pin_difference, ruleset_from, small, small_version_2,
-    MAX_STEPS, SMALL_CATALOG, SMALL_RULESET,
+    assert_same_game_but_for_cap_rejections, decks, digest_line, edit, p, pass, pin_difference,
+    ruleset_from, small, small_version_2, MAX_STEPS, SMALL_CATALOG, SMALL_RULESET,
 };
 
 /// The Seeds of the self-play pin: `0..PINNED_SEEDS`.
@@ -118,7 +121,11 @@ fn self_play_with_the_same_seed_is_deterministic() {
 
     // The invariant checks only read: switching them off changes nothing.
     let unchecked = self_play(&ruleset, &decks, Seed(7), MAX_STEPS, Checks::Off).expect("played");
-    assert!(first == unchecked, "the same Game with checks off");
+    assert_same_game_but_for_cap_rejections(&first, &unchecked, "the same Game with checks off");
+    assert_eq!(
+        unchecked.trigger_cap_rejections,
+        TriggerCapRejections::NotMeasured
+    );
 
     let other = self_play(&ruleset, &decks, Seed(8), MAX_STEPS, Checks::On).expect("played");
     assert_ne!(first.record.actions(), other.record.actions());
@@ -296,6 +303,6 @@ fn observing_never_changes_a_game() {
             self_play(&ruleset, &decks, Seed(seed), MAX_STEPS, Checks::EngineOnly).expect("played");
         let off = self_play(&ruleset, &decks, Seed(seed), MAX_STEPS, Checks::Off).expect("played");
         assert!(on == engine_only, "seed {seed}: On and EngineOnly");
-        assert!(on == off, "seed {seed}: On and Off");
+        assert_same_game_but_for_cap_rejections(&on, &off, &format!("seed {seed}: On and Off"));
     }
 }
