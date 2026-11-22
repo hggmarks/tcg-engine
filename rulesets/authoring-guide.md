@@ -64,7 +64,7 @@ win_conditions:
 
 - Every zone says who sees it (`hidden`, `owner` or `public`) and whether its order matters. The zone a `shuffle` shuffles and the `from` of a `draw` must be `ordered` (ADR-0013); the `to` of a `draw` need not be.
 - `inputs` say what each Player brings. Each one fills the zone it names when the Game is created, before `setup` runs.
-- The turn has exactly one phase with `actions`: the Game waits there for the Active Player, and `end_turn` is the only way out. `pass_turn` is a plain action whose effect is `end_turn`. The phase must list at least one action that ends the Turn (its effects end with a top-level `end_turn`, and `end_turn` is allowed nowhere else in an action, never inside an `if`), and every action you declare must be listed by it (ADR-0027).
+- The turn has exactly one phase with `actions`: the Game waits there for the Active Player, and `end_turn` is the only way out. `pass_turn` is a plain action whose effect is `end_turn`. The phase must list at least one action that ends the Turn (its effects end with a top-level `end_turn`, and `end_turn` is allowed nowhere else in an action, never inside an `if`), and every action you declare must be listed by it, or by the `actions` of a Response Window (ADR-0027, ADR-0037).
 - `loser: owner` is the only value; `draw_from_empty` makes a Player lose when a draw of theirs during a turn found the zone empty. A `draw` in `setup` from an empty zone is not a loss: it fails Game creation (ADR-0011, ADR-0014).
 
 ## 2. The card catalog
@@ -118,8 +118,9 @@ The files are a restricted subset of YAML (ADR-0004).
 ## Not supported yet
 
 - Card effects: `effects: true` on a card type loads and the envelope of a Card Effect is checked (`on`/`if`/`do`, or `while`/`modify` with an optional `scope`, see `formats.md`). A triggered one executes (ADR-0023) and a continuous one is a derived read over its carrier or its Modifier Scope (ADR-0024, ADR-0025); the ruleset names the zone where Card Effects act in its `effects` block. Nothing well-formed is rejected as unsupported, but the format has no more than that: the trigger matchers are `enter` and `turn_start`, a triggered `do` cannot `end_turn`, a triggered `do` may ask a Player with `choose_one: { decider: controller|opponent, options: [[effects], [effects], ...] }` (at least 2 options, any of them may be empty, which is how to write "may"; `decider: opponent` needs exactly 2 Players, `OpponentDeciderNeedsTwoPlayers` otherwise; the Resolution pauses until the Deciding Player answers, ADR-0033; it is a load error anywhere but a triggered `do`), or pick a card with `choose_card: { name, decider, zone, card_type, owner?, where? }` (or `one_of: [...]`; ADR-0034: the param keys plus `decider`; `owner` is relative to the controller; `name` is a Card Ref for the effects after it, unique in scope and gone after the enclosing `if` or option; the decider must see the zone: `public`, or `owner` visibility with the decider as its owner, else `DeciderCannotSeeZone`; with no candidate the rest of the `do` is skipped), and a modifier only adds an int to a card field while its carrier is in the Active Zone.
+- Response Windows exist (`windows: [{ id, opened_by, actions }]`, ADR-0037, see `formats.md` and the Response Ruleset), but only for 2 Players, with responses that are ruleset actions: no activated abilities, no triggers on the Stack, no Choice in a pushed action, and an action cannot end the Turn while pushed.
 - The `enum` and `enum set` field types (ADR-0004); a field is `int`, `bool` or `text`.
-- `tap` costs take a ref (`{ ref: card.cost }`), not a literal.
+- `tap` costs take a ref (`{ ref: card.cost }`), not a literal. `tap: { card: { ref } }` and `move: { card: { ref }, to }` are costs too (ADR-0037).
 - Expressions have `eq`, `gte`, `lte`, `and` and `is_card_type` only: no `not`, `or` or arithmetic.
 - `owner` takes only `opponent`; the only step condition is `first_turn`; `position` is only `top`.
 

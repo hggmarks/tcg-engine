@@ -1,0 +1,35 @@
+# Sample deck B for the Response Ruleset (the Effects deck B with two moss_sprites and the ember_hounds
+# swapped for the fast creatures swift_sparrow and flash_fox): 1 Leader, 50 creatures (at most 4 of each), 10 mana. It
+# plays the three families of Card Effects: triggered (lamp_keeper, dawn_scout, grave_jackal,
+# eager_recruit, pyre_imp), self-continuous (battle_veteran, weary_ox) and aura (dread_herald). It
+# also holds the three cards that pause a Resolution for a Choice: curious_owl (an Option Choice),
+# snare_vine (a Card Choice decided by the controller) and mind_leech (decided by the opponent).
+# Format: rulesets/formats.md.
+
+inputs:
+  - input: leader
+    cards:
+      - { card: warden_ilse, count: 1 }
+  - input: main_deck
+    cards:
+      - { card: moss_sprite,    count: 2 }
+      - { card: swift_sparrow,  count: 2 }
+      - { card: flash_fox,      count: 2 }
+      - { card: curious_owl,    count: 2 }
+      - { card: river_otter,    count: 4 }
+      - { card: stone_golem,    count: 4 }
+      - { card: shadow_cat,     count: 4 }
+      - { card: snare_vine,     count: 2 }
+      - { card: mind_leech,     count: 2 }
+      - { card: thorn_boar,     count: 4 }
+      - { card: lamp_keeper,    count: 4 }
+      - { card: dawn_scout,     count: 4 }
+      - { card: grave_jackal,   count: 2 }
+      - { card: eager_recruit,  count: 2 }
+      - { card: battle_veteran, count: 2 }
+      - { card: weary_ox,       count: 2 }
+      - { card: pyre_imp,       count: 2 }
+      - { card: dread_herald,   count: 4 }
+  - input: mana_deck
+    cards:
+      - { card: mana, count: 10 }

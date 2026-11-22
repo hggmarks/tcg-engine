@@ -1,12 +1,14 @@
 # The correctness net over the Effects Ruleset
 
+Amended by ADR-0037: the Effects Ruleset is frozen from Phase F's ticket [34], and asserted frozen by a digest test as the Small Ruleset is.
+
 Amended by ADR-0035: the shipped Effects decks swap six vanilla creatures for `curious_owl`, `snare_vine` and `mind_leech`, so the Effects Golden Game, its observed snapshots and the Effects Self-Play Pin were regenerated, and the pin now holds Answers.
 
 Amended by ADR-0033: a Game on can have no Legal Action again while a decision is pending, a trigger can ask for a decision so a record holds Answers, and the state differences also compare the Pending Decision.
 
 Amended by ADR-0031: with checks on, self-play lists with rejections also under `Checks::EngineOnly`.
 
-The harness of ADR-0020 now runs over the Effects Ruleset (ticket [20], #53), with two new Invariants, one listing capability in the engine, a counted outcome for the Trigger Cap, new sample decks and the freeze of the Small Ruleset asserted by a pinned digest. The Uniform Random Policy, the Step Cap, the failure types (`FailureKind` is unchanged) and the use of the public API only are ADR-0020's, untouched.
+The harness of ADR-0020 now runs over the Effects Ruleset (ticket [20], #53), with two new Invariants, one listing capability in the engine, a counted outcome for the Trigger Cap, new sample decks and the freeze of the Small Ruleset asserted by a pinned digest. *(Amended by ADR-0037: the Effects Ruleset's freeze is asserted likewise, `the_effects_ruleset_is_frozen_since_phase_f`: ADR-0037)* The Uniform Random Policy, the Step Cap, the failure types (`FailureKind` is unchanged) and the use of the public API only are ADR-0020's, untouched.
 
 **Two Invariants, after the seven.** `Invariant` gains `DerivedReadsDoNotLeak` and `RejectionLeavesStateIntact`, appended after the existing seven so their order and tests do not move. `check_opening` and `check_transition` keep their signatures and their seven; the new ones are checked by functions of their own, because they need what those do not have.
 
@@ -21,7 +23,7 @@ The harness of ADR-0020 now runs over the Effects Ruleset (ticket [20], #53), wi
 
 **The Effects Self-Play Pin.** `crates/tcg-selfplay/tests/selfplay/golden/effects-self-play-seeds-0-1000.digest` is in the format of ADR-0021's pin, compared in the same pass as the invariants, and rewritten only by the ignored `regenerate_effects_self_play_digests`. Replay of those records, cascades included, reproduces the Event Traces and the final GameStates exactly: a trigger asks for no decision, so a record is unchanged (ADR-0019, ADR-0023). *(Amended by ADR-0033: a trigger whose `do` holds a Choice asks for one, and its Answer is an Action of the record; the record keeps its shape and replays the Answers like any Action. No shipped deck holds such a card *(Superseded by ADR-0035: both shipped decks hold three, and the pin holds Answers of every kind)*.)*
 
-**The Small Ruleset freeze is asserted, not assumed.** `the_small_ruleset_is_frozen_since_phase_c` pins the FNV-1a digest of each of seven files: the Small ruleset, catalog and two decks, the two Small Golden Snapshots and the Small self-play pin, and names the file that changed. Pinning only the sources would let an accidental regeneration of a snapshot go unnoticed, because the regenerated file would match itself; the snapshots are pinned too. An edit to the frozen ruleset, or a regenerated Small snapshot, fails here.
+**The Small Ruleset freeze is asserted, not assumed.** `the_small_ruleset_is_frozen_since_phase_c` pins the FNV-1a digest of each of seven files: the Small ruleset, catalog and two decks, the two Small Golden Snapshots and the Small self-play pin, and names the file that changed. Pinning only the sources would let an accidental regeneration of a snapshot go unnoticed, because the regenerated file would match itself; the snapshots are pinned too. An edit to the frozen ruleset, or a regenerated Small snapshot, fails here. *(Amended by ADR-0037: the Effects Ruleset is frozen the same way from Phase F, by thirteen digests, and from then on the current phase's ruleset is the Response Ruleset)*
 
 **What a failure's record reproduces.** `NoLegalAction` and the Step Cap verify as `Ok` and replay to the GameState the failure stopped in (ADR-0020), and the tests on the Effects Ruleset assert exactly that. `RejectionLeavesStateIntact` is found while listing, not by `verify_record`: its record replays to the GameState in which the Action was rejected. It cannot be produced through the public API.
 
