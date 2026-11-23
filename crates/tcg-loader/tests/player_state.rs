@@ -18,7 +18,7 @@ use tcg_engine::random::Seed;
 use tcg_engine::ruleset::{LegalActions, Ruleset, Transition};
 use tcg_engine::ruleset_definition::{
     ActionId, DefinitionError, DefinitionErrorKind, FieldType, FieldTypeDraft, FieldValue,
-    ParamName, PlayerStateId, ReferenceTarget, WinConditionId, ZoneId,
+    ParamName, PlayerStateId, RefType, ReferenceTarget, StateName, WinConditionId, ZoneId,
 };
 use tcg_loader::{load_card_catalog, load_deck_list, load_ruleset_definition, LoadError};
 
@@ -1157,6 +1157,420 @@ fn a_win_condition_on_an_undeclared_player_state_is_a_load_error() {
                 target: ReferenceTarget::PlayerState,
                 id: "mana".to_string(),
             },
+        }
+    );
+}
+
+// ---- AC4: an `amount` may be a ref, or `sub` (ticket #96, step 3)
+//
+// The amount of an `add_state` of an action, a cost or a Card Effect is an int literal, an int read
+// (a card's field or instance state, or a Player's state) or `sub: [a, b]` of two of those. It is
+// evaluated when its `add_state` runs. The tests use an edited copy of the fixture: an int instance
+// state `charge` (init 7) on `unit`, actions that add by a ref, and a catalog card `booster` (power
+// 3, +4 power while it is on the field) in the deck in place of one `plain_unit`. Seat 0 then opens
+// with `tithe_unit` (5, power 2), `tithe_unit` (4) and `booster` (3, power 3 in hand).
+
+const BOOSTER: CardInstanceId = CardInstanceId(3);
+
+/// The actions of the amount tests, inserted before the fixture's own.
+const AMOUNT_ACTIONS: &str = "  - id: hit
+    params:
+      - { name: card, zone: hand, card_type: unit }
+    effects:
+      - add_state: { player: opponent, state: life_points, amount: { sub: [0, { ref: card.power }] } }
+
+  - id: hit_on_field
+    params:
+      - { name: field_card, zone: field, card_type: unit }
+    effects:
+      - add_state: { player: opponent, state: life_points, amount: { sub: [0, { ref: field_card.power }] } }
+
+  - id: charge_hit
+    params:
+      - { name: card, zone: hand, card_type: unit }
+    effects:
+      - add_state: { card: { ref: card }, state: charge, amount: 3 }
+      - add_state: { player: opponent, state: life_points, amount: { sub: [0, { ref: card.charge }] } }
+
+  - id: echo
+    effects:
+      - add_state: { player: active, state: life_points, amount: 500 }
+      - add_state: { player: opponent, state: life_points, amount: { sub: [0, { ref: player.life_points, player: active }] } }
+
+  - id: charge_by_power
+    params:
+      - { name: card, zone: hand, card_type: unit }
+    effects:
+      - add_state: { card: { ref: card }, state: charge, amount: { ref: card.power } }
+
+  - id: sub_lit_ref
+    params:
+      - { name: card, zone: hand, card_type: unit }
+    effects:
+      - add_state: { player: opponent, state: life_points, amount: { sub: [10, { ref: card.power }] } }
+
+  - id: sub_ref_lit
+    params:
+      - { name: card, zone: hand, card_type: unit }
+    effects:
+      - add_state: { player: opponent, state: life_points, amount: { sub: [{ ref: card.power }, 10] } }
+
+  - id: sub_overflow
+    effects:
+      - add_state: { player: opponent, state: life_points, amount: { sub: [-9223372036854775808, 1] } }
+";
+
+/// The fixture ruleset with the amount actions listed in Main and the instance state `charge`.
+fn amounts_ruleset_text() -> String {
+    let with_state = edit(
+        RULESET,
+        "    instance_state: []\n",
+        "    instance_state:\n      - { name: charge, type: int, init: 7 }\n",
+    );
+    let listed = edit(
+        &with_state,
+        "actions: [summon, bully,",
+        "actions: [hit, hit_on_field, charge_hit, echo, charge_by_power, sub_lit_ref, sub_ref_lit, sub_overflow, summon, bully,",
+    );
+    edit(
+        &listed,
+        "actions:\n  # Legal while the acting Player has not summoned",
+        &format!("actions:\n{AMOUNT_ACTIONS}\n  # Legal while the acting Player has not summoned"),
+    )
+}
+
+/// The fixture ruleset, the catalog with `booster` and the deck that holds it.
+fn amounts_game_of(ruleset_yaml: &str) -> (DeclarativeRuleset, GameCreation) {
+    let definition = load_ruleset_definition(ruleset_yaml).expect("the ruleset loads");
+    let catalog_yaml = format!(
+        "{CATALOG}  - id: booster\n    type: unit\n    fields: {{ name: \"Booster\", power: 3 }}\n    effects:\n      - while: true\n        modify: {{ field: power, amount: 4 }}\n"
+    );
+    let catalog = load_card_catalog(&definition, &catalog_yaml).expect("the catalog loads");
+    let ruleset = DeclarativeRuleset::new(definition, catalog);
+    let deck_yaml = edit(
+        DECK,
+        "{ card: plain_unit, count: 4 }",
+        "{ card: plain_unit, count: 3 }\n      - { card: booster, count: 1 }",
+    );
+    let decks: Vec<_> = (0..2)
+        .map(|_| {
+            load_deck_list(ruleset.definition(), ruleset.catalog(), &deck_yaml)
+                .expect("the deck is legal")
+        })
+        .collect();
+    let creation = ruleset
+        .create_game(&decks, Seed(1))
+        .expect("the decks create a game");
+    assert_eq!(
+        creation.opening.state.zone(p(0), &ZoneId::new("hand")),
+        Some([TITHE_0, OTHER_TITHE_0, BOOSTER].as_slice()),
+        "seat 0 opens with this hand"
+    );
+    (ruleset, creation)
+}
+
+fn amounts_game() -> (DeclarativeRuleset, GameCreation) {
+    amounts_game_of(&amounts_ruleset_text())
+}
+
+fn charge_changed(card: CardInstanceId, value: i64) -> Event {
+    Event::CardStateChanged {
+        card,
+        state: StateName::new("charge"),
+        value: int(value),
+    }
+}
+
+#[test]
+fn an_add_state_whose_amount_is_a_ref_to_a_card_field_applies_its_current_value() {
+    let (ruleset, creation) = amounts_game();
+    let input = creation.opening.state;
+    let before = input.clone();
+
+    // `sub: [0, ref]` takes the power of the card from the opponent's Life Points: a `tithe_unit`
+    // has power 2 and the `booster` in hand 3 (its modifier is not active outside the field).
+    let by_tithe = take(&ruleset, &input, &act(0, "hit", &[TITHE_0]));
+    assert_eq!(
+        by_tithe.trace.events().to_vec(),
+        vec![changed(1, "life_points", int(3998))]
+    );
+    let by_booster = take(&ruleset, &input, &act(0, "hit", &[BOOSTER]));
+    assert_eq!(
+        by_booster.trace.events().to_vec(),
+        vec![changed(1, "life_points", int(3997))]
+    );
+    // The amount is read when the Action runs, so two hits add up.
+    let twice = take(&ruleset, &by_tithe.state, &act(0, "hit", &[BOOSTER]));
+    assert_eq!(
+        twice.state.player_state(p(1)),
+        Some(values(3995, false).as_slice())
+    );
+    assert_eq!(input, before);
+}
+
+#[test]
+fn an_amount_ref_to_a_card_field_includes_active_field_modifiers() {
+    let (ruleset, creation) = amounts_game();
+    // The `booster` on the field reads 3 + 4: the amount is the derived value, like any read.
+    let summoned = take(
+        &ruleset,
+        &creation.opening.state,
+        &act(0, "summon", &[BOOSTER]),
+    );
+    let hit = take(
+        &ruleset,
+        &summoned.state,
+        &act(0, "hit_on_field", &[BOOSTER]),
+    );
+    assert_eq!(
+        hit.trace.events().to_vec(),
+        vec![changed(1, "life_points", int(3993))]
+    );
+}
+
+#[test]
+fn an_amount_ref_to_card_state_reads_its_current_value() {
+    let (ruleset, creation) = amounts_game();
+    // The first effect takes the card's `charge` from 7 to 10, the second reads it: 4000 - 10.
+    let next = take(
+        &ruleset,
+        &creation.opening.state,
+        &act(0, "charge_hit", &[TITHE_0]),
+    );
+    assert_eq!(
+        next.trace.events().to_vec(),
+        vec![
+            charge_changed(TITHE_0, 10),
+            changed(1, "life_points", int(3990)),
+        ]
+    );
+}
+
+#[test]
+fn an_amount_ref_to_player_state_reads_its_current_value() {
+    let (ruleset, creation) = amounts_game();
+    // The first effect gives seat 0 4500; the second takes that from seat 1: 4000 - 4500.
+    let next = take(&ruleset, &creation.opening.state, &act(0, "echo", &[]));
+    assert_eq!(
+        next.trace.events().to_vec(),
+        vec![
+            changed(0, "life_points", int(4500)),
+            changed(1, "life_points", int(-500)),
+        ]
+    );
+}
+
+#[test]
+fn a_card_add_state_amount_may_be_a_ref() {
+    let (ruleset, creation) = amounts_game();
+    // `add_state` of a card's `charge` by its power: 7 + 2.
+    let next = take(
+        &ruleset,
+        &creation.opening.state,
+        &act(0, "charge_by_power", &[TITHE_0]),
+    );
+    assert_eq!(
+        next.trace.events().to_vec(),
+        vec![charge_changed(TITHE_0, 9)]
+    );
+}
+
+#[test]
+fn a_sub_amount_subtracts_its_second_operand_from_its_first() {
+    let (ruleset, creation) = amounts_game();
+    let input = creation.opening.state;
+    // A literal and a ref, in both orders, with power 2: 10 - 2 is added, 2 - 10 is added.
+    let literal_first = take(&ruleset, &input, &act(0, "sub_lit_ref", &[TITHE_0]));
+    assert_eq!(
+        literal_first.trace.events().to_vec(),
+        vec![changed(1, "life_points", int(4008))]
+    );
+    let ref_first = take(&ruleset, &input, &act(0, "sub_ref_lit", &[TITHE_0]));
+    assert_eq!(
+        ref_first.trace.events().to_vec(),
+        vec![changed(1, "life_points", int(3992))]
+    );
+}
+
+#[test]
+fn a_sub_amount_that_overflows_is_rejected() {
+    let (ruleset, creation) = amounts_game();
+    let input = creation.opening.state;
+    let before = input.clone();
+    // `i64::MIN - 1` does not fit: a typed Rejection, no Events, the input untouched.
+    assert_eq!(
+        ruleset.transition(&input, &act(0, "sub_overflow", &[])),
+        Err(Rejection::ArithmeticOverflow)
+    );
+    assert_eq!(input, before);
+}
+
+/// The path of the amount of the first effect of the action `id`.
+fn amount_at(id: &str) -> DefinitionPath {
+    at_action(id)
+        .key("effects")
+        .index(0)
+        .key("add_state")
+        .key("amount")
+}
+
+#[test]
+fn an_amount_ref_to_a_non_int_value_is_a_load_error() {
+    // The text field `name` is not an int, as an operand of `sub`.
+    let yaml = edit(
+        &amounts_ruleset_text(),
+        "amount: { sub: [0, { ref: card.power }] }",
+        "amount: { sub: [0, { ref: card.name }] }",
+    );
+    assert_eq!(
+        definition_error(&yaml),
+        DefinitionError {
+            path: amount_at("hit").key("sub").index(1),
+            kind: DefinitionErrorKind::ReferenceTypeMismatch {
+                expected: RefType::Value(FieldType::Int),
+                found: RefType::Value(FieldType::Text),
+            },
+        }
+    );
+
+    // A bool Player state, as a whole amount.
+    let player = edit(
+        &amounts_ruleset_text(),
+        "amount: { ref: card.power }",
+        "amount: { ref: player.summoned, player: active }",
+    );
+    assert_eq!(
+        definition_error(&player),
+        DefinitionError {
+            path: amount_at("charge_by_power"),
+            kind: DefinitionErrorKind::ReferenceTypeMismatch {
+                expected: RefType::Value(FieldType::Int),
+                found: RefType::Value(FieldType::Bool),
+            },
+        }
+    );
+
+    // A card ref without a name is not a value.
+    let nameless = edit(
+        &amounts_ruleset_text(),
+        "amount: { ref: card.power }",
+        "amount: { ref: card }",
+    );
+    assert_eq!(
+        definition_error(&nameless),
+        DefinitionError {
+            path: amount_at("charge_by_power"),
+            kind: DefinitionErrorKind::CardRefNotAValue {
+                reference: "card".to_string(),
+            },
+        }
+    );
+}
+
+#[test]
+fn an_amount_ref_to_an_undeclared_value_is_a_load_error() {
+    let card = edit(
+        &amounts_ruleset_text(),
+        "amount: { sub: [0, { ref: card.power }] }",
+        "amount: { sub: [0, { ref: card.nope }] }",
+    );
+    assert_eq!(
+        definition_error(&card),
+        DefinitionError {
+            path: amount_at("hit").key("sub").index(1),
+            kind: DefinitionErrorKind::DanglingReference {
+                target: ReferenceTarget::FieldOrInstanceState,
+                id: "nope".to_string(),
+            },
+        }
+    );
+
+    let player = edit(
+        &amounts_ruleset_text(),
+        "amount: { ref: card.power }",
+        "amount: { ref: player.mana, player: active }",
+    );
+    assert_eq!(
+        definition_error(&player),
+        DefinitionError {
+            path: amount_at("charge_by_power"),
+            kind: DefinitionErrorKind::DanglingReference {
+                target: ReferenceTarget::PlayerState,
+                id: "mana".to_string(),
+            },
+        }
+    );
+}
+
+#[test]
+fn a_ref_amount_in_an_automatic_step_is_a_load_error() {
+    // Nothing binds a card in an automatic step, so its amount stays an int literal.
+    let automatic = edit(
+        RULESET,
+        "    - id: start\n      automatic: []",
+        "    - id: start\n      automatic:\n        - add_state: { player: active, state: life_points, amount: { ref: player.life_points, player: active } }",
+    );
+    assert_eq!(
+        definition_error(&automatic),
+        DefinitionError {
+            path: DefinitionPath::root()
+                .key("turn")
+                .key("phases")
+                .id("start")
+                .key("automatic")
+                .index(0)
+                .key("add_state")
+                .key("amount"),
+            kind: DefinitionErrorKind::InvalidAmount,
+        }
+    );
+
+    // Nor in a setup step, where `sub` is no more allowed.
+    let setup = edit(
+        RULESET,
+        "  - draw: { player: each, from: deck, to: hand, count: 3 }",
+        "  - draw: { player: each, from: deck, to: hand, count: 3 }\n  - add_state: { player: each, state: life_points, amount: { sub: [1, 2] } }",
+    );
+    assert_eq!(
+        definition_error(&setup),
+        DefinitionError {
+            path: DefinitionPath::root()
+                .key("setup")
+                .index(1)
+                .key("add_state")
+                .key("amount"),
+            kind: DefinitionErrorKind::InvalidAmount,
+        }
+    );
+}
+
+#[test]
+fn a_nested_operator_in_a_sub_amount_is_a_load_error() {
+    // `sub` takes literals and refs, not another operator.
+    let nested = edit(
+        &amounts_ruleset_text(),
+        "amount: { sub: [0, { ref: card.power }] }",
+        "amount: { sub: [0, { sub: [1, 2] }] }",
+    );
+    assert_eq!(
+        definition_error(&nested),
+        DefinitionError {
+            path: amount_at("hit").key("sub").index(1),
+            kind: DefinitionErrorKind::InvalidAmount,
+        }
+    );
+
+    // Any other operator is not an amount either.
+    let operator = edit(
+        &amounts_ruleset_text(),
+        "amount: { sub: [0, { ref: card.power }] }",
+        "amount: { eq: [1, 2] }",
+    );
+    assert_eq!(
+        definition_error(&operator),
+        DefinitionError {
+            path: amount_at("hit"),
+            kind: DefinitionErrorKind::InvalidAmount,
         }
     );
 }
