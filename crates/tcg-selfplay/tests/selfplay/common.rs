@@ -251,6 +251,21 @@ pub fn response_decks(ruleset: &DeclarativeRuleset) -> Vec<DeckList> {
     ]
 }
 
+pub const DUEL_RULESET: &str = include_str!("../../../../rulesets/duel-ruleset/duel-ruleset.yaml");
+pub const DUEL_CATALOG: &str = include_str!("../../../../rulesets/duel-ruleset/duel-catalog.yaml");
+pub const DUEL_DECK_A: &str = include_str!("../../../../rulesets/duel-ruleset/decks/deck-a.yaml");
+pub const DUEL_DECK_B: &str = include_str!("../../../../rulesets/duel-ruleset/decks/deck-b.yaml");
+
+/// The real Duel Ruleset and the real Duel catalog.
+pub fn duel() -> DeclarativeRuleset {
+    ruleset_from(DUEL_RULESET, DUEL_CATALOG)
+}
+
+/// The Duel sample Deck A for seat 0 and Deck B for seat 1.
+pub fn duel_decks(ruleset: &DeclarativeRuleset) -> Vec<DeckList> {
+    vec![deck(ruleset, DUEL_DECK_A), deck(ruleset, DUEL_DECK_B)]
+}
+
 /// Asserts that `one` and `other` are the same Game: the same record, creation, Event Traces and
 /// final GameState. Their Trigger Cap Rejections are the one field left out, because a Game run
 /// with `Checks::Off` does not measure them and one run with checks on does (ADR-0036); a test
