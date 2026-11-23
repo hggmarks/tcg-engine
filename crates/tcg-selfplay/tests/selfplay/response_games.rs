@@ -5,6 +5,8 @@
 //!
 //! Everything runs on the real Response Ruleset, catalog and sample decks.
 
+use std::sync::OnceLock;
+
 use tcg_engine::card_catalog::CardId;
 use tcg_engine::declarative::{Action, Event, StackItem, StackSource};
 use tcg_engine::random::Seed;
@@ -170,15 +172,44 @@ fn the_response_sample_decks_hold_the_fast_cards_and_the_ability_card() {
     }
 }
 
-#[test]
-fn response_self_play_ends_every_game_over_1000_seeds_with_every_invariant_holding() {
+/// The number of Seed Ranges the pinned Seeds are split into (ADR-0040): one test each, run on
+/// parallel threads by the test harness. Chosen by measurement.
+const PARTS: usize = 4;
+
+const _: () = assert!(
+    PINNED_SEEDS.is_multiple_of(PARTS as u64),
+    "the Seed Ranges partition the pinned Seeds evenly"
+);
+
+/// The Seeds of Seed Range `part`: `part * LEN .. (part + 1) * LEN`, contiguous and in order.
+fn seeds_of_range(part: usize) -> std::ops::Range<u64> {
+    let len = PINNED_SEEDS / (PARTS as u64);
+    let part = part as u64;
+    part * len..(part + 1) * len
+}
+
+/// What one Seed Range's Games gave, computed once per test process by `seed_range` (ADR-0040).
+struct SeedRangePlay {
+    /// One line per failed check, as the single 1,000-Seed test collected them.
+    failures: Vec<String>,
+    /// The most Actions of any Game of the range.
+    longest: usize,
+    /// The `digest_line` of every Seed of the range, in Seed order.
+    digests: Vec<String>,
+    /// The coverage counts of the range's Games, summed.
+    used: ResponseUse,
+}
+
+/// Plays every Seed of Seed Range `part` under `Checks::On` and checks each Game. Failures are
+/// collected as data, never raised, so the part test reports its own lines.
+fn play_seed_range(part: usize) -> SeedRangePlay {
     let ruleset = response();
     let decks = response_decks(&ruleset);
     let mut failures = Vec::new();
     let mut longest = 0;
     let mut digests = Vec::new();
     let mut used = ResponseUse::default();
-    for seed in 0..PINNED_SEEDS {
+    for seed in seeds_of_range(part) {
         match self_play(&ruleset, &decks, Seed(seed), MAX_STEPS, Checks::On) {
             Ok(game) => {
                 let game_use = response_use(&game);
@@ -219,7 +250,106 @@ fn response_self_play_ends_every_game_over_1000_seeds_with_every_invariant_holdi
             )),
         }
     }
-    assert!(failures.is_empty(), "{}", failures.join("\n"));
+    SeedRangePlay {
+        failures,
+        longest,
+        digests,
+        used,
+    }
+}
+
+/// Each Seed Range is a pure function of its Seeds, played at most once per test process: the part
+/// test and the joining test both read it here, and whichever reaches a range first plays it while
+/// any other caller waits. Test scaffolding only; no engine state (ADR-0040).
+static SEED_RANGES: [OnceLock<SeedRangePlay>; PARTS] = [const { OnceLock::new() }; PARTS];
+
+fn seed_range(part: usize) -> &'static SeedRangePlay {
+    SEED_RANGES[part].get_or_init(|| play_seed_range(part))
+}
+
+/// The part tests assert, for every Game of their Seed Range, what the single 1,000-Seed test
+/// asserted: a Terminal Outcome, an empty Stack, `TriggerCapRejections::Counted(0)`, the Activate
+/// and Ability-push counts equal, `verify_record` on Seeds 0..100 and no `FailureKind`.
+fn assert_seed_range_holds(part: usize) {
+    let play = seed_range(part);
+    assert!(
+        play.failures.is_empty(),
+        "Seeds {:?}:\n{}",
+        seeds_of_range(part),
+        play.failures.join("\n")
+    );
+}
+
+/// The part tests below are written by hand for four Seed Ranges: changing `PARTS` means renaming
+/// them (ADR-0040).
+const _: () = assert!(
+    PARTS == 4,
+    "the part tests are written for four Seed Ranges: add or remove part tests and rename them"
+);
+
+#[test]
+fn response_self_play_ends_every_game_over_seeds_0_to_250_with_every_invariant_holding() {
+    assert_seed_range_holds(0);
+}
+
+#[test]
+fn response_self_play_ends_every_game_over_seeds_250_to_500_with_every_invariant_holding() {
+    assert_seed_range_holds(1);
+}
+
+#[test]
+fn response_self_play_ends_every_game_over_seeds_500_to_750_with_every_invariant_holding() {
+    assert_seed_range_holds(2);
+}
+
+#[test]
+fn response_self_play_ends_every_game_over_seeds_750_to_1000_with_every_invariant_holding() {
+    assert_seed_range_holds(3);
+}
+
+#[test]
+fn the_response_seed_ranges_cover_seeds_0_to_1000_once() {
+    let mut next = 0;
+    for part in 0..PARTS {
+        let seeds = seeds_of_range(part);
+        assert_eq!(
+            seeds.start, next,
+            "the Seed Range {part} starts where the last one ended"
+        );
+        assert!(
+            seeds.start < seeds.end,
+            "the Seed Range {part} is not empty"
+        );
+        next = seeds.end;
+    }
+    assert_eq!(
+        next, PINNED_SEEDS,
+        "the Seed Ranges end at the last pinned Seed"
+    );
+}
+
+/// The last step: the five coverage counts summed over every Seed Range, and the Response
+/// Self-Play Pin compared whole over the digest lines of all 1,000 Seeds in Seed order. It reads
+/// the Seed Ranges through the same cache as the part tests: it plays any range that no other test
+/// has started (usually range 0, and all of them under a name filter), and each range is played
+/// only once per process, by whichever test reaches it first.
+#[test]
+fn response_self_play_covers_every_response_use_and_matches_the_pin_over_1000_seeds() {
+    let plays: Vec<&SeedRangePlay> = (0..PARTS).map(seed_range).collect();
+    for (part, play) in plays.iter().enumerate() {
+        assert!(
+            play.failures.is_empty(),
+            "the Seeds {:?} have failures, listed by the part test for that Seed Range",
+            seeds_of_range(part)
+        );
+    }
+    let longest = plays.iter().map(|play| play.longest).max().unwrap_or(0);
+    let mut used = ResponseUse::default();
+    let mut digests = Vec::new();
+    for play in &plays {
+        used.add(play.used);
+        digests.extend(play.digests.iter().cloned());
+    }
     assert!(
         longest * 2 < MAX_STEPS,
         "the Step Cap of {MAX_STEPS} has no headroom over the longest Game ({longest} Actions)"
@@ -248,7 +378,22 @@ fn response_self_play_ends_every_game_over_1000_seeds_with_every_invariant_holdi
         "coverage count unanswered_windows is 0 over Seeds 0..1000: {used:?}"
     );
 
-    // The same Games, one pass: their Game Records and Event Traces are the pinned ones.
+    // The summed counts are exactly the ones ADR-0039 measured, so a broken sum over the Seed
+    // Ranges fails here and not only a count of 0. If the decks or the policy change on purpose,
+    // update the values with the pin.
+    assert_eq!(
+        used,
+        ResponseUse {
+            responses_pushed: 1684,
+            responses_to_responses: 305,
+            fizzles: 143,
+            abilities_used: 952,
+            unanswered_windows: 18835,
+        },
+        "the coverage counts over Seeds 0..1000 are not the ones of ADR-0039's table"
+    );
+
+    // The same Games, played once: their Game Records and Event Traces are the pinned ones.
     if let Some(difference) = pin_difference(DIGESTS, &digests) {
         panic!(
             "{difference}\nIf the change is deliberate, run: cargo test -p tcg-selfplay --test selfplay -- --ignored regenerate_response_self_play_digests\n(coverage so far: {used:?}, longest Game {longest} Actions)"

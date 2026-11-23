@@ -1,6 +1,8 @@
 # The correctness net over the Effects Ruleset
 
-Amended by ADR-0039: the Response Ruleset has the same net over its Games: a third Self-Play Pin, coverage counts in the same 1,000-Seed pass and a Golden Game of its own. The Effects pin and Golden Games stay frozen.
+Amended by ADR-0039: the Response Ruleset has the same net over its Games: a third Self-Play Pin, coverage counts in the same 1,000-Seed pass *(Amended by ADR-0040: summed over four Seed Ranges by a joining test)* and a Golden Game of its own. The Effects pin and Golden Games stay frozen.
+
+Amended by ADR-0040: the Response Ruleset's 1,000 Seeds are played in four Seed Ranges, one test each, and its counts and pin are joined by a last test; the Effects test is unchanged.
 
 Amended by ADR-0037: the Effects Ruleset is frozen from Phase F's ticket [34], and asserted frozen by a digest test as the Small Ruleset is.
 
@@ -27,7 +29,7 @@ The harness of ADR-0020 now runs over the Effects Ruleset (ticket [20], #53), wi
 
 **The Effects Self-Play Pin.** `crates/tcg-selfplay/tests/selfplay/golden/effects-self-play-seeds-0-1000.digest` is in the format of ADR-0021's pin, compared in the same pass as the invariants, and rewritten only by the ignored `regenerate_effects_self_play_digests`. Replay of those records, cascades included, reproduces the Event Traces and the final GameStates exactly: a trigger asks for no decision, so a record is unchanged (ADR-0019, ADR-0023). *(Amended by ADR-0033: a trigger whose `do` holds a Choice asks for one, and its Answer is an Action of the record; the record keeps its shape and replays the Answers like any Action. No shipped deck holds such a card *(Superseded by ADR-0035: both shipped decks hold three, and the pin holds Answers of every kind)*.)*
 
-*(Amended by ADR-0039: "The Effects Self-Play Pin" above is one of three. The Response Ruleset's is `response-self-play-seeds-0-1000.digest`, compared in the same pass as its Invariants and written only by the ignored `regenerate_response_self_play_digests`.)*
+*(Amended by ADR-0039: "The Effects Self-Play Pin" above is one of three. The Response Ruleset's is `response-self-play-seeds-0-1000.digest`, compared in the same pass as its Invariants and written only by the ignored `regenerate_response_self_play_digests`. *Amended by ADR-0040: the Response pin is compared whole by the test that joins the Seed Ranges, over the Games the Seed Range tests played, once.*)*
 
 **The Small Ruleset freeze is asserted, not assumed.** `the_small_ruleset_is_frozen_since_phase_c` pins the FNV-1a digest of each of seven files: the Small ruleset, catalog and two decks, the two Small Golden Snapshots and the Small self-play pin, and names the file that changed. Pinning only the sources would let an accidental regeneration of a snapshot go unnoticed, because the regenerated file would match itself; the snapshots are pinned too. An edit to the frozen ruleset, or a regenerated Small snapshot, fails here. *(Amended by ADR-0037: the Effects Ruleset is frozen the same way from Phase F, by thirteen digests, and from then on the current phase's ruleset is the Response Ruleset)*
 
