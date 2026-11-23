@@ -1,0 +1,21 @@
+# Sample deck B for the Duel Ruleset: 40 monsters, at most 3 copies of each (the higher half of the
+# catalog three times, the lower half twice). Format: rulesets/formats.md.
+inputs:
+  - input: main_deck
+    cards:
+      - { card: ember_fox,    count: 3 }
+      - { card: iron_beetle,  count: 3 }
+      - { card: gale_hawk,    count: 3 }
+      - { card: stone_sentry, count: 3 }
+      - { card: frost_warden, count: 3 }
+      - { card: quarry_bear,  count: 3 }
+      - { card: cinder_ogre,  count: 3 }
+      - { card: thorn_knight, count: 3 }
+      - { card: lantern_moth, count: 2 }
+      - { card: moss_toad,    count: 2 }
+      - { card: ash_sprite,   count: 2 }
+      - { card: dusk_raven,   count: 2 }
+      - { card: pebble_golem, count: 2 }
+      - { card: reed_stalker, count: 2 }
+      - { card: tide_scribe,  count: 2 }
+      - { card: bramble_wolf, count: 2 }

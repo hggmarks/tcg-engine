@@ -185,6 +185,10 @@ inputs:
 
 The Small Ruleset is frozen; the Effects Ruleset is derived from it (ADR-0022) and is frozen since Phase F (ADR-0037). `effects-ruleset/effects-ruleset.yaml` and `effects-catalog.yaml` are the Small files with `meta` renamed, `effects: true` on `creature` and the `effects` block with `active_zone: field` (the catalog is the Small catalog plus effect cards: six creatures that carry a triggered Card Effect, ADR-0023, two that carry a continuous one, `battle_veteran` and `weary_ox`, ADR-0024, and three auras, ADR-0025), and `decks/deck-a.yaml` and `deck-b.yaml` are the Effects Ruleset's own legal decks (1 Leader, 50 creatures, 10 mana) that list the triggered, continuous and aura cards (ADR-0026).
 
+## Starter data for the Duel Ruleset
+
+The Duel Ruleset (ADR-0041, ticket [39]) is written from scratch and is not derived from the Small, Effects or Response files. `duel-ruleset/duel-ruleset.yaml` (`meta.id: duel`) declares the Player state `life_points` and `normal_summoned`, four zones per Player (`deck`, `hand`, `graveyard`, `monster_zone`), one card type `monster` (`name`, `level`, `atk`, `def`, and the instance state `attacked`) and the actions `normal_summon`, `direct_attack` and `end_turn`; `duel-catalog.yaml` holds sixteen monsters of level 1 to 4; `decks/deck-a.yaml` and `deck-b.yaml` are two legal decks of 40 monsters, at most 3 copies of each. The rules are in `duel-ruleset/duel-ruleset.md`, which also says what tickets [40] to [42] add.
+
 ## Starter data for the Response Ruleset
 
 The Effects Ruleset is frozen; the Response Ruleset is derived from it (ADR-0037). `response-ruleset/response-ruleset.yaml` and `response-catalog.yaml` are the Effects files with `meta` renamed, a `holding` zone, a `fast` bool field on `creature` (every catalog creature says it), `attack` with a `tap: { card }` cost, `fast_play`, and the `attack_response` window, which has `abilities: true` (ADR-0038); the catalog adds the fast creatures `swift_sparrow` and `flash_fox` and the activated `skittish_hare`, and `decks/deck-a.yaml` and `deck-b.yaml` are the Effects decks with copies swapped for them.

@@ -1,0 +1,4 @@
+  # Test-only monsters (ticket #96), appended to the text of the real Duel catalog: a monster of level
+  # 5, which cannot be normal summoned, and a level 1 monster whose ATK is the starting Life Points.
+  - { id: test_colossus, type: monster, fields: { name: "Test Colossus", level: 5, atk: 2400, def: 1000 } }
+  - { id: test_sniper,   type: monster, fields: { name: "Test Sniper",   level: 1, atk: 4000, def: 100 } }

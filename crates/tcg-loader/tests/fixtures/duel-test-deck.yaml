@@ -1,0 +1,20 @@
+# A deck for the Duel tests (ticket #96), legal under the real Duel ruleset with the real catalog
+# plus fixtures/duel-test-cards.yaml: 3 `test_colossus` (level 5), 3 `test_sniper` (ATK 4000) and 34
+# real monsters.
+inputs:
+  - input: main_deck
+    cards:
+      - { card: test_colossus, count: 3 }
+      - { card: test_sniper,   count: 3 }
+      - { card: moss_toad,     count: 3 }
+      - { card: ash_sprite,    count: 3 }
+      - { card: pebble_golem,  count: 3 }
+      - { card: reed_stalker,  count: 3 }
+      - { card: ember_fox,     count: 3 }
+      - { card: tide_scribe,   count: 3 }
+      - { card: iron_beetle,   count: 3 }
+      - { card: gale_hawk,     count: 3 }
+      - { card: cinder_ogre,   count: 3 }
+      - { card: frost_warden,  count: 3 }
+      - { card: thorn_knight,  count: 3 }
+      - { card: quarry_bear,   count: 1 }

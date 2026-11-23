@@ -615,6 +615,9 @@ The `ObservationError` for Events or a GameState that do not fit the Observer or
 
 ## Ending the Game
 
+**Duel Ruleset**:
+The second, independent ruleset (`rulesets/duel-ruleset/`, `meta.id: duel`), written from scratch with original names (ADR-0041, ticket [39]): two Players with 4000 Life Points (the Player state `life_points`) and a deck of 40 monsters of level 1 to 4, a Turn of Draw (the starting Player skips Turn 1's draw), Main (Normal Summon once per Turn, Direct Attack once per monster per Turn for its ATK, End Turn) and End, and a loss at 0 Life Points or on a draw from an empty deck. It has no Response Window and no Active Zone. Version 0 leaves out what tickets [40] (phases, capacity, no Turn-1 attack), [41] (positions and combat) and [42] (tributes and spells) add, as its `.md` says.
+
 **Win Condition**:
 A declared rule `{ id, when, loser }` of the ruleset's `win_conditions`. When its `when` holds for a Player, that Player is a loser of the Game, and the id is the reason. A `when` is `draw_from_empty: <zone>` (holds for a Player when a draw of theirs in the transition found the zone empty) or an Expression about one Subject (holds for a Player when some card instance of the Subject owned by them, in any zone, in `state.cards()` order, makes it true in the GameState the transition produced) *(Amended by ADR-0041: or a Player-state condition, an Expression whose refs are Player Refs without a `player:` key, which holds for a Player when it is true reading that Player's own Player state in the GameState the transition produced; a `player:` key there is `PlayerSelectorInWinCondition`, and mixing a Subject with Player state is `MixedWinConditionSubject`)*. The only `loser` is `owner`: the Player the condition holds for, for an expression the owner of that card instance *(for a Player-state condition, the Player whose state is read)*. Absent means the Game never ends.
 
