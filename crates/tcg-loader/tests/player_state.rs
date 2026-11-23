@@ -8,9 +8,10 @@
 //! `life_points` and `summoned: false`, and each opens with the hand `tithe_unit` (card 5),
 //! `tithe_unit` (4), `plain_unit` (3) for seat 0 and cards 11, 10, 9 for seat 1.
 
+use tcg_engine::card_catalog::{CatalogError, CatalogErrorKind};
 use tcg_engine::declarative::{
     Action, ApplyError, Argument, CardInstanceId, DeclarativeRuleset, Event, GameCreation,
-    GameState, Loss, Rejection,
+    GameCreationError, GameState, Loss, Rejection,
 };
 use tcg_engine::definition_path::DefinitionPath;
 use tcg_engine::player::PlayerId;
@@ -20,7 +21,9 @@ use tcg_engine::ruleset_definition::{
     ActionId, DefinitionError, DefinitionErrorKind, FieldType, FieldTypeDraft, FieldValue,
     ParamName, PlayerStateId, RefType, ReferenceTarget, StateName, WinConditionId, ZoneId,
 };
-use tcg_loader::{load_card_catalog, load_deck_list, load_ruleset_definition, LoadError};
+use tcg_loader::{
+    load_card_catalog, load_deck_list, load_ruleset_definition, CatalogLoadError, LoadError,
+};
 
 const RULESET: &str = include_str!("fixtures/player-state-ruleset.yaml");
 const CATALOG: &str = include_str!("fixtures/player-state-catalog.yaml");
@@ -1573,4 +1576,315 @@ fn a_nested_operator_in_a_sub_amount_is_a_load_error() {
             kind: DefinitionErrorKind::InvalidAmount,
         }
     );
+}
+
+// ---- paths the first review found uncovered (fix round 1 on the PR)
+
+/// The error of loading the fixture catalog with `extra` cards appended.
+fn catalog_error(extra: &str) -> CatalogError {
+    let definition = load_ruleset_definition(RULESET).expect("the ruleset loads");
+    let catalog = format!("{CATALOG}{extra}");
+    match load_card_catalog(&definition, &catalog) {
+        Err(CatalogLoadError::Catalog(error)) => error,
+        other => panic!("expected a catalog error, got {other:?}"),
+    }
+}
+
+fn card_effect_error(kind: DefinitionErrorKind) -> CatalogErrorKind {
+    CatalogErrorKind::InvalidCardEffect {
+        error: Box::new(kind),
+    }
+}
+
+#[test]
+fn opponent_needs_two_players() {
+    let three = edit(
+        RULESET,
+        "parameters:\n  players: 2",
+        "parameters:\n  players: 3",
+    );
+
+    // A read in a `where`, at the ref.
+    assert_eq!(
+        definition_error(&three),
+        DefinitionError {
+            path: at_action("bully")
+                .key("params")
+                .id("card")
+                .key("where")
+                .key("lte")
+                .index(0),
+            kind: DefinitionErrorKind::OpponentNeedsTwoPlayers { players: 3 },
+        }
+    );
+
+    // A write, at its `player` key: the read is made fine first, and `mark_opponent` is the first
+    // action that writes `opponent`.
+    let write = edit(
+        &three,
+        "{ ref: player.life_points, player: opponent }",
+        "{ ref: player.life_points, player: active }",
+    );
+    assert_eq!(
+        definition_error(&write),
+        DefinitionError {
+            path: at_action("mark_opponent")
+                .key("effects")
+                .index(0)
+                .key("set_state")
+                .key("player"),
+            kind: DefinitionErrorKind::OpponentNeedsTwoPlayers { players: 3 },
+        }
+    );
+}
+
+#[test]
+fn a_player_state_overflow_during_creation_fails_game_creation() {
+    let overflow = |yaml: &str| {
+        let ruleset = ruleset_of(yaml);
+        let decks: Vec<_> = (0..2)
+            .map(|_| {
+                load_deck_list(ruleset.definition(), ruleset.catalog(), DECK)
+                    .expect("the deck is legal")
+            })
+            .collect();
+        ruleset.create_game(&decks, Seed(1))
+    };
+    let expected = Err(GameCreationError::PlayerStateOverflow {
+        player: p(0),
+        state: state_id("life_points"),
+    });
+
+    // In a setup step: 4000 plus `i64::MAX` does not fit, for seat 0 first.
+    let setup = edit(
+        RULESET,
+        "  - draw: { player: each, from: deck, to: hand, count: 3 }",
+        "  - draw: { player: each, from: deck, to: hand, count: 3 }\n  - add_state: { player: each, state: life_points, amount: 9223372036854775807 }",
+    );
+    assert_eq!(overflow(&setup), expected);
+
+    // In an automatic step of the first Turn's start.
+    let start = edit(
+        RULESET,
+        "    - id: start\n      automatic: []",
+        "    - id: start\n      automatic:\n        - add_state: { player: each, state: life_points, amount: 9223372036854775807 }",
+    );
+    assert_eq!(overflow(&start), expected);
+}
+
+#[test]
+fn a_selector_the_context_does_not_accept_is_a_load_error() {
+    let read_at = at_action("bully")
+        .key("params")
+        .id("card")
+        .key("where")
+        .key("lte")
+        .index(0);
+
+    // `each` names many Players, so no read takes it.
+    let each = edit(
+        RULESET,
+        "{ ref: player.life_points, player: opponent }",
+        "{ ref: player.life_points, player: each }",
+    );
+    assert_eq!(
+        definition_error(&each),
+        DefinitionError {
+            path: read_at.clone(),
+            kind: DefinitionErrorKind::UnknownPlayerSelector {
+                selector: "each".to_string(),
+            },
+        }
+    );
+
+    // `controller` is the owner of `self`, which an action has none.
+    let controller = edit(
+        RULESET,
+        "{ ref: player.life_points, player: opponent }",
+        "{ ref: player.life_points, player: controller }",
+    );
+    assert_eq!(
+        definition_error(&controller),
+        DefinitionError {
+            path: read_at,
+            kind: DefinitionErrorKind::ControllerOutsideCardEffect,
+        }
+    );
+
+    // In a Card Effect too, `each` is no read.
+    let error = catalog_error(
+        "  - id: each_reader
+    type: unit
+    fields: { name: \"Each Reader\", power: 1 }
+    effects:
+      - on: { enter: field }
+        if: { lte: [{ ref: player.life_points, player: each }, 4000] }
+        do:
+          - set_state: { player: controller, state: summoned, value: true }
+",
+    );
+    assert_eq!(
+        error,
+        CatalogError {
+            path: DefinitionPath::root()
+                .key("cards")
+                .id("each_reader")
+                .key("effects")
+                .index(0)
+                .key("if")
+                .key("lte")
+                .index(0),
+            kind: card_effect_error(DefinitionErrorKind::UnknownPlayerSelector {
+                selector: "each".to_string(),
+            }),
+        }
+    );
+
+    // And a write names a selector of its own context: `nobody` is none.
+    let nobody = edit(
+        RULESET,
+        "add_state: { player: opponent, state: life_points, amount: -300 }",
+        "add_state: { player: nobody, state: life_points, amount: -300 }",
+    );
+    assert_eq!(
+        definition_error(&nobody),
+        DefinitionError {
+            path: at_action("drain")
+                .key("effects")
+                .index(0)
+                .key("add_state")
+                .key("player"),
+            kind: DefinitionErrorKind::UnknownPlayerSelector {
+                selector: "nobody".to_string(),
+            },
+        }
+    );
+}
+
+#[test]
+fn a_choose_card_param_named_player_is_a_load_error() {
+    let error = catalog_error(
+        "  - id: chooser
+    type: unit
+    fields: { name: \"Chooser\", power: 1 }
+    effects:
+      - on: { enter: field }
+        do:
+          - choose_card: { name: player, decider: controller, zone: hand, card_type: unit }
+",
+    );
+    assert_eq!(
+        error,
+        CatalogError {
+            path: DefinitionPath::root()
+                .key("cards")
+                .id("chooser")
+                .key("effects")
+                .index(0)
+                .key("do")
+                .index(0)
+                .key("choose_card")
+                .key("name"),
+            kind: card_effect_error(DefinitionErrorKind::ReservedId {
+                id: "player".to_string(),
+            }),
+        }
+    );
+}
+
+#[test]
+fn a_card_effect_reads_player_state_in_an_if() {
+    // `gated_unit` pays its controller 100 Life Points when it enters the field, if the controller
+    // has at least 4000 and the controller's opponent has at most 3999.
+    let gated = "  - id: gated_unit
+    type: unit
+    fields: { name: \"Gated Unit\", power: 1 }
+    effects:
+      - on: { enter: field }
+        if:
+          and:
+            - { gte: [{ ref: player.life_points, player: controller }, 4000] }
+            - { lte: [{ ref: player.life_points, player: opponent }, 3999] }
+        do:
+          - add_state: { player: controller, state: life_points, amount: 100 }
+";
+    let definition = load_ruleset_definition(RULESET).expect("the ruleset loads");
+    let catalog =
+        load_card_catalog(&definition, &format!("{CATALOG}{gated}")).expect("the catalog loads");
+    let ruleset = DeclarativeRuleset::new(definition, catalog);
+    let deck = edit(
+        DECK,
+        "{ card: plain_unit, count: 4 }",
+        "{ card: plain_unit, count: 3 }\n      - { card: gated_unit, count: 1 }",
+    );
+    let decks: Vec<_> = (0..2)
+        .map(|_| load_deck_list(ruleset.definition(), ruleset.catalog(), &deck).expect("legal"))
+        .collect();
+    let opening = ruleset
+        .create_game(&decks, Seed(1))
+        .expect("the decks create a game")
+        .opening
+        .state;
+    // The gated unit is the card 3 of seat 0's hand.
+    let gated_unit = CardInstanceId(3);
+    assert_eq!(
+        opening.zone(p(0), &ZoneId::new("hand")),
+        Some([TITHE_0, OTHER_TITHE_0, gated_unit].as_slice())
+    );
+    let moved = Event::CardMoved {
+        card: gated_unit,
+        player: p(0),
+        from: ZoneId::new("hand"),
+        to: ZoneId::new("field"),
+    };
+
+    // The opponent is at 4000: the `if` reads it false and nothing is paid.
+    let closed = take(&ruleset, &opening, &act(0, "summon", &[gated_unit]));
+    assert_eq!(
+        closed.trace.events().to_vec(),
+        vec![moved.clone(), changed(0, "summoned", flag(true))]
+    );
+    assert_eq!(
+        closed.state.player_state(p(0)),
+        Some(values(4000, true).as_slice())
+    );
+
+    // The opponent drained to 3700: the controller's `opponent` reads it, the `if` holds, and the
+    // controller (seat 0) is paid.
+    let drained = take(&ruleset, &opening, &act(0, "drain", &[]));
+    let open = take(&ruleset, &drained.state, &act(0, "summon", &[gated_unit]));
+    assert_eq!(
+        open.trace.events().to_vec(),
+        vec![
+            moved,
+            changed(0, "summoned", flag(true)),
+            changed(0, "life_points", int(4100)),
+        ]
+    );
+}
+
+#[test]
+fn a_negative_overflow_of_add_state_on_player_state_is_rejected() {
+    // Seat 1 starts at `i64::MIN`: taking 300 more from it goes below what an int holds.
+    let yaml = edit(
+        RULESET,
+        "{ id: life_points, type: int, init: 4000 }",
+        "{ id: life_points, type: int, init: -9223372036854775808 }",
+    );
+    let ruleset = ruleset_of(&yaml);
+    let creation = created(&ruleset);
+    let input = creation.opening.state;
+    let before = input.clone();
+    assert_eq!(
+        input.player_state_value(p(1), &state_id("life_points")),
+        Some(&int(i64::MIN))
+    );
+    assert_eq!(
+        ruleset.transition(&input, &act(0, "drain", &[])),
+        Err(Rejection::PlayerStateOverflow {
+            player: p(1),
+            state: state_id("life_points"),
+        })
+    );
+    assert_eq!(input, before);
 }

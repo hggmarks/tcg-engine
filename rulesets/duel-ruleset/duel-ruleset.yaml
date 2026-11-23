@@ -63,6 +63,7 @@ actions:
         card_type: monster
         where:
           and:
+            - { gte: [{ ref: card.level }, 1] }
             - { lte: [{ ref: card.level }, 4] }
             - { eq: [{ ref: player.normal_summoned, player: active }, false] }
     effects:

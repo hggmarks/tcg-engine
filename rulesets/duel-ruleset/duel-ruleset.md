@@ -1,6 +1,6 @@
 # Ruleset: Duel
 
-A face-up duel between two Players: each holds Life Points, draws from a deck of monsters, summons them and attacks the other Player directly until one has no Life Points left or no card to draw. It is the second, independent ruleset of the engine (ticket [39] of the Phase G roadmap, #94): written from scratch, with names of its own, and the test that the engine's primitives are not shaped around one game. Version 0 is the smallest game that plays; the *Not yet* section says what each later ticket adds. The encoding is `duel-ruleset.yaml`, the monsters are in `duel-catalog.yaml` and two sample decks are in `decks/`.
+A face-up duel between two Players: each holds Life Points, draws from a deck of monsters, summons them and attacks the other Player directly until one has no Life Points left or no card to draw. It is the second, independent ruleset of the engine (ticket [39] of the Phase G roadmap, #94): written from scratch, with names of its own, and the test that the engine's primitives are not shaped around one game. The first version of the rules (**v0**; `meta.version` of the files is 1) is the smallest game that plays; the *Not yet* section says what each later ticket adds. The encoding is `duel-ruleset.yaml`, the monsters are in `duel-catalog.yaml` and two sample decks are in `decks/`.
 
 ## Parameters
 
@@ -40,7 +40,7 @@ The Graveyard is declared and nothing sends a card there yet (see *Not yet*).
 |---|---|---|---|
 | **Monster** | `name` (text), `level` (int), `atk` (int), `def` (int) | `attacked` (bool, starts false) | No |
 
-`def` is the monster's defence. Nothing reads it yet (see *Not yet*). The catalog lists sixteen monsters of level 1 to 4, with ATK from 300 to 1800.
+`def` is the monster's defence. Nothing reads it yet (see *Not yet*). The catalog lists sixteen monsters of level 1 to 4, with ATK from 300 to 1800. A catalog must keep to these constraints: **level at least 1, ATK and DEF at least 0**. The rules rely on them (a monster of level 0 or below is not summonable, and an ATK below 0 would heal the opponent).
 
 ## Decks
 
@@ -81,7 +81,7 @@ Runs when the Turn ends. The Active Player's `normal_summoned` becomes false, an
 
 ### Normal Summon
 
-The acting Player chooses a monster in their Hand whose **level is 4 or less**. It moves to their Monster Zone, and their `normal_summoned` becomes true. A Player may Normal Summon **once per Turn**: while `normal_summoned` is true, no Normal Summon is legal. A monster in the Monster Zone is face-up, in attack position.
+The acting Player chooses a monster in their Hand whose **level is from 1 to 4**. It moves to their Monster Zone, and their `normal_summoned` becomes true. A Player may Normal Summon **once per Turn**: while `normal_summoned` is true, no Normal Summon is legal. A monster in the Monster Zone is face-up, in attack position.
 
 ### Direct Attack
 
@@ -102,7 +102,7 @@ The first condition that holds for a Player is their reason. If both Players los
 
 ## Not yet
 
-Version 0 is the first step of a face-up game of the Duel family. What it leaves out, and the ticket of the Phase G roadmap (#94) that adds it:
+The v0 rules (`meta.version: 1`) are the first step of a face-up game of the Duel family. What it leaves out, and the ticket of the Phase G roadmap (#94) that adds it:
 
 - **[40] Phases and counting**: several action phases, so a separate Main and **Battle**; the Monster Zone **capacity of 3**; the **direct attack only when the opponent has no monster**; and **no attack on Turn 1**. Until [40], a monster may attack on Turn 1, whatever the opponent's Monster Zone holds, and the Monster Zone has no limit.
 - **[41] Combat**: **positions** (attack and defence) as explicit state, changing position, **combat between monsters** (ATK against ATK, ATK against DEF) and the damage it does; `def` is read there. Until [41] a summoned monster is simply in the Monster Zone, face-up in attack position by rule, and only direct attacks exist.
@@ -113,8 +113,8 @@ Face-down cards, flipping and traps are the successor roadmap's (Phase H).
 ## Glossary: Duel Ruleset
 
 - **Life Points**: the Player state `life_points`. A Player starts at 4000 and loses at 0 or fewer.
-- **Normal Summon**: moving a monster of level 4 or less from the Hand to the Monster Zone, once per Turn.
+- **Normal Summon**: moving a monster of level 1 to 4 from the Hand to the Monster Zone, once per Turn.
 - **Direct Attack**: a monster hitting the opponent for its ATK, once per Turn per monster.
 - **Monster Zone**: the public zone where a Player's summoned monsters stand.
-- **Graveyard**: the public, ordered zone for cards that leave play; nothing uses it in version 0.
+- **Graveyard**: the public, ordered zone for cards that leave play; nothing uses it in the v0 rules.
 - **Deck out**: drawing from an empty Deck, which makes the Player lose.
