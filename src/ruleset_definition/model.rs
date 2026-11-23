@@ -699,11 +699,11 @@ pub enum Cost {
         value: FieldValue,
     },
     /// Adds `amount` to the int Player state `state` of each target, with checked arithmetic
-    /// (ADR-0041).
+    /// (ADR-0041). The amount is evaluated once, when the cost is paid.
     AddPlayerState {
         player: PlayerTarget,
         state: PlayerStateId,
-        amount: i64,
+        amount: Amount,
     },
 }
 
@@ -720,11 +720,12 @@ pub enum Effect {
         state: StateName,
         value: FieldValue,
     },
-    /// Adds `amount` to the int instance state `state` of `card`, with checked arithmetic.
+    /// Adds `amount` to the int instance state `state` of `card`, with checked arithmetic. The
+    /// amount is evaluated when the effect runs (ADR-0041).
     AddState {
         card: CardRef,
         state: StateName,
-        amount: i64,
+        amount: Amount,
     },
     /// Draws for `player`: moves `count` cards one at a time from the Top of `from` onto the Top
     /// of `to` of that player; an empty `from` emits DrawFromEmptyZone and stops.
@@ -758,12 +759,32 @@ pub enum Effect {
         value: FieldValue,
     },
     /// Adds `amount` to the int Player state `state` of each target, with checked arithmetic; an
-    /// overflow refuses the Action (ADR-0041).
+    /// overflow refuses the Action (ADR-0041). The amount is evaluated once, when the effect runs,
+    /// and every target gets that amount.
     AddPlayerState {
         player: PlayerTarget,
         state: PlayerStateId,
-        amount: i64,
+        amount: Amount,
     },
+}
+
+/// What an `add_state` of an action, a cost or a Card Effect adds: an int literal, an int read, or
+/// the difference of two (ADR-0041).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Amount {
+    Literal(i64),
+    Operand(AmountOperand),
+    /// `sub: [a, b]`: `a - b`, checked.
+    Sub(AmountOperand, AmountOperand),
+}
+
+/// An int an [`Amount`] reads: a literal, a card's int field or int instance state (a field with its
+/// active Field Modifiers), or a Player's int state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AmountOperand {
+    Literal(i64),
+    Value(ValueRef),
+    PlayerValue(PlayerRef),
 }
 
 /// The Player a Choice asks.

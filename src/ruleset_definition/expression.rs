@@ -5,11 +5,12 @@
 //! right: all the operands of an expression are checked (each with its own errors) before the type
 //! rule of their operator.
 
-use super::draft::{ExpressionDraft, RefDraft};
+use super::draft::{AmountDraft, ExpressionDraft, RefDraft};
 use super::error::{DefinitionError, DefinitionErrorKind, RefType, ReferenceTarget};
 use super::model::{
-    CardRef, CardType, CardTypeId, CardValue, Expression, FieldType, ParamAlternative, ParamName,
-    PlayerRef, PlayerRefSelector, PlayerStateSchema, PlayerTarget, ValueRef, Zone,
+    Amount, AmountOperand, CardRef, CardType, CardTypeId, CardValue, Expression, FieldType,
+    ParamAlternative, ParamName, PlayerRef, PlayerRefSelector, PlayerStateSchema, PlayerTarget,
+    ValueRef, Zone,
 };
 use crate::definition_path::DefinitionPath;
 use crate::id::is_valid_id;
@@ -428,6 +429,111 @@ fn check_expression(
                 FieldType::Bool,
             ))
         }
+    }
+}
+
+/// An `amount` of an `add_state` of an action, a cost or a Card Effect (ADR-0041): an int literal,
+/// an int read or `sub` of two of them, whose operands are literals and reads, never an operator.
+/// `at` is the path of the amount, and an operand of `sub` is at `sub[i]`.
+pub(super) fn check_amount(
+    draft: &AmountDraft,
+    refs: &Refs<'_>,
+    at: DefinitionPath,
+) -> Result<Amount, DefinitionError> {
+    match draft {
+        AmountDraft::Literal(value) => Ok(Amount::Literal(*value)),
+        AmountDraft::Sub(left, right) => {
+            let at = at.key("sub");
+            let left = check_operand(left, refs, at.clone().index(0))?;
+            let right = check_operand(right, refs, at.index(1))?;
+            Ok(Amount::Sub(left, right))
+        }
+        AmountDraft::Other => fail(at, DefinitionErrorKind::InvalidAmount),
+        read @ (AmountDraft::Ref(_) | AmountDraft::PlayerRef { .. }) => {
+            check_operand(read, refs, at).map(Amount::Operand)
+        }
+    }
+}
+
+/// One operand of an amount: a literal, or a ref to an int (the card's field or state, or a
+/// Player's state). An operator is an invalid amount.
+fn check_operand(
+    draft: &AmountDraft,
+    refs: &Refs<'_>,
+    at: DefinitionPath,
+) -> Result<AmountOperand, DefinitionError> {
+    match draft {
+        AmountDraft::Literal(value) => Ok(AmountOperand::Literal(*value)),
+        AmountDraft::Sub(..) | AmountDraft::Other => fail(at, DefinitionErrorKind::InvalidAmount),
+        AmountDraft::Ref(reference) => {
+            let parsed = parse_ref(reference, &at)?;
+            if parsed.param == PLAYER {
+                // A Player Ref without its `player:` key.
+                return player_operand(&parsed, None, reference, refs, at);
+            }
+            if parsed.name.is_none() {
+                find_param(refs, parsed.param, &at)?;
+                return fail(
+                    at,
+                    DefinitionErrorKind::CardRefNotAValue {
+                        reference: reference.0.clone(),
+                    },
+                );
+            }
+            validate_value_ref(reference, FieldType::Int, refs, at).map(AmountOperand::Value)
+        }
+        AmountDraft::PlayerRef {
+            reference,
+            selector,
+        } => {
+            let parsed = parse_ref(reference, &at)?;
+            if parsed.param != PLAYER {
+                return fail(
+                    at,
+                    DefinitionErrorKind::InvalidReference {
+                        reference: reference.0.clone(),
+                    },
+                );
+            }
+            player_operand(&parsed, Some(selector), reference, refs, at)
+        }
+    }
+}
+
+/// A Player Ref as an operand: it must be an int.
+fn player_operand(
+    parsed: &ParsedRef<'_>,
+    selector: Option<&String>,
+    reference: &RefDraft,
+    refs: &Refs<'_>,
+    at: DefinitionPath,
+) -> Result<AmountOperand, DefinitionError> {
+    let (expression, found) = check_player_ref(parsed, selector, reference, refs, at.clone())?;
+    if found != FieldType::Int {
+        return fail(
+            at,
+            DefinitionErrorKind::ReferenceTypeMismatch {
+                expected: RefType::Value(FieldType::Int),
+                found: RefType::Value(found),
+            },
+        );
+    }
+    match expression {
+        Expression::PlayerValue(read) => Ok(AmountOperand::PlayerValue(read)),
+        // `check_player_ref` gives nothing else.
+        _ => fail(at, DefinitionErrorKind::InvalidAmount),
+    }
+}
+
+/// The amount of an `add_state` in a setup or an automatic step: an int literal, nothing binds a
+/// card or names a Player to read there (ADR-0041).
+pub(super) fn check_literal_amount(
+    draft: &AmountDraft,
+    at: DefinitionPath,
+) -> Result<i64, DefinitionError> {
+    match draft {
+        AmountDraft::Literal(value) => Ok(*value),
+        _ => fail(at, DefinitionErrorKind::InvalidAmount),
     }
 }
 

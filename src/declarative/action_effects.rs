@@ -15,8 +15,8 @@ use super::state::CardInstanceId;
 use super::turn_cycle;
 use crate::player::PlayerId;
 use crate::ruleset_definition::{
-    Cost, Decider, Effect, EffectPlayer, FieldValue, ParamName, PlayerStateId, PlayerTarget,
-    StateName, ValueRef, ZoneId,
+    Amount, Cost, Decider, Effect, EffectPlayer, FieldValue, ParamName, PlayerStateId,
+    PlayerTarget, StateName, ValueRef, ZoneId,
 };
 
 /// Pays one cost on behalf of `player`, the acting Player.
@@ -40,7 +40,7 @@ pub(super) fn pay(
             player,
             state,
             amount,
-        } => add_player_state(execution, bound, *player, state, *amount),
+        } => add_player_state(ruleset, execution, bound, *player, state, amount),
     }
 }
 
@@ -62,14 +62,17 @@ fn set_player_state(
 }
 
 /// Adds `amount` to the int Player state `state` of each Player `target` names, with checked
-/// arithmetic: an overflow refuses the whole Action.
+/// arithmetic: an overflow refuses the whole Action. The amount is evaluated once, before anyone
+/// changes, so every target gets the same amount (ADR-0041).
 fn add_player_state(
+    ruleset: &DeclarativeRuleset,
     execution: &mut Execution,
     bound: &BoundCards,
     target: PlayerTarget,
     state: &PlayerStateId,
-    amount: i64,
+    amount: &Amount,
 ) -> Result<(), Rejection> {
+    let amount = expression::amount(ruleset, &execution.state, bound, amount)?;
     for player in expression::target_players(&execution.state, bound, target)? {
         execution.add_player_state(player, state, amount)?;
     }
@@ -413,6 +416,7 @@ fn run_at(
             amount,
         } => {
             let card = bound.card(card.param())?;
+            let amount = expression::amount(ruleset, &execution.state, bound, amount)?;
             let Some(FieldValue::Int(current)) = execution
                 .state
                 .card(card)
@@ -420,7 +424,7 @@ fn run_at(
             else {
                 return Err(Rejection::CardDataMismatch { card });
             };
-            let Some(sum) = current.checked_add(*amount) else {
+            let Some(sum) = current.checked_add(amount) else {
                 return Err(Rejection::StateOverflow {
                     card,
                     state: state.clone(),
@@ -441,7 +445,7 @@ fn run_at(
             state,
             amount,
         } => {
-            add_player_state(execution, bound, *player, state, *amount)?;
+            add_player_state(ruleset, execution, bound, *player, state, amount)?;
             Ok(Flow::Done)
         }
         Effect::Draw {

@@ -11,8 +11,9 @@ use super::draft::{
 };
 use super::error::{DefinitionError, DefinitionErrorKind, ReferenceTarget};
 use super::expression::{
-    check_condition, fail, find_player_state, params_read, reads_player_state, validate_card_ref,
-    validate_target, validate_value_ref, Refs, Scope, ScopedParam, PLAYER,
+    check_amount, check_condition, check_literal_amount, fail, find_player_state, params_read,
+    reads_player_state, validate_card_ref, validate_target, validate_value_ref, Refs, Scope,
+    ScopedParam, PLAYER,
 };
 use super::model::{
     ActionDefinition, ActionId, AutomaticStep, CardType, CardTypeId, Condition, Cost, Decider,
@@ -849,10 +850,11 @@ fn validate_cost(
             let at = at.key("add_state");
             let player = validate_target(player, refs, at.clone().key("player"))?;
             let state = check_player_add(refs.player_state, state, &at)?;
+            let amount = check_amount(amount, refs, at.key("amount"))?;
             Ok(Cost::AddPlayerState {
                 player,
                 state,
-                amount: *amount,
+                amount,
             })
         }
     }
@@ -1100,10 +1102,11 @@ fn validate_effect(
                     },
                 );
             }
+            let amount = check_amount(amount, refs, at.key("amount"))?;
             Ok(Effect::AddState {
                 card,
                 state: StateName::new(state),
-                amount: *amount,
+                amount,
             })
         }
         EffectDraft::SetPlayerState {
@@ -1128,10 +1131,11 @@ fn validate_effect(
             let at = at.key("add_state");
             let player = validate_target(player, refs, at.clone().key("player"))?;
             let state = check_player_add(refs.player_state, state, &at)?;
+            let amount = check_amount(amount, refs, at.key("amount"))?;
             Ok(Effect::AddPlayerState {
                 player,
                 state,
-                amount: *amount,
+                amount,
             })
         }
         EffectDraft::MalformedStateTarget { primitive } => {
@@ -1529,10 +1533,11 @@ fn validate_automatic_step(
             let at = at.key("add_state");
             let player = validate_selector(player, at.clone().key("player"))?;
             let state = check_player_add(context.player_state, state, &at)?;
+            let amount = check_literal_amount(amount, at.key("amount"))?;
             Ok(AutomaticStep::AddPlayerState {
                 player,
                 state,
-                amount: *amount,
+                amount,
             })
         }
         AutomaticStepDraft::Draw {
@@ -1822,10 +1827,11 @@ fn validate_step(
             let at = at.key("add_state");
             let player = validate_selector(player, at.clone().key("player"))?;
             let state = check_player_add(player_state, state, &at)?;
+            let amount = check_literal_amount(amount, at.key("amount"))?;
             Ok(SetupStep::AddPlayerState {
                 player,
                 state,
-                amount: *amount,
+                amount,
             })
         }
         SetupStepDraft::Shuffle { player, zone } => {

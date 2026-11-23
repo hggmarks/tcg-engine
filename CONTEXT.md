@@ -303,8 +303,11 @@ A literal scalar, a Value Ref *(Amended by ADR-0041: or a Player Ref)*, or one o
 **Subject**:
 The card type an expression Win Condition is about: the first name of its Refs (`leader` in `leader.current_life`). The expression must read exactly one *(a Player-state condition has none: it reads no card)*.
 
+**Amount**:
+What an `add_state` of an action, a cost or a Card Effect adds (ADR-0041): an int literal, a ref to an int (a card's field, read with its active Field Modifiers, an instance state, or a Player's state through a Player Ref), or `sub: [a, b]` of two of those, checked (`ArithmeticOverflow`). Evaluated when the `add_state` runs; once for all the targets of a Player-state write. `sub` is accepted only as an Amount until ticket [41] widens it. In a setup or an automatic step the Amount is an int literal (`InvalidAmount` otherwise).
+
 **Add State**:
-The Action Effect `add_state: { card, state, amount }`. It adds the integer literal `amount` to an int instance state with checked arithmetic: an overflow in either direction is a State Overflow Rejection, and a sum equal to the current value emits no Event.
+The Action Effect `add_state: { card, state, amount }`. It adds the integer `amount` *(Amended by ADR-0041: an Amount, a literal, a ref to an int or `sub` of two, evaluated when the effect runs)* to an int instance state with checked arithmetic: an overflow in either direction is a State Overflow Rejection, and a sum equal to the current value emits no Event.
 
 **If Effect**:
 The Action Effect `if: <expression>`, `then: [effects]` and an optional `else: [effects]`, siblings of one list element, run by the Expression at the moment the effect runs. When the condition is exactly `is_card_type: [<param>, T]` it narrows the parameter's possible card types: in `then` to those that are also T (an intersection, in the parameter's order; none is a load error, Impossible Card Type, ADR-0032), in `else` to the others (unchanged if removing T would leave none).

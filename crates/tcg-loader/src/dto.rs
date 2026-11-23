@@ -10,12 +10,12 @@ use crate::scalar::{self, ScalarDto};
 use serde::de::{self, Deserializer, IgnoredAny, MapAccess, SeqAccess, Visitor};
 use serde::Deserialize;
 use tcg_engine::ruleset_definition::{
-    ActionDraft, AutomaticStepDraft, CardTypeDraft, ConditionDraft, CostDraft, DeckInputDraft,
-    EffectDraft, EffectsDraft, ExpressionDraft, FieldDraft, FieldTypeDraft, FieldValue,
-    InitializerDraft, InstanceStateDraft, MetaDraft, ParamAlternativeDraft, ParamCardsDraft,
-    ParamDraft, ParametersDraft, PhaseDraft, PlayerStateDraft, RefDraft, RulesetDraft,
-    SetupStepDraft, TurnDraft, Visibility, WinConditionDraft, WinConditionWhenDraft, WindowDraft,
-    ZoneDraft,
+    ActionDraft, AmountDraft, AutomaticStepDraft, CardTypeDraft, ConditionDraft, CostDraft,
+    DeckInputDraft, EffectDraft, EffectsDraft, ExpressionDraft, FieldDraft, FieldTypeDraft,
+    FieldValue, InitializerDraft, InstanceStateDraft, MetaDraft, ParamAlternativeDraft,
+    ParamCardsDraft, ParamDraft, ParametersDraft, PhaseDraft, PlayerStateDraft, RefDraft,
+    RulesetDraft, SetupStepDraft, TurnDraft, Visibility, WinConditionDraft, WinConditionWhenDraft,
+    WindowDraft, ZoneDraft,
 };
 
 #[derive(Deserialize)]
@@ -347,6 +347,110 @@ impl ExpressionDto {
     }
 }
 
+/// An `amount` of an `add_state` (ADR-0041): an unquoted integer, `{ ref: <text> }`,
+/// `{ ref: player.<id>, player: <selector> }` or `{ sub: [a, b] }` of two of those. Any other map
+/// key is kept as an operator the engine rejects (`InvalidAmount`), so a bad amount is a definition
+/// error at its path; a bool or a text is a syntax error, as the integer it replaces was.
+pub(crate) struct AmountDto(AmountDraft);
+
+impl AmountDto {
+    fn into_draft(self) -> AmountDraft {
+        self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for AmountDto {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct AmountVisitor;
+
+        impl<'de> Visitor<'de> for AmountVisitor {
+            type Value = AmountDto;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("an unquoted integer, a ref or a `sub` of two of them")
+            }
+
+            fn visit_i64<E: de::Error>(self, value: i64) -> Result<AmountDto, E> {
+                Ok(AmountDto(AmountDraft::Literal(value)))
+            }
+
+            fn visit_u64<E: de::Error>(self, value: u64) -> Result<AmountDto, E> {
+                i64::try_from(value)
+                    .map(|value| AmountDto(AmountDraft::Literal(value)))
+                    .map_err(|_| E::custom("the integer does not fit in 64 bits"))
+            }
+
+            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<AmountDto, A::Error> {
+                let Some(key) = map.next_key::<String>()? else {
+                    return Err(de::Error::custom("an amount names one operator"));
+                };
+                match key.as_str() {
+                    "ref" | "player" => match read_operator(&key, &mut map)? {
+                        ExpressionDto::Ref(reference) => {
+                            Ok(AmountDto(AmountDraft::Ref(RefDraft(reference))))
+                        }
+                        ExpressionDto::PlayerRef(reference, selector) => {
+                            Ok(AmountDto(AmountDraft::PlayerRef {
+                                reference: RefDraft(reference),
+                                selector,
+                            }))
+                        }
+                        _ => Err(de::Error::custom("an amount names one operator")),
+                    },
+                    "sub" => {
+                        let AmountPair(left, right) = map.next_value()?;
+                        only_one_key(&mut map, "an amount names one operator")?;
+                        Ok(AmountDto(AmountDraft::Sub(
+                            Box::new(left.0),
+                            Box::new(right.0),
+                        )))
+                    }
+                    _ => {
+                        // Another operator: its operands are not read, the engine rejects it.
+                        let _: IgnoredAny = map.next_value()?;
+                        only_one_key(&mut map, "an amount names one operator")?;
+                        Ok(AmountDto(AmountDraft::Other))
+                    }
+                }
+            }
+        }
+
+        deserializer.deserialize_any(AmountVisitor)
+    }
+}
+
+/// The two operands of `sub`: a list of exactly two amounts.
+struct AmountPair(AmountDto, AmountDto);
+
+impl<'de> Deserialize<'de> for AmountPair {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct PairVisitor;
+
+        impl<'de> Visitor<'de> for PairVisitor {
+            type Value = AmountPair;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("a list of exactly two operands")
+            }
+
+            fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<AmountPair, A::Error> {
+                let left = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(0, &self))?;
+                let right = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(1, &self))?;
+                if seq.next_element::<IgnoredAny>()?.is_some() {
+                    return Err(de::Error::invalid_length(3, &self));
+                }
+                Ok(AmountPair(left, right))
+            }
+        }
+
+        deserializer.deserialize_seq(PairVisitor)
+    }
+}
+
 /// One Setup Step: a single-key map `{ <primitive>: { ... } }`. An unknown primitive is an unknown
 /// key of the list element.
 #[derive(Deserialize)]
@@ -374,8 +478,7 @@ pub(crate) struct SetPlayerStateDto {
 pub(crate) struct AddPlayerStateDto {
     player: String,
     state: String,
-    #[serde(deserialize_with = "scalar::strict_i64")]
-    amount: i64,
+    amount: AmountDto,
 }
 
 #[derive(Deserialize)]
@@ -679,8 +782,7 @@ pub(crate) struct AddStateEffectDto {
     #[serde(default, deserialize_with = "some")]
     player: Option<String>,
     state: String,
-    #[serde(deserialize_with = "scalar::strict_i64")]
-    amount: i64,
+    amount: AmountDto,
 }
 
 /// The keys an effect may have, for the error of an unknown one.
@@ -1186,7 +1288,7 @@ impl CostDto {
                 CostDto::AddState(step) => CostDraft::AddPlayerState {
                     player: step.player,
                     state: step.state,
-                    amount: step.amount,
+                    amount: step.amount.into_draft(),
                 },
             })
             .collect()
@@ -1224,12 +1326,12 @@ impl EffectDto {
                 (Some(card), None) => EffectDraft::AddState {
                     card: RefDraft(card.reference),
                     state: step.state,
-                    amount: step.amount,
+                    amount: step.amount.into_draft(),
                 },
                 (None, Some(player)) => EffectDraft::AddPlayerState {
                     player,
                     state: step.state,
-                    amount: step.amount,
+                    amount: step.amount.into_draft(),
                 },
                 _ => EffectDraft::MalformedStateTarget {
                     primitive: "add_state",
@@ -1310,7 +1412,7 @@ impl AutomaticStepDto {
             Self::AddState(step) => AutomaticStepDraft::AddPlayerState {
                 player: step.player,
                 state: step.state,
-                amount: step.amount,
+                amount: step.amount.into_draft(),
             },
             Self::Draw(step) => AutomaticStepDraft::Draw {
                 player: step.player,
@@ -1428,7 +1530,7 @@ impl SetupStepDto {
             Self::AddState(step) => SetupStepDraft::AddPlayerState {
                 player: step.player,
                 state: step.state,
-                amount: step.amount,
+                amount: step.amount.into_draft(),
             },
         }
     }

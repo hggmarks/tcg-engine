@@ -16,7 +16,8 @@ use super::modifiers;
 use super::state::{ApplyError, CardInstanceId, GameState};
 use crate::player::PlayerId;
 use crate::ruleset_definition::{
-    CardValue, Expression, FieldValue, ParamName, PlayerRef, PlayerRefSelector, PlayerTarget,
+    Amount, AmountOperand, CardValue, Expression, FieldValue, ParamName, PlayerRef,
+    PlayerRefSelector, PlayerTarget,
 };
 
 /// Which value a ref reads.
@@ -177,6 +178,46 @@ fn read_player_state(
                 state: reference.state().clone(),
             })
         })
+}
+
+/// The int an `amount` evaluates to against the GameState as it stands (ADR-0041). A card's field is
+/// read as any expression does, with its active Field Modifiers; an instance state as it stands; a
+/// Player's state as it stands. `sub` is checked.
+pub(super) fn amount(
+    ruleset: &DeclarativeRuleset,
+    state: &GameState,
+    bound: &BoundCards,
+    amount: &Amount,
+) -> Result<i64, Rejection> {
+    match amount {
+        Amount::Literal(value) => Ok(*value),
+        Amount::Operand(operand) => operand_value(ruleset, state, bound, operand),
+        Amount::Sub(left, right) => {
+            let left = operand_value(ruleset, state, bound, left)?;
+            let right = operand_value(ruleset, state, bound, right)?;
+            left.checked_sub(right).ok_or(Rejection::ArithmeticOverflow)
+        }
+    }
+}
+
+fn operand_value(
+    ruleset: &DeclarativeRuleset,
+    state: &GameState,
+    bound: &BoundCards,
+    operand: &AmountOperand,
+) -> Result<i64, Rejection> {
+    let value = match operand {
+        AmountOperand::Literal(value) => return Ok(*value),
+        AmountOperand::Value(reference) => {
+            let card = bound.card(reference.param())?;
+            read(ruleset, state, card, reference.value())?
+        }
+        AmountOperand::PlayerValue(reference) => read_player_state(state, bound, reference)?,
+    };
+    match value {
+        FieldValue::Int(value) => Ok(value),
+        FieldValue::Bool(_) | FieldValue::Text(_) => Err(Rejection::ExpressionTypeMismatch),
+    }
 }
 
 /// The Players a Player-state write targets, in seat order for `each` (ADR-0041).
