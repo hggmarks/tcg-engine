@@ -455,6 +455,9 @@ fn find_end_turn(effects: &[EffectDraft], list: &DefinitionPath) -> Option<Defin
             | EffectDraft::Move { .. }
             | EffectDraft::SetState { .. }
             | EffectDraft::AddState { .. }
+            | EffectDraft::SetPlayerState { .. }
+            | EffectDraft::AddPlayerState { .. }
+            | EffectDraft::MalformedStateTarget { .. }
             | EffectDraft::Draw { .. } => {}
         }
     }

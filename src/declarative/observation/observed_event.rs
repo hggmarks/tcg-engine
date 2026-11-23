@@ -12,7 +12,7 @@ use crate::card_catalog::CardId;
 use crate::declarative::decision::DecisionKind;
 use crate::declarative::state::Loss;
 use crate::player::PlayerId;
-use crate::ruleset_definition::{ActionId, FieldValue, PhaseId, StateName, ZoneId};
+use crate::ruleset_definition::{ActionId, FieldValue, PhaseId, PlayerStateId, StateName, ZoneId};
 use crate::turn::TurnNumber;
 
 /// One Event as a Viewer observes it (ADR-0029). No variant carries a Card Instance Id or a Random
@@ -76,6 +76,13 @@ pub enum ObservedEvent {
     CardStateChanged {
         card: ObservedCard,
         state: StateName,
+        value: FieldValue,
+    },
+    /// A Player state of a Player changed. Player state is fully public (ADR-0041): every Viewer
+    /// sees every Player's state, so the Event is observed in full.
+    PlayerStateChanged {
+        player: PlayerId,
+        state: PlayerStateId,
         value: FieldValue,
     },
     /// A Turn began.

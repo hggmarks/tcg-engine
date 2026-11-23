@@ -3,6 +3,7 @@
 - Status: accepted
 - Decision 3's typed-model names are amended by ADR-0007 (`Ruleset` becomes `RulesetDefinition`).
 - Amended by ADR-0028: the recorded open item on hidden information is decided, and the three Visibility values get their exact meaning (`public` every Viewer, `owner` its owner only, `hidden` nobody, its owner included).
+- Amended by ADR-0041: the ruleset also declares Player-State Schemas, a top-level `player_state` list (marked in decision 1).
 - Date: 2026-10-23
 
 ## Context
@@ -17,6 +18,9 @@ Online multiplayer is a future goal, not a current requirement.
    - Ruleset: number of players, zones and visibility, turn phases, victory
      conditions, setup rules, enums, and the card types with the schema of
      their fields (name, data type, constraints) and whether they allow effects.
+     *(Amended by ADR-0041: and the Player-State Schemas, the values every
+     Player holds, `player_state: [{ id, type, init }]`, a top-level key
+     beside the card types.)*
    - Cards: catalog with identity and field values, validated against the
      schema of their type, plus effects.
    - Field data types are a closed set defined by the engine

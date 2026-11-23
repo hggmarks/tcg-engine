@@ -13,8 +13,12 @@ use super::action::Rejection;
 use super::arguments::BoundCards;
 use super::creation::DeclarativeRuleset;
 use super::modifiers;
-use super::state::{CardInstanceId, GameState};
-use crate::ruleset_definition::{CardValue, Expression, FieldValue};
+use super::state::{ApplyError, CardInstanceId, GameState};
+use crate::player::PlayerId;
+use crate::ruleset_definition::{
+    Amount, AmountOperand, CardValue, Expression, FieldValue, ParamName, PlayerRef,
+    PlayerRefSelector, PlayerTarget,
+};
 
 /// Which value a ref reads.
 #[derive(Debug, Clone, Copy)]
@@ -72,6 +76,7 @@ fn evaluate(
             let card = bound.card(reference.param())?;
             read_in(ruleset, state, card, reference.value(), mode)
         }
+        Expression::PlayerValue(reference) => read_player_state(state, bound, reference),
         Expression::Eq(left, right) => {
             let left = evaluate(ruleset, state, bound, left, mode)?;
             let right = evaluate(ruleset, state, bound, right, mode)?;
@@ -103,6 +108,132 @@ fn evaluate(
                 .and_then(|instance| ruleset.catalog().card(instance.definition()))
                 .ok_or(Rejection::CardDataMismatch { card })?;
             Ok(FieldValue::Bool(definition.card_type() == card_type))
+        }
+    }
+}
+
+/// The Player a selector names, for an expression that reads against `bound` (ADR-0041): `active`
+/// is the Active Player; `controller` is the owner of `self`; `opponent` is the opponent of the
+/// acting Player in an action and of the owner of `self` in a Card Effect.
+fn selected_player(
+    state: &GameState,
+    bound: &BoundCards,
+    selector: Selected,
+) -> Result<PlayerId, Rejection> {
+    let controller = || -> Result<PlayerId, Rejection> {
+        let card = bound.card(&ParamName::new("self"))?;
+        state
+            .card(card)
+            .map(|instance| instance.owner())
+            .ok_or(Rejection::CardDataMismatch { card })
+    };
+    match selector {
+        // Only a Player-state win condition judges a Player; a Judged ref anywhere else has none:
+        // an internal inconsistency.
+        Selected::Judged => bound.judged().ok_or(Rejection::ExpressionTypeMismatch),
+        Selected::Active => Ok(state.active_player()),
+        Selected::Controller => controller(),
+        Selected::Opponent => {
+            let of = match bound.acting() {
+                Some(acting) => acting,
+                None => controller()?,
+            };
+            state
+                .opponent_of(of)
+                .ok_or(Rejection::EventRejected(ApplyError::UnknownPlayer {
+                    player: of,
+                }))
+        }
+    }
+}
+
+/// A selector of a Player that is one Player.
+#[derive(Debug, Clone, Copy)]
+enum Selected {
+    Judged,
+    Active,
+    Controller,
+    Opponent,
+}
+
+/// The value of the Player state a Player ref reads.
+fn read_player_state(
+    state: &GameState,
+    bound: &BoundCards,
+    reference: &PlayerRef,
+) -> Result<FieldValue, Rejection> {
+    let selected = match reference.selector() {
+        PlayerRefSelector::Active => Selected::Active,
+        PlayerRefSelector::Controller => Selected::Controller,
+        PlayerRefSelector::Opponent => Selected::Opponent,
+        PlayerRefSelector::Judged => Selected::Judged,
+    };
+    let player = selected_player(state, bound, selected)?;
+    state
+        .player_state_value(player, reference.state())
+        .cloned()
+        .ok_or_else(|| {
+            Rejection::EventRejected(ApplyError::UnknownPlayerState {
+                player,
+                state: reference.state().clone(),
+            })
+        })
+}
+
+/// The int an `amount` evaluates to against the GameState as it stands (ADR-0041). A card's field is
+/// read as any expression does, with its active Field Modifiers; an instance state as it stands; a
+/// Player's state as it stands. `sub` is checked.
+pub(super) fn amount(
+    ruleset: &DeclarativeRuleset,
+    state: &GameState,
+    bound: &BoundCards,
+    amount: &Amount,
+) -> Result<i64, Rejection> {
+    match amount {
+        Amount::Literal(value) => Ok(*value),
+        Amount::Operand(operand) => operand_value(ruleset, state, bound, operand),
+        Amount::Sub(left, right) => {
+            let left = operand_value(ruleset, state, bound, left)?;
+            let right = operand_value(ruleset, state, bound, right)?;
+            left.checked_sub(right).ok_or(Rejection::ArithmeticOverflow)
+        }
+    }
+}
+
+fn operand_value(
+    ruleset: &DeclarativeRuleset,
+    state: &GameState,
+    bound: &BoundCards,
+    operand: &AmountOperand,
+) -> Result<i64, Rejection> {
+    let value = match operand {
+        AmountOperand::Literal(value) => return Ok(*value),
+        AmountOperand::Value(reference) => {
+            let card = bound.card(reference.param())?;
+            read(ruleset, state, card, reference.value())?
+        }
+        AmountOperand::PlayerValue(reference) => read_player_state(state, bound, reference)?,
+    };
+    match value {
+        FieldValue::Int(value) => Ok(value),
+        FieldValue::Bool(_) | FieldValue::Text(_) => Err(Rejection::ExpressionTypeMismatch),
+    }
+}
+
+/// The Players a Player-state write targets, in seat order for `each` (ADR-0041).
+pub(super) fn target_players(
+    state: &GameState,
+    bound: &BoundCards,
+    target: PlayerTarget,
+) -> Result<Vec<PlayerId>, Rejection> {
+    match target {
+        PlayerTarget::Each => Ok(state.player_order().players().to_vec()),
+        PlayerTarget::Active => selected_player(state, bound, Selected::Active).map(|p| vec![p]),
+        PlayerTarget::Controller => {
+            selected_player(state, bound, Selected::Controller).map(|p| vec![p])
+        }
+        PlayerTarget::Opponent => {
+            selected_player(state, bound, Selected::Opponent).map(|p| vec![p])
         }
     }
 }

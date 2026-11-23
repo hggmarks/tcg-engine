@@ -89,7 +89,7 @@ A ticket is done when all of this holds:
 - New or changed domain terms are in `CONTEXT.md`.
 - Decisions are recorded as short ADRs in `docs/adr/`, and any conflict with an existing ADR is flagged.
 - When a new ADR changes a statement of an older ADR, the same PR edits the older ADR's body with an `Amended by ADR-NNNN:` line and marks each affected clause where it stands (flagging the conflict alone is not enough).
-- Rule decisions are mirrored in `rulesets/response-ruleset/response-ruleset.md` and `.yaml`. The Small Ruleset (`rulesets/small-ruleset/`) is frozen since Phase C and the Effects Ruleset (`rulesets/effects-ruleset/`) since Phase F: neither changes (ADR-0022, ADR-0037).
+- Rule decisions are mirrored in `rulesets/duel-ruleset/duel-ruleset.md` and `.yaml`. The Small Ruleset (`rulesets/small-ruleset/`) is frozen since Phase C, the Effects Ruleset (`rulesets/effects-ruleset/`) since Phase F and the Response Ruleset (`rulesets/response-ruleset/`) since Phase G: none changes (ADR-0022, ADR-0037, ADR-0041).
 - Nothing under the ticket's *Out of scope* is introduced.
 
 The gate (toolchain pinned in `rust-toolchain.toml`; `--all`/`--workspace` so later members are covered):

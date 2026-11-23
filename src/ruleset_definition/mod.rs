@@ -7,7 +7,7 @@
 //! validates against the resulting [`RulesetDefinition`].
 //!
 //! Validation reports the first error only, in a fixed order: `meta.id`, then `parameters.players`,
-//! then `parameters.starting_player`, then zones, card types and inputs, each list in declaration
+//! then `parameters.starting_player`, then zones, card types, Player-State Schemas (ADR-0041) and inputs, each list in declaration
 //! order. Within an element its id is checked against the identifier grammar and then for
 //! duplicates against earlier elements, before its content, in key order. An input's content is
 //! its card types (non-empty, known, without repeats), then `size`, then `max_copies`, then its
@@ -52,19 +52,20 @@ mod validate;
 pub(crate) use validate::SelfScope;
 
 pub use draft::{
-    ActionDraft, AutomaticStepDraft, CardTypeDraft, ConditionDraft, CostDraft, DeckInputDraft,
-    EffectDraft, EffectsDraft, ExpressionDraft, FieldDraft, FieldTypeDraft, InitializerDraft,
-    InstanceStateDraft, MetaDraft, ParamAlternativeDraft, ParamCardsDraft, ParamDraft,
-    ParametersDraft, PhaseDraft, RefDraft, RulesetDraft, SetupStepDraft, TurnDraft,
-    WinConditionDraft, WinConditionWhenDraft, WindowDraft, ZoneDraft,
+    ActionDraft, AmountDraft, AutomaticStepDraft, CardTypeDraft, ConditionDraft, CostDraft,
+    DeckInputDraft, EffectDraft, EffectsDraft, ExpressionDraft, FieldDraft, FieldTypeDraft,
+    InitializerDraft, InstanceStateDraft, MetaDraft, ParamAlternativeDraft, ParamCardsDraft,
+    ParamDraft, ParametersDraft, PhaseDraft, PlayerStateDraft, RefDraft, RulesetDraft,
+    SetupStepDraft, TurnDraft, WinConditionDraft, WinConditionWhenDraft, WindowDraft, ZoneDraft,
 };
 pub use error::{DefinitionError, DefinitionErrorKind, RefType, ReferenceTarget};
 pub use model::{
-    ActionDefinition, ActionId, AutomaticStep, CardRef, CardType, CardTypeId, CardValue, Condition,
-    Cost, Decider, DeckInput, DeckInputId, Effect, EffectPlayer, Expression, FieldName,
-    FieldSchema, FieldType, FieldValue, Initializer, InstanceStateSchema, Loser, Meta, Param,
-    ParamAlternative, ParamName, ParamOwner, Parameters, Phase, PhaseId, PhaseKind, PlayerCount,
-    PlayerPosition, PlayerSelector, Position, RulesetDefinition, RulesetId, RulesetVersion,
-    SetupStep, StateName, TurnStructure, ValueRef, Visibility, WinCondition, WinConditionId,
-    WinConditionWhen, Window, WindowId, Zone, ZoneId,
+    ActionDefinition, ActionId, Amount, AmountOperand, AutomaticStep, CardRef, CardType,
+    CardTypeId, CardValue, Condition, Cost, Decider, DeckInput, DeckInputId, Effect, EffectPlayer,
+    Expression, FieldName, FieldSchema, FieldType, FieldValue, Initializer, InstanceStateSchema,
+    Loser, Meta, Param, ParamAlternative, ParamName, ParamOwner, Parameters, Phase, PhaseId,
+    PhaseKind, PlayerCount, PlayerPosition, PlayerRef, PlayerRefSelector, PlayerSelector,
+    PlayerStateId, PlayerStateSchema, PlayerTarget, Position, RulesetDefinition, RulesetId,
+    RulesetVersion, SetupStep, StateName, TurnStructure, ValueRef, Visibility, WinCondition,
+    WinConditionId, WinConditionWhen, Window, WindowId, Zone, ZoneId,
 };

@@ -375,7 +375,9 @@ fn relabel_ids(event: &mut Event, map: &impl Fn(CardInstanceId) -> CardInstanceI
                 *card = map(*card);
             }
         }
+        // Player state names no card (ADR-0041).
         Event::CardCreated { .. }
+        | Event::PlayerStateChanged { .. }
         | Event::TurnBegan { .. }
         | Event::PhaseBegan { .. }
         | Event::DrawFromEmptyZone { .. }
@@ -590,8 +592,9 @@ fn observed_step_difference(observed: &ObservedStep, relabelled: &ObservedStep) 
 }
 
 /// The first part in which two Observed GameStates differ, or `None` when they are equal: the
-/// Turn Number, the Active Player, the phase, the outcome, a Player's zone (its count, then its
-/// cards), then the Visible Cards (their number, then one's owner, definition or state).
+/// Turn Number, the Active Player, the phase, the outcome, a Player's Player state (ADR-0041), a
+/// Player's zone (its count, then its cards), then the Visible Cards (their number, then one's
+/// owner, definition or state).
 fn observed_state_difference(
     one: &ObservedGameState,
     one_name: &str,
@@ -651,6 +654,29 @@ fn observed_state_difference(
         ));
     }
     for &player in one.players() {
+        let (values, other_values) = (
+            one.player_state(player).unwrap_or_default(),
+            other.player_state(player).unwrap_or_default(),
+        );
+        if values != other_values {
+            return Some(match values
+                .iter()
+                .zip(other_values)
+                .find(|(entry, other_entry)| entry != other_entry)
+            {
+                Some(((state, value), (_, other_value))) => format!(
+                    "the Player state `{}` of Player {} is {value:?} in {one_name} and {other_value:?} in {other_name}",
+                    state.as_str(),
+                    player.0
+                ),
+                None => format!(
+                    "Player {} has {} Player state values in {one_name} and {} in {other_name}",
+                    player.0,
+                    values.len(),
+                    other_values.len()
+                ),
+            });
+        }
         let (zones, other_zones) = (
             one.zones(player).unwrap_or_default(),
             other.zones(player).unwrap_or_default(),

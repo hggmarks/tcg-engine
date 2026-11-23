@@ -109,6 +109,7 @@ pub fn small_draft() -> RulesetDraft {
             ),
             card_type("mana", vec![]),
         ],
+        player_state: vec![],
         inputs: vec![
             input("leader", "leader", 1, None, "leader_zone"),
             input("main_deck", "creature", 50, Some(4), "deck"),

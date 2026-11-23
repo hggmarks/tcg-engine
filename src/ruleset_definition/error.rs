@@ -27,6 +27,8 @@ pub enum ReferenceTarget {
     Param,
     /// A name that the param's card type declares as neither a field nor an instance state.
     FieldOrInstanceState,
+    /// A Player state that the ruleset's `player_state` does not declare (ADR-0041).
+    PlayerState,
 }
 
 /// What a ref evaluates to, or what a slot needs.
@@ -73,7 +75,9 @@ pub enum DefinitionErrorKind {
     /// `win_conditions[deck_out].loser`: only `owner` exists.
     UnknownLoser { loser: String },
     /// `setup[0].shuffle.player` or `turn.phases[start].automatic[0].untap.player`: only `each` and
-    /// `active` exist.
+    /// `active` exist. The selector of a Player ref or of a Player-state write of an action or a
+    /// Card Effect is addressed the same way, and the selectors that exist depend on the context
+    /// (ADR-0041).
     UnknownPlayerSelector { selector: String },
     /// A `count` of a draw or a move (it is 0), such as `setup[1].draw.count` or
     /// `turn.phases[start].automatic[3].move.count`.
@@ -221,6 +225,35 @@ pub enum DefinitionErrorKind {
     /// The card of a `tap: { card }` cost, such as `actions[attack].cost[0].tap.card`: a card type
     /// its param may take has no bool `tapped` instance state; `card_type` is the first such one.
     TapCardWithoutTappedState { card_type: String },
+    /// A card type id or an action param name that is a word the format keeps, at the path an
+    /// `InvalidId` of it would have, such as `card_types[0].id` or `actions[x].params[0].name`:
+    /// `player` starts the Player refs, `player.<id>` (ADR-0041).
+    ReservedId { id: String },
+    /// A `set_state` or `add_state` of an action, a Card Effect or a branch of either, at the key
+    /// of the primitive, such as `actions[x].effects[0].set_state`: it must name exactly one of
+    /// `card` and `player` (ADR-0041).
+    InvalidStateTarget,
+    /// A ref to a Player state without the `player:` key, at the ref, such as
+    /// `actions[x].params[card].where.eq[0]`: outside a win condition a Player ref says whose
+    /// state it reads (ADR-0041).
+    MissingPlayerSelector,
+    /// An `amount` of an `add_state` that is not an int literal, an int ref or `sub` of two of
+    /// those, at the amount (`…add_state.amount`) or at the operand of a `sub`
+    /// (`…add_state.amount.sub[1]`): a nested operator, or another operator. In a setup or an
+    /// automatic step the amount must be an int literal, so a ref or a `sub` is it too, at
+    /// `setup[i].add_state.amount` (ADR-0041).
+    InvalidAmount,
+    /// A `player:` key on a Player Ref inside a win condition, at the ref, such as
+    /// `win_conditions[life_out].when.lte[0]`: a Player-state win condition reads the Player it
+    /// judges, so its refs have no selector (ADR-0041).
+    PlayerSelectorInWinCondition,
+    /// A win condition that reads both a card type (its Subject) and Player state, at
+    /// `win_conditions[<id>].when`: a condition is judged for one kind of thing (ADR-0041).
+    MixedWinConditionSubject,
+    /// A `player: opponent` (a read or a write) in a ruleset that does not have exactly 2 Players,
+    /// at the ref or the `player` key of the write: "the opponent" is defined for two Players only,
+    /// and `players` is how many the ruleset has (ADR-0041).
+    OpponentNeedsTwoPlayers { players: u64 },
 }
 
 impl fmt::Display for DefinitionErrorKind {
@@ -262,12 +295,13 @@ impl fmt::Display for DefinitionErrorKind {
                     ReferenceTarget::InstanceState => "instance state",
                     ReferenceTarget::Param => "param",
                     ReferenceTarget::FieldOrInstanceState => "field or instance state",
+                    ReferenceTarget::PlayerState => "player state",
                 };
                 write!(f, "no {target} has the id `{id}`")
             }
             Self::UnknownPlayerSelector { selector } => write!(
                 f,
-                "`{selector}` is not a player selector; the selectors are `each` and `active`"
+                "`{selector}` is not a player selector here; the selectors depend on where it stands (`each`, `active`, `opponent`, `controller`)"
             ),
             Self::InvalidCount => write!(f, "a draw or a move must take at least 1 card"),
             Self::UnknownEffectPlayer { player } => write!(
@@ -401,6 +435,31 @@ impl fmt::Display for DefinitionErrorKind {
             Self::TapCardWithoutTappedState { card_type } => write!(
                 f,
                 "the card type `{card_type}` has no bool `tapped` state to tap"
+            ),
+            Self::ReservedId { id } => write!(f, "`{id}` is a reserved id"),
+            Self::InvalidStateTarget => write!(
+                f,
+                "a `set_state` or `add_state` names exactly one of `card` and `player`"
+            ),
+            Self::MissingPlayerSelector => write!(
+                f,
+                "a ref to a Player state needs the `player:` key that says whose it is"
+            ),
+            Self::InvalidAmount => write!(
+                f,
+                "an amount is an integer, a ref to an int, or `sub` of two of those (only an integer in a setup or an automatic step)"
+            ),
+            Self::PlayerSelectorInWinCondition => write!(
+                f,
+                "a win condition reads the Player it judges: its Player refs take no `player:` key"
+            ),
+            Self::MixedWinConditionSubject => write!(
+                f,
+                "a win condition reads either one card type or Player state, not both"
+            ),
+            Self::OpponentNeedsTwoPlayers { players } => write!(
+                f,
+                "`opponent` needs exactly 2 players, the ruleset has {players}"
             ),
             Self::UnsupportedFieldType { field_type } => {
                 write!(f, "the field type {field_type:?} is not supported yet")

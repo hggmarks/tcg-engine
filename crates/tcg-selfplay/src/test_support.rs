@@ -27,6 +27,15 @@ const EFFECTS_CATALOG: &str =
 const EFFECTS_DECK_A: &str = include_str!("../../../rulesets/effects-ruleset/decks/deck-a.yaml");
 const EFFECTS_DECK_B: &str = include_str!("../../../rulesets/effects-ruleset/decks/deck-b.yaml");
 
+/// The Player-state fixture of the loader's tests (ticket #96): two Players with `life_points` and
+/// `summoned`, one card type and the same deck for both.
+const PLAYER_STATE_RULESET: &str =
+    include_str!("../../tcg-loader/tests/fixtures/player-state-ruleset.yaml");
+const PLAYER_STATE_CATALOG: &str =
+    include_str!("../../tcg-loader/tests/fixtures/player-state-catalog.yaml");
+const PLAYER_STATE_DECK: &str =
+    include_str!("../../tcg-loader/tests/fixtures/player-state-deck.yaml");
+
 fn loaded(ruleset: &str, catalog: &str, decks: [&str; 2]) -> (DeclarativeRuleset, Vec<DeckList>) {
     let definition = load_ruleset_definition(ruleset).expect("the ruleset loads");
     let catalog = load_card_catalog(&definition, catalog).expect("the catalog loads");
@@ -52,6 +61,16 @@ pub(crate) fn effects() -> (DeclarativeRuleset, Vec<DeckList>) {
         EFFECTS_RULESET,
         EFFECTS_CATALOG,
         [EFFECTS_DECK_A, EFFECTS_DECK_B],
+    )
+}
+
+/// The Player-state fixture Ruleset, its catalog and its deck for both Players. Seat 0 opens with
+/// the cards 5 (`tithe_unit`, which writes Player state when it enters the field), 4 and 3.
+pub(crate) fn player_state() -> (DeclarativeRuleset, Vec<DeckList>) {
+    loaded(
+        PLAYER_STATE_RULESET,
+        PLAYER_STATE_CATALOG,
+        [PLAYER_STATE_DECK, PLAYER_STATE_DECK],
     )
 }
 

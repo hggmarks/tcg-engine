@@ -88,7 +88,16 @@ The Player whose turn currently owns the next legal turn action.
 A participant identified by a strongly typed identity and positioned in the immutable Player Order.
 
 **PlayerState**:
-The domain facts owned by one Player during a Game; in the current increment, it contains that Player's identity and LifeTotal.
+The domain facts owned by one Player during a Game. In the Toy Ruleset it is typed: that Player's identity and LifeTotal. *(Amended by ADR-0041: the declarative Ruleset has a generic counterpart, the values of the ruleset's Player-State Schemas held by the GameState in Player order, each Player's list in the order of the schemas; `GameState::player_state(player)` and `player_state_value(player, state)` read it, and the Event `PlayerStateChanged` is the only way it changes. It is fully public.)*
+
+**Player-State Schema**:
+The id, Field Type (`int` or `bool`) and initial value (`init`) of one value every Player holds, declared by the ruleset's top-level `player_state` list (ADR-0041), beside the Instance-State Schemas of the card types. The engine names none: Life Points are a ruleset notion. Every Player starts with each at its `init`, in the Empty GameState; an absent `player_state` means none.
+
+**Player Ref**:
+`{ ref: player.<id>, player: <selector> }`: an expression that reads one Player's value of the Player state `<id>` (ADR-0041). The one expression map with two keys; `player` is a reserved id (`ReservedId`) so the ref cannot be a param. Without the `player:` key it is `MissingPlayerSelector`; the selectors depend on the context (see Player Selector).
+
+**PlayerStateChanged**:
+The Event that the Player state `state` of `player` changed to `value`. Emitted only when the value actually changes, one per Player in seat order for `each`; applying it needs the Player, the state and a value of the type of the current one (`UnknownPlayer`, `UnknownPlayerState`, `PlayerStateTypeMismatch`). Observed in full (ADR-0041).
 
 **LifeTotal**:
 A signed numeric measure of a Player's remaining life; it may become negative without ending the Game.
@@ -197,7 +206,7 @@ A Player's 0-based position in the Player Order. `PlayerId(n)` sits at seat `n`,
 The Setup Steps of a ruleset, run once after the cards of the Deck Lists are placed. Absent means no steps.
 
 **Setup Step**:
-One entry of the ruleset's `setup`: a single-key map naming a primitive (`shuffle` or `draw`) and its arguments.
+One entry of the ruleset's `setup`: a single-key map naming a primitive (`shuffle` or `draw`, *Amended by ADR-0041: or `set_state` or `add_state` of a Player state*) and its arguments.
 
 **Shuffle**:
 A Setup Step that reorders a zone of each selected Player with the GameState's Random State. It emits one `ZoneShuffled` per Player, even for a zone of 0 or 1 cards.
@@ -206,7 +215,7 @@ A Setup Step that reorders a zone of each selected Player with the GameState's R
 A step that moves `count` cards, one at a time, from the Top of an explicit `from` zone onto the Top of an explicit `to` zone. As a Setup Step, drawing from an empty zone fails Game creation. In an Automatic Step it draws nothing more for that Player and emits one `DrawFromEmptyZone` per Player, and the transition succeeds.
 
 **Player Selector**:
-The value of a step's `player` key, accepted by Setup Steps and Automatic Steps alike. `each` is every Player in seat order, and a step runs fully for one Player before the next. `active` is the Active Player of the GameState (the starting Player during setup).
+The value of a step's `player` key, accepted by Setup Steps and Automatic Steps alike. `each` is every Player in seat order, and a step runs fully for one Player before the next. `active` is the Active Player of the GameState (the starting Player during setup). *(Amended by ADR-0041: a `player:` key also selects the Players of a Player-state write and the Player of a Player Ref, and the selectors depend on the context. Setup and automatic steps: `each`, `active`. Actions (param `where`, costs, effects): a read takes `active` and `opponent`, the acting Player's opponent; a write takes those plus `each`; `controller` is `ControllerOutsideCardEffect`. Card Effects (a triggered `if` and `do`, an activated ability, a continuous `while`): a read takes `controller`, `opponent`, the controller's opponent, and `active`; a write takes those plus `each`. Any other selector is `UnknownPlayerSelector`, and `opponent` needs exactly 2 Players, `OpponentNeedsTwoPlayers`.)*
 
 **Top**:
 The end of a zone's list. Placing a card appends it, so the first card placed is at the bottom; a draw takes the last card.
@@ -233,7 +242,7 @@ The typed error `GameState::apply` returns for an Event that does not fit the Ga
 `GameState::apply`, the single atomic function through which a declarative GameState changes. A rejected Event leaves the state unchanged.
 
 **Empty GameState**:
-The state Game creation starts from: Players by seat, the Active Player, the Random State of the Seed, every zone empty and no Card Instances.
+The state Game creation starts from: Players by seat, the Active Player, the Random State of the Seed, every zone empty, no Card Instances and each Player's Player state at the `init` of its Player-State Schemas (ADR-0041): no Event creates the initial values.
 
 **Opening Position**:
 The GameState after Game creation: cards placed, setup run, and, if the ruleset has a turn, the first Turn has begun and waits in its Action Phase. Without a turn, no Turn has begun. Win conditions are evaluated at the end of creation, so it may already hold a Terminal Outcome.
@@ -253,7 +262,7 @@ A phase with an `automatic` list of Automatic Steps, run in order when the phase
 The phase with `actions` where the Game waits for the Active Player. A turn has exactly one (ADR-0012). The Game leaves it only through End Turn, so it lists at least one action that ends the Turn, and every declared action is listed by it or by a Response Window (ADR-0027: `NoTurnEndingAction`, `UnlistedAction`; *Amended by ADR-0037: a window's `actions` list an action too, and while a window is open the Game waits in this phase for the Player with Priority*).
 
 **Automatic Step**:
-One entry of an Automatic Phase: a single-key map naming a primitive (Untap, Set State, Draw, Move) or an If Step.
+One entry of an Automatic Phase: a single-key map naming a primitive (Untap, Set State, Draw, Move) or an If Step *(Amended by ADR-0041: Set State without `zone` and Add State write Player state)*.
 
 **Untap**:
 An Automatic Step that sets `tapped` to false on the cards of the listed zones of each selected Player. Like Set State, it touches only cards whose card type declares the state, and emits `CardStateChanged` only for a value that changes.
@@ -289,13 +298,16 @@ The bool Expression `where` of a Param Alternative. It reads its own parameter, 
 Any Player other than the acting Player. With two Players it is the other one; the engine does not assume two.
 
 **Expression**:
-A literal scalar, a Value Ref, or one operator over Expressions: `eq: [a, b]` (same type), `gte: [a, b]` and `lte: [a, b]` (ints), `and: [e, ...]` (bools; `and: []` holds) and `is_card_type: [<card ref>, <card type id>]`. The types are the Field Types and the operators give bool; a Card Ref is not a value. Checked at load, depth-first and left to right.
+A literal scalar, a Value Ref *(Amended by ADR-0041: or a Player Ref)*, or one operator over Expressions: `eq: [a, b]` (same type), `gte: [a, b]` and `lte: [a, b]` (ints), `and: [e, ...]` (bools; `and: []` holds) and `is_card_type: [<card ref>, <card type id>]`. The types are the Field Types and the operators give bool; a Card Ref is not a value. Checked at load, depth-first and left to right.
 
 **Subject**:
-The card type an expression Win Condition is about: the first name of its Refs (`leader` in `leader.current_life`). The expression must read exactly one.
+The card type an expression Win Condition is about: the first name of its Refs (`leader` in `leader.current_life`). The expression must read exactly one *(a Player-state condition has none: it reads no card)*.
+
+**Amount**:
+What an `add_state` of an action, a cost or a Card Effect adds (ADR-0041): an int literal, a ref to an int (a card's field, read with its active Field Modifiers, an instance state, or a Player's state through a Player Ref), or `sub: [a, b]` of two of those, checked (`ArithmeticOverflow`). Evaluated when the `add_state` runs; once for all the targets of a Player-state write. `sub` is accepted only as an Amount until ticket [41] widens it. In a setup or an automatic step the Amount is an int literal (`InvalidAmount` otherwise).
 
 **Add State**:
-The Action Effect `add_state: { card, state, amount }`. It adds the integer literal `amount` to an int instance state with checked arithmetic: an overflow in either direction is a State Overflow Rejection, and a sum equal to the current value emits no Event.
+The Action Effect `add_state: { card, state, amount }`. It adds the integer `amount` *(Amended by ADR-0041: an Amount, a literal, a ref to an int or `sub` of two, evaluated when the effect runs)* to an int instance state with checked arithmetic: an overflow in either direction is a State Overflow Rejection, and a sum equal to the current value emits no Event.
 
 **If Effect**:
 The Action Effect `if: <expression>`, `then: [effects]` and an optional `else: [effects]`, siblings of one list element, run by the Expression at the moment the effect runs. When the condition is exactly `is_card_type: [<param>, T]` it narrows the parameter's possible card types: in `then` to those that are also T (an intersection, in the parameter's order; none is a load error, Impossible Card Type, ADR-0032), in `else` to the others (unchanged if removing T would leave none).
@@ -304,16 +316,16 @@ The Action Effect `if: <expression>`, `then: [effects]` and an optional `else: [
 The value an Action supplies for one Action Parameter; today only a Card Instance Id.
 
 **Ref**:
-A reference inside an Action Definition to a parameter: `<param>` is a Card Ref (the card) and `<param>.<name>` is a Value Ref (a field of the card's definition or one of its instance states). The name is resolved at load against every possible card type of the parameter to a field or a state, of one kind and one type on all of them (`InconsistentReference` otherwise), and a name that is both is an `AmbiguousReference`. A Ref is also type-checked at load against the slot that holds it. In an expression Win Condition the first name is a card type id, the Subject.
+A reference inside an Action Definition to a parameter *(Amended by ADR-0041: or, with a `player:` key, a Player Ref `player.<id>`)*: `<param>` is a Card Ref (the card) and `<param>.<name>` is a Value Ref (a field of the card's definition or one of its instance states). The name is resolved at load against every possible card type of the parameter to a field or a state, of one kind and one type on all of them (`InconsistentReference` otherwise), and a name that is both is an `AmbiguousReference`. A Ref is also type-checked at load against the slot that holds it. In an expression Win Condition the first name is a card type id, the Subject.
 
 **Cost**:
-What an action pays before its effects run: Tap (`tap: { zone, count }`), Tap Card (`tap: { card: { ref: <param> } }`: the one card, which must be untapped, else `CardAlreadyTapped { card }`; every card type its param may take declares a bool `tapped`, else `TapCardWithoutTappedState { card_type }`) and a `move` cost (`move: { card: { ref: <param> }, to: <zone> }`, with the semantics and the load checks of the `move` effect). For a pushed action the cost is paid at once and the effects wait on the Stack (ADR-0037). Paying is atomic: the whole transition runs on a clone of the GameState (ADR-0002).
+What an action pays before its effects run *(Amended by ADR-0041: a cost may also be `set_state` or `add_state` of a Player state)*: Tap (`tap: { zone, count }`), Tap Card (`tap: { card: { ref: <param> } }`: the one card, which must be untapped, else `CardAlreadyTapped { card }`; every card type its param may take declares a bool `tapped`, else `TapCardWithoutTappedState { card_type }`) and a `move` cost (`move: { card: { ref: <param> }, to: <zone> }`, with the semantics and the load checks of the `move` effect). For a pushed action the cost is paid at once and the effects wait on the Stack (ADR-0037). Paying is atomic: the whole transition runs on a clone of the GameState (ADR-0002).
 
 **Tap**:
 The Cost `tap: { zone, count }`. It needs `count` (a Value Ref to an int, so `tap.count` takes a Ref and no literal yet) untapped cards in that zone of the acting Player and taps the first `count` of them in zone list order, bottom first, even in an unordered zone. An untapped card is one whose card type declares `tapped` and whose value is false. A count of 0 taps nothing.
 
 **Action Effect**:
-What an action does once its costs are paid, built from engine primitives: End Turn, `move: { card, to }` (the card goes from the zone it is in onto the Top of `to`, a zone of its owner), `set_state: { card, state, value }` (an Event only if the value changes), Add State, **Draw Effect** (only in a Card Effect) and If Effect. Distinct from a **Card Effect**: an ability a Card Definition carries. The `do` of a triggered Card Effect is a list of Action Effects, except End Turn.
+What an action does once its costs are paid, built from engine primitives: End Turn, `move: { card, to }` (the card goes from the zone it is in onto the Top of `to`, a zone of its owner), `set_state: { card, state, value }` (an Event only if the value changes), Add State *(Amended by ADR-0041: `set_state` and `add_state` take `player: <selector>` in place of `card` to write a Player state, emitting `PlayerStateChanged`)*, **Draw Effect** (only in a Card Effect) and If Effect. Distinct from a **Card Effect**: an ability a Card Definition carries. The `do` of a triggered Card Effect is a list of Action Effects, except End Turn.
 
 **Card Effect**:
 An ability carried by a Card Definition, one element of its `effects` list, allowed only on a card type declared `effects: true` (`EffectsNotAllowed` otherwise). It has one of three shapes, the **Card Effect envelope** *(Amended by ADR-0038: three shapes, not two)*: a **Triggered Card Effect** (`on`, optional `if`, `do`), a **Continuous Card Effect** (`while`, `modify`) or an **Activated Card Effect** (`activated`). An element with keys of two shapes is `MixedCardEffectShapes`, one with none of `on`, `while` and `activated` is `MissingCardEffectShape`. The position of an effect in the card's `effects`, counting every shape, is its **Ability Index** when it is activated. The envelope is validated by the engine against the Ruleset Definition. A Triggered Card Effect executes (ADR-0023), a Continuous one is a Derived Read (ADR-0024, ADR-0025) and an Activated one is used with `Action::Activate` (ADR-0038). Distinct from an Action Effect, which an action performs.
@@ -391,7 +403,10 @@ An attack Response Window that closed with the opponent passing and no response 
 A Stack Item whose Bound Card has left does nothing when it resolves: all or nothing, its cost is not refunded, `ItemFizzled { item }` is the first Event of the Pass in the place of `ItemResolved`, and `where` conditions are not read again (ADR-0037).
 
 **Response Ruleset**:
-The ruleset of Phase F (`rulesets/response-ruleset/`, id `response`), a copy of the Effects Ruleset with a `holding` zone, a `fast` field on creatures, `attack` tapping its attacker as a cost, `fast_play` and the `attack_response` window, which has `abilities: true` *(added by ADR-0038)*; two fast creatures, `swift_sparrow` and `flash_fox`, and two `skittish_hare`s, an activated ability that pays 1 mana and returns the hare to the hand *(added by ADR-0038)*, are in both sample decks. Rule decisions are made here from Phase F's ticket [34] (ADR-0037).
+The ruleset of Phase F (`rulesets/response-ruleset/`, id `response`), a copy of the Effects Ruleset with a `holding` zone, a `fast` field on creatures, `attack` tapping its attacker as a cost, `fast_play` and the `attack_response` window, which has `abilities: true` *(added by ADR-0038)*; two fast creatures, `swift_sparrow` and `flash_fox`, and two `skittish_hare`s, an activated ability that pays 1 mana and returns the hare to the hand *(added by ADR-0038)*, are in both sample decks. Rule decisions are made here from Phase F's ticket [34] (ADR-0037). *(Amended by ADR-0041: it is frozen since Phase G, by the digest test `the_response_ruleset_is_frozen_since_phase_g`, and the Duel Ruleset is the current one; its own `.md` says nothing of this, being frozen.)*
+
+**Duel Ruleset**:
+The second, independent ruleset (`rulesets/duel-ruleset/`, `meta.id: duel`), written from scratch with original names (ADR-0041, ticket [39]): two Players with 4000 Life Points (the Player state `life_points`) and a deck of 40 monsters of level 1 to 4, a Turn of Draw (the starting Player skips Turn 1's draw), Main (Normal Summon once per Turn, Direct Attack once per monster per Turn for its ATK, End Turn) and End, and a loss at 0 Life Points or on a draw from an empty deck. It has no Response Window and no Active Zone. It is the current ruleset, where rule decisions are mirrored from Phase G's ticket [39] (ADR-0041). The v0 rules (`meta.version: 1`) leave out what tickets [40] (phases, capacity, no Turn-1 attack), [41] (positions and combat) and [42] (tributes and spells) add, as its `.md` says.
 
 **End Turn In Pushed Action**:
 A Definition Error at an `end_turn` in the effects of a pushed action (one a Response Window lists or opens), at its own path, such as `actions[x].effects[1]`: its effects run on a Pass, which does not leave the Action phase (ADR-0037).
@@ -545,7 +560,7 @@ Who observes. Its only kind is a Player of the Game (`Viewer::Player`); a Specta
 What a Viewer is given of a Game: an Observed GameState and, for each accepted transition, Observed Events and an Observed Transition (ADR-0028, ADR-0029). It holds base facts only; Derived Reads are asked beside it, never stored in it (ADR-0028).
 
 **Observed GameState**:
-A GameState as one Viewer sees it: always the Players, the Active Player, the Turn Number, the phase, the Terminal Outcome, the Observed Pending Decision, the Stack (`stack()`, each Observed Stack Item) with the Player with Priority (`priority()`; `deciding_player()` is the Decider, else the Player with Priority, else the Active Player) and the card count of every zone; for each zone the Viewer sees, its Observed Cards bottom first; for the Visible Cards, their facts. Never the Random State, never the order of a zone the Viewer cannot see, never a Card Instance Id.
+A GameState as one Viewer sees it: always the Players, *(Amended by ADR-0041: every Player's Player state in Player order, `player_state(player)`, fully public to every Viewer)* the Active Player, the Turn Number, the phase, the Terminal Outcome, the Observed Pending Decision, the Stack (`stack()`, each Observed Stack Item) with the Player with Priority (`priority()`; `deciding_player()` is the Decider, else the Player with Priority, else the Active Player) and the card count of every zone; for each zone the Viewer sees, its Observed Cards bottom first; for the Visible Cards, their facts. Never the Random State, never the order of a zone the Viewer cannot see, never a Card Instance Id.
 
 **Observer**:
 One Viewer's pure fold of the Events applied to the Empty GameState: it holds the mapping between Observed Cards and Card Instances (`card_instance`, `observed_card`) and is never shown to the Viewer. It changes no GameState, Event, Game Record or snapshot. A card appears (takes the next handle) when a `CardCreated` puts it, or a `CardMoved` brings it from a zone the Viewer cannot see, into a zone the Viewer sees; it disappears (its handle is retired, never reused) when a `CardMoved` takes it from a seen zone to an unseen one; otherwise it keeps its handle. Every other Event leaves the mapping alone.
@@ -560,7 +575,7 @@ A card the Viewer sees, in an Observed GameState: its Observed Card, owner, Card
 One zone as a Viewer sees it: its count always, and its Observed Cards, bottom first, only when the Viewer sees the zone (`cards()` is `None` otherwise).
 
 **Observed Event**:
-One Event as a Viewer observes it, in trace order: `CardCreated`/`UnseenCardCreated`, `CardMoved`, `CardMovedIntoSight` (a card the Viewer starts to see, with its Card Definition and its instance state at that point of the trace), `CardMovedOutOfSight` (its Observed Card is retired), `UnseenCardMoved`, `ZoneShuffled` (the new order of Observed Cards, for a zone the Viewer sees) and `UnseenZoneShuffled`, `CardStateChanged` (only for a card the Viewer sees; none otherwise), `TurnBegan`, `PhaseBegan`, `DrawFromEmptyZone`, `GameEnded`, `DecisionPending` (the decider and the kind, never the Paused Resolution), `DecisionAnswered` (the Player and the Observed Answer) and `ItemPushed`, `ItemResolved` and `ItemFizzled` (the whole Observed Stack Item; an ability's source shows its card as an Observed Card, `None` once the card left, *ADR-0038*). No variant carries a Card Instance Id or a Random State. `ObservedGameState::apply` folds them; `follow_events` and `follow_transition` of the Declarative Ruleset produce them (ADR-0029).
+One Event as a Viewer observes it, in trace order: `CardCreated`/`UnseenCardCreated`, `CardMoved`, `CardMovedIntoSight` (a card the Viewer starts to see, with its Card Definition and its instance state at that point of the trace), `CardMovedOutOfSight` (its Observed Card is retired), `UnseenCardMoved`, `ZoneShuffled` (the new order of Observed Cards, for a zone the Viewer sees) and `UnseenZoneShuffled`, `CardStateChanged` (only for a card the Viewer sees; none otherwise), `PlayerStateChanged` *(ADR-0041: in full, the same for every Viewer, naming no card)*, `TurnBegan`, `PhaseBegan`, `DrawFromEmptyZone`, `GameEnded`, `DecisionPending` (the decider and the kind, never the Paused Resolution), `DecisionAnswered` (the Player and the Observed Answer) and `ItemPushed`, `ItemResolved` and `ItemFizzled` (the whole Observed Stack Item; an ability's source shows its card as an Observed Card, `None` once the card left, *ADR-0038*). No variant carries a Card Instance Id or a Random State. `ObservedGameState::apply` folds them; `follow_events` and `follow_transition` of the Declarative Ruleset produce them (ADR-0029).
 
 **Observed Transition**:
 What a Viewer is given of one accepted transition, mirroring `Transition`: the Taken Action, the Observed Events in trace order and the next Observed GameState. Built by `follow_transition`, which folds the transition's Event Trace into the Observer and fails whole or not at all (ADR-0029).
@@ -604,7 +619,7 @@ The `ObservationError` for Events or a GameState that do not fit the Observer or
 ## Ending the Game
 
 **Win Condition**:
-A declared rule `{ id, when, loser }` of the ruleset's `win_conditions`. When its `when` holds for a Player, that Player is a loser of the Game, and the id is the reason. A `when` is `draw_from_empty: <zone>` (holds for a Player when a draw of theirs in the transition found the zone empty) or an Expression about one Subject (holds for a Player when some card instance of the Subject owned by them, in any zone, in `state.cards()` order, makes it true in the GameState the transition produced). The only `loser` is `owner`: the Player the condition holds for, for an expression the owner of that card instance. Absent means the Game never ends.
+A declared rule `{ id, when, loser }` of the ruleset's `win_conditions`. When its `when` holds for a Player, that Player is a loser of the Game, and the id is the reason. A `when` is `draw_from_empty: <zone>` (holds for a Player when a draw of theirs in the transition found the zone empty) or an Expression about one Subject (holds for a Player when some card instance of the Subject owned by them, in any zone, in `state.cards()` order, makes it true in the GameState the transition produced) *(Amended by ADR-0041: or a Player-state condition, an Expression whose refs are Player Refs without a `player:` key, which holds for a Player when it is true reading that Player's own Player state in the GameState the transition produced; a `player:` key there is `PlayerSelectorInWinCondition`, and mixing a Subject with Player state is `MixedWinConditionSubject`)*. The only `loser` is `owner`: the Player the condition holds for, for an expression the owner of that card instance *(for a Player-state condition, the Player whose state is read)*. Absent means the Game never ends.
 
 **Loss**:
 A Player who lost and the Win Condition id that made them lose. A Player has at most one Loss: for each Player in seat order, the first Win Condition in declaration order that holds for them is their reason.
@@ -665,7 +680,7 @@ A property that holds in every GameState and across every transition: no card ga
 One violated Invariant with a detail naming the first offender, and, for the three over Observations, the Viewer whose Observations violate it (`viewer: Option<Viewer>`, `None` for the nine engine Invariants). A step reports at most one per Invariant, and per Viewer for the observation ones, ordered by Invariant and then by seat (ADR-0020, ADR-0031).
 
 **Recomputed GameState**:
-The fold of every Event of a Game, in order, onto the Empty GameState, with nothing the engine carried forward. Self-play and verification keep one and check that it equals the engine's GameState at the Opening Position and after every transition (`DerivedReadsDoNotLeak`). It differs from event-sourced consistency, which folds from the engine's own prior GameState and so cannot see a value carried outside an Event (ADR-0026). When the two differ, the violation names the first part that differs: the Turn Number, the Active Player, the phase (both values, ADR-0036), the Terminal Outcome, the Pending Decision, then the cards and zones.
+The fold of every Event of a Game, in order, onto the Empty GameState, with nothing the engine carried forward. Self-play and verification keep one and check that it equals the engine's GameState at the Opening Position and after every transition (`DerivedReadsDoNotLeak`). It differs from event-sourced consistency, which folds from the engine's own prior GameState and so cannot see a value carried outside an Event (ADR-0026). When the two differ, the violation names the first part that differs: the Turn Number, the Active Player, the phase (both values, ADR-0036), the Terminal Outcome, the Pending Decision, *(Amended by ADR-0041: a Player's Player state, naming the state and both values,)* then the cards and zones.
 
 **Observed Step**:
 What one Viewer observes at one step of a Game, the Opening Position or one accepted transition: its Observed Events (of the creation trace, or of the transition), the Taken Action (absent at the Opening Position), the Observed GameState after the step, and its Derived Reads (for every Visible Card in handle order, every int field of its Card Definition in catalog order, through `derived_read`). The leak check compares the real one with the one of the Relabelled Game (ADR-0031).
@@ -674,7 +689,7 @@ What one Viewer observes at one step of a Game, the Opening Position or one acce
 Of a Viewer at a step: the cards that were never in a zone the Viewer sees after any Event of the Game so far, the step's own trace included. A card is seen when a `CardCreated` puts it in a seen zone, or a `CardMoved` has a seen `from` or `to`. They are computed by the harness from the Events and the zones' Visibility (ADR-0028's meaning), never from the Observer, so that the check does not trust what it tests. A card seen in the middle of a trace and gone again is not hidden (ADR-0031).
 
 **Relabelling**:
-The permutation the leak check applies to the Hidden Cards of a Viewer, built fresh per step and per Viewer, in the creation trace, every trace so far and the step's Action: the definitions are shuffled among the Hidden Cards (instance states stay with their instance), the ids are shuffled within the classes of Hidden Cards created with the same owner in the same zone (so the apply rules still hold), and in each shuffle of a zone the Viewer cannot see the positions that hold Hidden Cards are shuffled among themselves, one carried in the `unscanned` Events of a Paused Resolution included (ADR-0036). It draws from `RandomState::from_seed(Seed(seed.0 ^ RELABEL_STREAM))`, one per Game, never from the GameState's or the policy's generator, so verifying a record reproduces it (ADR-0031).
+The permutation the leak check applies to the Hidden Cards of a Viewer *(Amended by ADR-0041: it leaves `PlayerStateChanged` unchanged, which names no card)*, built fresh per step and per Viewer, in the creation trace, every trace so far and the step's Action: the definitions are shuffled among the Hidden Cards (instance states stay with their instance), the ids are shuffled within the classes of Hidden Cards created with the same owner in the same zone (so the apply rules still hold), and in each shuffle of a zone the Viewer cannot see the positions that hold Hidden Cards are shuffled among themselves, one carried in the `unscanned` Events of a Paused Resolution included (ADR-0036). It draws from `RandomState::from_seed(Seed(seed.0 ^ RELABEL_STREAM))`, one per Game, never from the GameState's or the policy's generator, so verifying a record reproduces it (ADR-0031).
 
 **Relabelled Game**:
 The Game of the relabelled Events: they are folded from the Empty GameState, a fresh Observer follows them from the Empty GameState, and the relabelled Action and step are followed last. Its Observed Step must equal the real one. Built per step, so it costs O(steps squared) per Game (ADR-0031).

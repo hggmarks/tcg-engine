@@ -1,0 +1,96 @@
+# The Duel Ruleset v0 (ticket [39] of the Phase G roadmap): a face-up duel between two Players, each
+# with Life Points and a deck of monsters. Spec: duel-ruleset.md. Format: ../formats.md.
+meta: { id: duel, version: 1 }
+
+parameters:
+  players: 2
+  starting_player: 0
+
+zones:
+  - { id: deck,         visibility: hidden, ordered: true }
+  - { id: hand,         visibility: owner,  ordered: false }
+  - { id: graveyard,    visibility: public, ordered: true }   # the top is the last card
+  - { id: monster_zone, visibility: public, ordered: false }
+
+card_types:
+  - id: monster
+    fields:
+      - { name: name,  type: text }
+      - { name: level, type: int }
+      - { name: atk,   type: int }
+      - { name: def,   type: int }
+    instance_state:
+      - { name: attacked, type: bool, init: false }
+    effects: false
+
+# Values every Player holds (ADR-0041). The engine names none: Life Points are this ruleset's.
+player_state:
+  - { id: life_points,     type: int,  init: 4000 }
+  - { id: normal_summoned, type: bool, init: false }   # whether the Player summoned this Turn
+
+inputs:
+  - { id: main_deck, card_types: [monster], size: 40, max_copies: 3, zone: deck }
+
+setup:
+  - shuffle: { player: each, zone: deck }
+  - draw: { player: each, from: deck, to: hand, count: 5 }
+
+# Draw (automatic), Main (the one phase with actions), End (automatic). Ending the Turn in Main runs
+# End and begins the next Player's Turn in the same transition.
+turn:
+  phases:
+    - id: draw
+      automatic:
+        # The starting Player does not draw on the Game's first Turn.
+        - if: { first_turn: {} }
+          then: []
+          else:
+            - draw: { player: active, from: deck, to: hand, count: 1 }
+    - id: main
+      actions: [normal_summon, direct_attack, end_turn]
+    - id: end
+      automatic:
+        # The Player's Turn is over: they may summon again and their monsters may attack again.
+        - set_state: { player: active, state: normal_summoned, value: false }
+        - set_state: { player: active, zone: monster_zone, state: attacked, value: false }
+
+actions:
+  # A monster of level 1 to 4 goes from the hand to the Monster Zone, once per Turn.
+  - id: normal_summon
+    params:
+      - name: card
+        zone: hand
+        card_type: monster
+        where:
+          and:
+            - { gte: [{ ref: card.level }, 1] }
+            - { lte: [{ ref: card.level }, 4] }
+            - { eq: [{ ref: player.normal_summoned, player: active }, false] }
+    effects:
+      - move: { card: { ref: card }, to: monster_zone }
+      - set_state: { player: active, state: normal_summoned, value: true }
+
+  # A monster of the acting Player's Monster Zone that has not attacked this Turn hits the opponent
+  # for its ATK.
+  - id: direct_attack
+    params:
+      - name: attacker
+        zone: monster_zone
+        card_type: monster
+        where: { eq: [{ ref: attacker.attacked }, false] }
+    effects:
+      - set_state: { card: { ref: attacker }, state: attacked, value: true }
+      - add_state: { player: opponent, state: life_points, amount: { sub: [0, { ref: attacker.atk }] } }
+
+  - id: end_turn
+    effects: [ { end_turn: {} } ]
+
+# A Player loses at 0 Life Points or fewer, or on a draw from an empty deck. Both Players losing in
+# one transition is a drawn Game. Life Points come first.
+win_conditions:
+  - id: life_out
+    when: { lte: [{ ref: player.life_points }, 0] }
+    loser: owner
+  - id: deck_out
+    when: { draw_from_empty: deck }
+    loser: owner

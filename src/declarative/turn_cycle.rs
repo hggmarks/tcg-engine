@@ -7,7 +7,7 @@
 
 use super::action::Rejection;
 use super::event::Event;
-use super::execution::Execution;
+use super::execution::{Execution, StepError};
 use super::state::ApplyError;
 use crate::player::PlayerId;
 use crate::ruleset_definition::{
@@ -23,7 +23,7 @@ pub(super) fn begin_turn(
     execution: &mut Execution,
     player: PlayerId,
     turn: TurnNumber,
-) -> Result<(), ApplyError> {
+) -> Result<(), StepError> {
     execution.apply(Event::TurnBegan { player, turn })?;
     let Some(structure) = definition.turn() else {
         return Ok(());
@@ -78,22 +78,40 @@ pub(super) fn end_turn(
             })
             .map_err(event_rejected)?;
         if let PhaseKind::Automatic(steps) = phase.kind() {
-            run_steps(execution, steps).map_err(event_rejected)?;
+            run_steps(execution, steps)?;
         }
     }
-    begin_turn(definition, execution, next_player, next_turn).map_err(event_rejected)
+    Ok(begin_turn(definition, execution, next_player, next_turn)?)
 }
 
 /// Runs steps in order.
-fn run_steps(execution: &mut Execution, steps: &[AutomaticStep]) -> Result<(), ApplyError> {
+fn run_steps(execution: &mut Execution, steps: &[AutomaticStep]) -> Result<(), StepError> {
     for step in steps {
         run_step(execution, step)?;
     }
     Ok(())
 }
 
-fn run_step(execution: &mut Execution, step: &AutomaticStep) -> Result<(), ApplyError> {
+fn run_step(execution: &mut Execution, step: &AutomaticStep) -> Result<(), StepError> {
     match step {
+        AutomaticStep::SetPlayerState {
+            player,
+            state,
+            value,
+        } => {
+            for player in execution.select(*player) {
+                execution.set_player_state(player, state, value)?;
+            }
+        }
+        AutomaticStep::AddPlayerState {
+            player,
+            state,
+            amount,
+        } => {
+            for player in execution.select(*player) {
+                execution.add_player_state(player, state, *amount)?;
+            }
+        }
         AutomaticStep::Untap { player, zones } => {
             let tapped = StateName::new("tapped");
             for player in execution.select(*player) {

@@ -6,20 +6,23 @@ use std::num::NonZeroU32;
 use super::draft::{
     ActionDraft, AutomaticStepDraft, CardTypeDraft, ConditionDraft, CostDraft, DeckInputDraft,
     EffectDraft, ExpressionDraft, FieldTypeDraft, InitializerDraft, InstanceStateDraft,
-    ParamAlternativeDraft, ParamCardsDraft, ParamDraft, PhaseDraft, RulesetDraft, SetupStepDraft,
-    TurnDraft, WinConditionDraft, WinConditionWhenDraft, WindowDraft,
+    ParamAlternativeDraft, ParamCardsDraft, ParamDraft, PhaseDraft, PlayerStateDraft, RulesetDraft,
+    SetupStepDraft, TurnDraft, WinConditionDraft, WinConditionWhenDraft, WindowDraft,
 };
 use super::error::{DefinitionError, DefinitionErrorKind, ReferenceTarget};
 use super::expression::{
-    check_condition, fail, params_read, validate_card_ref, validate_value_ref, Refs, ScopedParam,
+    check_amount, check_condition, check_literal_amount, fail, find_player_state, params_read,
+    reads_player_state, validate_card_ref, validate_target, validate_value_ref, Refs, Scope,
+    ScopedParam, PLAYER,
 };
 use super::model::{
     ActionDefinition, ActionId, AutomaticStep, CardType, CardTypeId, Condition, Cost, Decider,
     DeckInput, DeckInputId, Effect, EffectPlayer, Expression, FieldName, FieldSchema, FieldType,
-    Initializer, InstanceStateSchema, Loser, Meta, Param, ParamAlternative, ParamName, ParamOwner,
-    Parameters, Phase, PhaseId, PhaseKind, PlayerCount, PlayerPosition, PlayerSelector, Position,
-    RulesetDefinition, RulesetId, RulesetVersion, SetupStep, StateName, TurnStructure, Visibility,
-    WinCondition, WinConditionId, WinConditionWhen, Window, WindowId, Zone, ZoneId,
+    FieldValue, Initializer, InstanceStateSchema, Loser, Meta, Param, ParamAlternative, ParamName,
+    ParamOwner, Parameters, Phase, PhaseId, PhaseKind, PlayerCount, PlayerPosition, PlayerSelector,
+    PlayerStateId, PlayerStateSchema, Position, RulesetDefinition, RulesetId, RulesetVersion,
+    SetupStep, StateName, TurnStructure, Visibility, WinCondition, WinConditionId,
+    WinConditionWhen, Window, WindowId, Zone, ZoneId,
 };
 use crate::definition_path::DefinitionPath;
 use crate::id::is_valid_id;
@@ -39,6 +42,49 @@ fn check_id(
             list.clone().index(index).key(key),
             DefinitionErrorKind::InvalidId { id: id.to_string() },
         )
+    }
+}
+
+/// Rejects a card type id or a param name that the format keeps (ADR-0041). `at` is the path an
+/// `InvalidId` of it would have.
+fn check_not_reserved(id: &str, at: DefinitionPath) -> Result<(), DefinitionError> {
+    if id == PLAYER {
+        fail(at, DefinitionErrorKind::ReservedId { id: id.to_string() })
+    } else {
+        Ok(())
+    }
+}
+
+/// What the actions and the Card Effects of a ruleset are validated against besides their own
+/// params: the zones, the card types, the Player-State Schemas and the number of Players.
+#[derive(Clone, Copy)]
+struct Universe<'a> {
+    zones: &'a [Zone],
+    card_types: &'a [CardType],
+    player_state: &'a [PlayerStateSchema],
+    players: u32,
+    scope: Scope,
+}
+
+impl<'a> Universe<'a> {
+    fn refs(
+        &self,
+        params: Vec<ScopedParam>,
+        missing: ReferenceTarget,
+        has_self: bool,
+        choices: bool,
+    ) -> Refs<'a> {
+        Refs {
+            zones: self.zones,
+            card_types: self.card_types,
+            player_state: self.player_state,
+            players: self.players,
+            scope: self.scope,
+            params,
+            missing,
+            has_self,
+            choices,
+        }
     }
 }
 
@@ -94,6 +140,7 @@ pub(super) fn validate(draft: RulesetDraft) -> Result<RulesetDefinition, Definit
         parameters,
         zones,
         card_types,
+        player_state,
         inputs,
         setup,
         actions,
@@ -145,9 +192,15 @@ pub(super) fn validate(draft: RulesetDraft) -> Result<RulesetDefinition, Definit
     let mut valid_card_types = Vec::with_capacity(card_types.len());
     for (index, card_type) in card_types.iter().enumerate() {
         check_id(&card_types_path, index, "id", &card_type.id)?;
+        check_not_reserved(
+            &card_type.id,
+            card_types_path.clone().index(index).key("id"),
+        )?;
         seen.insert(&card_type.id, index)?;
         valid_card_types.push(validate_card_type(card_type)?);
     }
+
+    let valid_player_state = validate_player_state(&player_state)?;
 
     let inputs_path = DefinitionPath::root().key("inputs");
     let mut seen = Seen::new(inputs_path.clone());
@@ -164,6 +217,7 @@ pub(super) fn validate(draft: RulesetDraft) -> Result<RulesetDefinition, Definit
         valid_setup.push(validate_step(
             step,
             &valid_zones,
+            &valid_player_state,
             setup_path.clone().index(index),
         )?);
     }
@@ -174,7 +228,14 @@ pub(super) fn validate(draft: RulesetDraft) -> Result<RulesetDefinition, Definit
     for (index, action) in actions.iter().enumerate() {
         check_id(&actions_path, index, "id", &action.id)?;
         seen.insert(&action.id, index)?;
-        valid_actions.push(validate_action(action, &valid_zones, &valid_card_types)?);
+        let universe = Universe {
+            zones: &valid_zones,
+            card_types: &valid_card_types,
+            player_state: &valid_player_state,
+            players: players.get(),
+            scope: Scope::Action,
+        };
+        valid_actions.push(validate_action(action, &universe)?);
     }
 
     let valid_windows = validate_windows(
@@ -190,6 +251,7 @@ pub(super) fn validate(draft: RulesetDraft) -> Result<RulesetDefinition, Definit
             let context = Context {
                 zones: &valid_zones,
                 card_types: &valid_card_types,
+                player_state: &valid_player_state,
                 actions: &valid_actions,
             };
             Some(validate_turn(turn, &context)?)
@@ -224,8 +286,13 @@ pub(super) fn validate(draft: RulesetDraft) -> Result<RulesetDefinition, Definit
         seen.insert(&condition.id, index)?;
         valid_win_conditions.push(validate_win_condition(
             condition,
-            &valid_zones,
-            &valid_card_types,
+            &Universe {
+                zones: &valid_zones,
+                card_types: &valid_card_types,
+                player_state: &valid_player_state,
+                players: players.get(),
+                scope: Scope::WinCondition,
+            },
         )?);
     }
 
@@ -275,6 +342,7 @@ pub(super) fn validate(draft: RulesetDraft) -> Result<RulesetDefinition, Definit
         },
         zones: valid_zones,
         card_types: valid_card_types,
+        player_state: valid_player_state,
         deck_inputs: valid_inputs,
         setup: valid_setup,
         actions: valid_actions,
@@ -289,14 +357,15 @@ pub(super) fn validate(draft: RulesetDraft) -> Result<RulesetDefinition, Definit
 struct Context<'a> {
     zones: &'a [Zone],
     card_types: &'a [CardType],
+    player_state: &'a [PlayerStateSchema],
     actions: &'a [ActionDefinition],
 }
 
 fn validate_win_condition(
     condition: &WinConditionDraft,
-    zones: &[Zone],
-    card_types: &[CardType],
+    universe: &Universe<'_>,
 ) -> Result<WinCondition, DefinitionError> {
+    let (zones, card_types) = (universe.zones, universe.card_types);
     let at = DefinitionPath::root()
         .key("win_conditions")
         .id(&condition.id);
@@ -304,31 +373,38 @@ fn validate_win_condition(
     let when = match &condition.when {
         WinConditionWhenDraft::Expression(draft) => {
             // Every card type is a name a ref may start with, and takes only itself.
-            let refs = Refs {
-                zones,
-                card_types,
-                params: card_types
+            let refs = universe.refs(
+                card_types
                     .iter()
                     .map(|card_type| ScopedParam {
                         name: ParamName::new(card_type.id.as_str()),
                         types: vec![card_type.id.clone()],
                     })
                     .collect(),
-                missing: ReferenceTarget::CardType,
-                has_self: false,
-                choices: false,
-            };
+                ReferenceTarget::CardType,
+                false,
+                false,
+            );
             let condition = check_condition(draft, &refs, when_at.clone())?;
-            let subject = match params_read(&condition).as_slice() {
-                [subject] => CardTypeId::new(subject.as_str()),
-                other => {
+            let reads_players = reads_player_state(&condition);
+            match (params_read(&condition).as_slice(), reads_players) {
+                // Only Player state: judged for each Player on their own state (ADR-0041).
+                ([], true) => WinConditionWhen::PlayerState(condition),
+                // Both a Subject and Player state.
+                ([_, ..], true) => {
+                    return fail(when_at, DefinitionErrorKind::MixedWinConditionSubject)
+                }
+                ([subject], false) => WinConditionWhen::Expression {
+                    subject: CardTypeId::new(subject.as_str()),
+                    condition,
+                },
+                (other, false) => {
                     return fail(
                         when_at,
                         DefinitionErrorKind::InvalidSubjectCount { found: other.len() },
                     )
                 }
-            };
-            WinConditionWhen::Expression { subject, condition }
+            }
         }
         WinConditionWhenDraft::DrawFromEmpty { zone } => WinConditionWhen::DrawFromEmpty(
             validate_zone_reference(zone, zones, when_at.key("draw_from_empty"))?,
@@ -355,8 +431,7 @@ fn validate_win_condition(
 /// An action: its params, then its cost, then its effects, each in declaration order.
 fn validate_action(
     action: &ActionDraft,
-    zones: &[Zone],
-    card_types: &[CardType],
+    universe: &Universe<'_>,
 ) -> Result<ActionDefinition, DefinitionError> {
     let at = DefinitionPath::root().key("actions").id(&action.id);
 
@@ -367,14 +442,9 @@ fn validate_action(
     let mut scope: Vec<ScopedParam> = Vec::with_capacity(action.params.len());
     for (index, param) in action.params.iter().enumerate() {
         check_id(&params_path, index, "name", &param.name)?;
+        check_not_reserved(&param.name, params_path.clone().index(index).key("name"))?;
         seen.insert(&param.name, index)?;
-        let param = validate_param(
-            param,
-            zones,
-            card_types,
-            &scope,
-            params_path.clone().id(&param.name),
-        )?;
+        let param = validate_param(param, universe, &scope, params_path.clone().id(&param.name))?;
         scope.push(ScopedParam::of_alternatives(
             param.name.clone(),
             &param.alternatives,
@@ -382,14 +452,7 @@ fn validate_action(
         params.push(param);
     }
 
-    let refs = Refs {
-        zones,
-        card_types,
-        params: scope,
-        missing: ReferenceTarget::Param,
-        has_self: false,
-        choices: false,
-    };
+    let refs = universe.refs(scope, ReferenceTarget::Param, false, false);
 
     let cost_path = at.clone().key("cost");
     let mut costs = Vec::with_capacity(action.cost.len());
@@ -485,6 +548,9 @@ impl<'a> SelfScope<'a> {
             refs: Refs {
                 zones: definition.zones(),
                 card_types: definition.card_types(),
+                player_state: definition.player_state(),
+                players: definition.parameters().player_count().get(),
+                scope: Scope::CardEffect,
                 params: vec![ScopedParam {
                     name: ParamName::new("self"),
                     types: vec![card_type.clone()],
@@ -607,16 +673,17 @@ fn first_opponent_decider(effects: &[Effect], list: &DefinitionPath) -> Option<D
             | Effect::Move { .. }
             | Effect::SetState { .. }
             | Effect::AddState { .. }
+            | Effect::SetPlayerState { .. }
+            | Effect::AddPlayerState { .. }
             | Effect::Draw { .. } => {}
         }
     }
     None
 }
 
-/// What a param is validated against: the zones, the card types and the params before it.
+/// What a param is validated against: the universe and the params before it.
 struct ParamScope<'a> {
-    zones: &'a [Zone],
-    card_types: &'a [CardType],
+    universe: &'a Universe<'a>,
     earlier: &'a [ScopedParam],
 }
 
@@ -625,17 +692,12 @@ struct ParamScope<'a> {
 /// alternative of the simple form is the param itself.
 fn validate_param(
     param: &ParamDraft,
-    zones: &[Zone],
-    card_types: &[CardType],
+    universe: &Universe<'_>,
     earlier: &[ScopedParam],
     at: DefinitionPath,
 ) -> Result<Param, DefinitionError> {
     let name = ParamName::new(&param.name);
-    let scope = ParamScope {
-        zones,
-        card_types,
-        earlier,
-    };
+    let scope = ParamScope { universe, earlier };
     let mut alternatives = Vec::new();
     match &param.cards {
         ParamCardsDraft::Single(alternative) => {
@@ -665,8 +727,13 @@ fn validate_alternative(
     scope: &ParamScope<'_>,
     at: DefinitionPath,
 ) -> Result<ParamAlternative, DefinitionError> {
-    let zone = validate_zone_reference(&alternative.zone, scope.zones, at.clone().key("zone"))?;
+    let zone = validate_zone_reference(
+        &alternative.zone,
+        scope.universe.zones,
+        at.clone().key("zone"),
+    )?;
     if !scope
+        .universe
         .card_types
         .iter()
         .any(|card_type| card_type.id.as_str() == alternative.card_type)
@@ -702,14 +769,9 @@ fn validate_alternative(
                 name: name.clone(),
                 types: vec![card_type.clone()],
             });
-            let refs = Refs {
-                zones: scope.zones,
-                card_types: scope.card_types,
-                params,
-                missing: ReferenceTarget::Param,
-                has_self: false,
-                choices: false,
-            };
+            let refs = scope
+                .universe
+                .refs(params, ReferenceTarget::Param, false, false);
             Some(check_condition(draft, &refs, at.key("where"))?)
         }
     };
@@ -765,6 +827,35 @@ fn validate_cost(
             let card = validate_card_ref(card, refs, at.clone().key("card"))?;
             let to = validate_zone_reference(to, refs.zones, at.key("to"))?;
             Ok(Cost::Move { card, to })
+        }
+        CostDraft::SetPlayerState {
+            player,
+            state,
+            value,
+        } => {
+            let at = at.key("set_state");
+            let player = validate_target(player, refs, at.clone().key("player"))?;
+            let state = check_player_set(refs.player_state, state, value, &at)?;
+            Ok(Cost::SetPlayerState {
+                player,
+                state,
+                value: value.clone(),
+            })
+        }
+        CostDraft::AddPlayerState {
+            player,
+            state,
+            amount,
+        } => {
+            let at = at.key("add_state");
+            let player = validate_target(player, refs, at.clone().key("player"))?;
+            let state = check_player_add(refs.player_state, state, &at)?;
+            let amount = check_amount(amount, refs, at.key("amount"))?;
+            Ok(Cost::AddPlayerState {
+                player,
+                state,
+                amount,
+            })
         }
     }
 }
@@ -1011,11 +1102,44 @@ fn validate_effect(
                     },
                 );
             }
+            let amount = check_amount(amount, refs, at.key("amount"))?;
             Ok(Effect::AddState {
                 card,
                 state: StateName::new(state),
-                amount: *amount,
+                amount,
             })
+        }
+        EffectDraft::SetPlayerState {
+            player,
+            state,
+            value,
+        } => {
+            let at = at.key("set_state");
+            let player = validate_target(player, refs, at.clone().key("player"))?;
+            let state = check_player_set(refs.player_state, state, value, &at)?;
+            Ok(Effect::SetPlayerState {
+                player,
+                state,
+                value: value.clone(),
+            })
+        }
+        EffectDraft::AddPlayerState {
+            player,
+            state,
+            amount,
+        } => {
+            let at = at.key("add_state");
+            let player = validate_target(player, refs, at.clone().key("player"))?;
+            let state = check_player_add(refs.player_state, state, &at)?;
+            let amount = check_amount(amount, refs, at.key("amount"))?;
+            Ok(Effect::AddPlayerState {
+                player,
+                state,
+                amount,
+            })
+        }
+        EffectDraft::MalformedStateTarget { primitive } => {
+            fail(at.key(*primitive), DefinitionErrorKind::InvalidStateTarget)
         }
         EffectDraft::Draw {
             player,
@@ -1144,6 +1268,7 @@ fn validate_effect(
                     },
                 );
             }
+            check_not_reserved(&param.name, name_at.clone())?;
             if refs
                 .params
                 .iter()
@@ -1170,8 +1295,14 @@ fn validate_effect(
             };
             // The candidates are those of an Action Param, so it is validated as one: its `where`
             // reads `self`, the names before it and its own candidate.
-            let validated =
-                validate_param(param, refs.zones, refs.card_types, &refs.params, at.clone())?;
+            let universe = Universe {
+                zones: refs.zones,
+                card_types: refs.card_types,
+                player_state: refs.player_state,
+                players: refs.players,
+                scope: refs.scope,
+            };
+            let validated = validate_param(param, &universe, &refs.params, at.clone())?;
             // The decider must see every candidate, alternative by alternative in order: choosing
             // from a zone it cannot see would be a peek (ADR-0034).
             for (index, alternative) in validated.alternatives.iter().enumerate() {
@@ -1380,6 +1511,35 @@ fn validate_automatic_step(
                 value: value.clone(),
             })
         }
+        AutomaticStepDraft::SetPlayerState {
+            player,
+            state,
+            value,
+        } => {
+            let at = at.key("set_state");
+            let player = validate_selector(player, at.clone().key("player"))?;
+            let state = check_player_set(context.player_state, state, value, &at)?;
+            Ok(AutomaticStep::SetPlayerState {
+                player,
+                state,
+                value: value.clone(),
+            })
+        }
+        AutomaticStepDraft::AddPlayerState {
+            player,
+            state,
+            amount,
+        } => {
+            let at = at.key("add_state");
+            let player = validate_selector(player, at.clone().key("player"))?;
+            let state = check_player_add(context.player_state, state, &at)?;
+            let amount = check_literal_amount(amount, at.key("amount"))?;
+            Ok(AutomaticStep::AddPlayerState {
+                player,
+                state,
+                amount,
+            })
+        }
         AutomaticStepDraft::Draw {
             player,
             from,
@@ -1446,6 +1606,89 @@ fn validate_automatic_step(
             })
         }
     }
+}
+
+/// The Player state `state` that a `set_state` at `at` writes `value` to: it must be declared
+/// (dangling at `state`) and `value` must have its type (mismatch at `value`).
+fn check_player_set(
+    schemas: &[PlayerStateSchema],
+    state: &str,
+    value: &FieldValue,
+    at: &DefinitionPath,
+) -> Result<PlayerStateId, DefinitionError> {
+    let schema = find_player_state(schemas, state, at.clone().key("state"))?;
+    if schema.state_type != value.field_type() {
+        return fail(
+            at.clone().key("value"),
+            DefinitionErrorKind::StateValueTypeMismatch {
+                state: state.to_string(),
+                declared: schema.state_type,
+                found: value.field_type(),
+            },
+        );
+    }
+    Ok(schema.id.clone())
+}
+
+/// The Player state `state` that an `add_state` at `at` adds to: it must be declared (dangling at
+/// `state`) and an int (mismatch at `amount`, as for an instance state).
+fn check_player_add(
+    schemas: &[PlayerStateSchema],
+    state: &str,
+    at: &DefinitionPath,
+) -> Result<PlayerStateId, DefinitionError> {
+    let schema = find_player_state(schemas, state, at.clone().key("state"))?;
+    if schema.state_type != FieldType::Int {
+        return fail(
+            at.clone().key("amount"),
+            DefinitionErrorKind::StateValueTypeMismatch {
+                state: state.to_string(),
+                declared: schema.state_type,
+                found: FieldType::Int,
+            },
+        );
+    }
+    Ok(schema.id.clone())
+}
+
+/// The Player-State Schemas, each in order: its id (grammar, duplicate), then its type (only `int`
+/// and `bool`) and its `init`, which must have that type (ADR-0041).
+fn validate_player_state(
+    drafts: &[PlayerStateDraft],
+) -> Result<Vec<PlayerStateSchema>, DefinitionError> {
+    let list = DefinitionPath::root().key("player_state");
+    let mut seen = Seen::new(list.clone());
+    let mut schemas = Vec::with_capacity(drafts.len());
+    for (index, draft) in drafts.iter().enumerate() {
+        check_id(&list, index, "id", &draft.id)?;
+        seen.insert(&draft.id, index)?;
+        let at = list.clone().id(&draft.id);
+        let state_type = match draft.state_type {
+            FieldTypeDraft::Int => FieldType::Int,
+            FieldTypeDraft::Bool => FieldType::Bool,
+            other @ (FieldTypeDraft::Text | FieldTypeDraft::Enum | FieldTypeDraft::EnumSet) => {
+                return fail(
+                    at.key("type"),
+                    DefinitionErrorKind::UnsupportedFieldType { field_type: other },
+                )
+            }
+        };
+        if draft.init.field_type() != state_type {
+            return fail(
+                at.key("init"),
+                DefinitionErrorKind::InitializerTypeMismatch {
+                    declared: state_type,
+                    found: draft.init.field_type(),
+                },
+            );
+        }
+        schemas.push(PlayerStateSchema {
+            id: PlayerStateId::new(&draft.id),
+            state_type,
+            init: draft.init.clone(),
+        });
+    }
+    Ok(schemas)
 }
 
 /// A count of at least 1.
@@ -1558,9 +1801,39 @@ fn validate_zone_reference(
 fn validate_step(
     step: &SetupStepDraft,
     zones: &[Zone],
+    player_state: &[PlayerStateSchema],
     at: DefinitionPath,
 ) -> Result<SetupStep, DefinitionError> {
     match step {
+        SetupStepDraft::SetPlayerState {
+            player,
+            state,
+            value,
+        } => {
+            let at = at.key("set_state");
+            let player = validate_selector(player, at.clone().key("player"))?;
+            let state = check_player_set(player_state, state, value, &at)?;
+            Ok(SetupStep::SetPlayerState {
+                player,
+                state,
+                value: value.clone(),
+            })
+        }
+        SetupStepDraft::AddPlayerState {
+            player,
+            state,
+            amount,
+        } => {
+            let at = at.key("add_state");
+            let player = validate_selector(player, at.clone().key("player"))?;
+            let state = check_player_add(player_state, state, &at)?;
+            let amount = check_literal_amount(amount, at.key("amount"))?;
+            Ok(SetupStep::AddPlayerState {
+                player,
+                state,
+                amount,
+            })
+        }
         SetupStepDraft::Shuffle { player, zone } => {
             let at = at.key("shuffle");
             let player = validate_selector(player, at.clone().key("player"))?;

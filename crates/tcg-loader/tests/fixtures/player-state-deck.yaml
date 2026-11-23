@@ -1,0 +1,7 @@
+# The deck of both Players of player-state-ruleset.yaml (ticket #96). The deck is not shuffled and
+# its top is its last card, so each Player opens with `tithe_unit`, `tithe_unit`, `plain_unit`.
+inputs:
+  - input: main_deck
+    cards:
+      - { card: plain_unit, count: 4 }
+      - { card: tithe_unit, count: 2 }

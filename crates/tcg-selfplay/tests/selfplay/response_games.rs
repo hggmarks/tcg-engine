@@ -14,8 +14,9 @@ use tcg_engine::ruleset_definition::{ActionId, DeckInputId};
 use tcg_selfplay::{self_play, verify_record, Checks, SelfPlayGame, TriggerCapRejections};
 
 use crate::common::{
-    decks, digest_line, effects, effects_decks, pin_difference, response, response_decks, small,
-    MAX_STEPS,
+    decks, digest_line, effects, effects_decks, fnv1a, pin_difference, response, response_decks,
+    small, FNV_START, MAX_STEPS, RESPONSE_CATALOG, RESPONSE_DECK_A, RESPONSE_DECK_B,
+    RESPONSE_RULESET,
 };
 
 /// The Seeds of the Response Self-Play Pin: `0..PINNED_SEEDS`.
@@ -459,4 +460,75 @@ fn the_response_ruleset_self_plays_the_same_game_from_the_same_seed() {
     // The checks only read: switching them off changes nothing.
     let unchecked = self_play(&ruleset, &decks, Seed(3), MAX_STEPS, Checks::Off).expect("played");
     assert!(first.record == unchecked.record && first.traces == unchecked.traces);
+}
+
+/// The frozen Response Ruleset (Phase G, ADR-0041): the files that make it up, then the files that
+/// pin its Games, each with the FNV-1a digest of its bytes. Rule decisions go to the Duel Ruleset
+/// from ticket [39] on, so none of these changes. The pinned files are the Golden Snapshots of
+/// `tcg-loader` and the self-play pin, so regenerating one of them by accident (which would leave
+/// it matching itself) changes a digest here. The digests are those of the files on `main` before
+/// ticket [39].
+const RESPONSE_RULESET_FREEZE: [(&str, &str, u64); 9] = [
+    (
+        "rulesets/response-ruleset/response-ruleset.yaml",
+        RESPONSE_RULESET,
+        0xfc10_d53c_1e6a_64e8,
+    ),
+    (
+        "rulesets/response-ruleset/response-ruleset.md",
+        include_str!("../../../../rulesets/response-ruleset/response-ruleset.md"),
+        0xee6f_9fd8_d00f_fc9a,
+    ),
+    (
+        "rulesets/response-ruleset/response-catalog.yaml",
+        RESPONSE_CATALOG,
+        0x594f_198c_0cd3_5010,
+    ),
+    (
+        "rulesets/response-ruleset/decks/deck-a.yaml",
+        RESPONSE_DECK_A,
+        0x3dfd_4dbb_751c_db04,
+    ),
+    (
+        "rulesets/response-ruleset/decks/deck-b.yaml",
+        RESPONSE_DECK_B,
+        0x5ef7_7989_c709_406d,
+    ),
+    (
+        "crates/tcg-loader/tests/golden/response-fizzle.trace",
+        include_str!("../../../tcg-loader/tests/golden/response-fizzle.trace"),
+        0x1655_f7d0_d436_8eee,
+    ),
+    (
+        "crates/tcg-loader/tests/golden/response-fizzle.observed-by-player-0.trace",
+        include_str!("../../../tcg-loader/tests/golden/response-fizzle.observed-by-player-0.trace"),
+        0xa023_8c1c_eb0d_c581,
+    ),
+    (
+        "crates/tcg-loader/tests/golden/response-fizzle.observed-by-player-1.trace",
+        include_str!("../../../tcg-loader/tests/golden/response-fizzle.observed-by-player-1.trace"),
+        0x91fc_ce64_3686_6ce1,
+    ),
+    (
+        "crates/tcg-selfplay/tests/selfplay/golden/response-self-play-seeds-0-1000.digest",
+        include_str!("golden/response-self-play-seeds-0-1000.digest"),
+        0x7f53_e57c_7916_68e9,
+    ),
+];
+
+#[test]
+fn the_response_ruleset_is_frozen_since_phase_g() {
+    let changed: Vec<String> = RESPONSE_RULESET_FREEZE
+        .iter()
+        .filter_map(|(name, text, pinned)| {
+            let digest = fnv1a(FNV_START, text.as_bytes());
+            (digest != *pinned)
+                .then(|| format!("{name}: digest {digest:016x}, pinned {pinned:016x}"))
+        })
+        .collect();
+    assert!(
+        changed.is_empty(),
+        "the Response Ruleset is frozen since Phase G (ADR-0041), and its Games with it, but these changed:\n{}",
+        changed.join("\n")
+    );
 }

@@ -28,6 +28,10 @@ id_type!(
     StateName
 );
 id_type!(
+    /// The identity of a Player-State Schema, unique among them.
+    PlayerStateId
+);
+id_type!(
     /// The identity of a deck input, unique among the inputs.
     DeckInputId
 );
@@ -60,6 +64,7 @@ pub struct RulesetDefinition {
     pub(super) parameters: Parameters,
     pub(super) zones: Vec<Zone>,
     pub(super) card_types: Vec<CardType>,
+    pub(super) player_state: Vec<PlayerStateSchema>,
     pub(super) deck_inputs: Vec<DeckInput>,
     pub(super) setup: Vec<SetupStep>,
     pub(super) actions: Vec<ActionDefinition>,
@@ -101,6 +106,11 @@ impl RulesetDefinition {
         self.card_types
             .iter()
             .find(|card_type| card_type.id() == id)
+    }
+
+    /// The Player-State Schemas in declared order; empty when the ruleset declares none (ADR-0041).
+    pub fn player_state(&self) -> &[PlayerStateSchema] {
+        &self.player_state
     }
 
     /// The deck inputs in declared order.
@@ -348,6 +358,30 @@ impl FieldValue {
     }
 }
 
+/// A Player-State Schema (ADR-0041): one value every Player holds, its type and the value every
+/// Player starts the Game with. The ruleset names it; the engine names no Player state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlayerStateSchema {
+    pub(super) id: PlayerStateId,
+    pub(super) state_type: FieldType,
+    pub(super) init: FieldValue,
+}
+
+impl PlayerStateSchema {
+    pub fn id(&self) -> &PlayerStateId {
+        &self.id
+    }
+
+    pub fn state_type(&self) -> FieldType {
+        self.state_type
+    }
+
+    /// The value every Player starts with; it has the type of the schema.
+    pub fn init(&self) -> &FieldValue {
+        &self.init
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeckInput {
     pub(super) id: DeckInputId,
@@ -391,8 +425,8 @@ pub enum PlayerSelector {
     Active,
 }
 
-/// One step of Game setup, run after the cards of the Deck Lists are placed. Its zones exist in the
-/// Ruleset Definition it was validated with.
+/// One step of Game setup, run after the cards of the Deck Lists are placed. Its zones and Player
+/// states exist in the Ruleset Definition it was validated with.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SetupStep {
     /// Shuffles `zone` of each selected Player with the GameState's Random State.
@@ -406,6 +440,19 @@ pub enum SetupStep {
         from: ZoneId,
         to: ZoneId,
         count: NonZeroU32,
+    },
+    /// Sets the Player state `state` of each selected Player to `value`, if it changes (ADR-0041).
+    SetPlayerState {
+        player: PlayerSelector,
+        state: PlayerStateId,
+        value: FieldValue,
+    },
+    /// Adds `amount` to the int Player state `state` of each selected Player, with checked
+    /// arithmetic (ADR-0041).
+    AddPlayerState {
+        player: PlayerSelector,
+        state: PlayerStateId,
+        amount: i64,
     },
 }
 
@@ -550,6 +597,49 @@ pub enum Expression {
         card: CardRef,
         card_type: CardTypeId,
     },
+    /// The value of a Player state of one Player (ADR-0041).
+    PlayerValue(PlayerRef),
+}
+
+/// The Player a Player Ref reads (ADR-0041).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlayerRefSelector {
+    /// No `player:` key: the Player a win condition judges. Only a `WinConditionWhen::PlayerState`
+    /// has it.
+    Judged,
+    /// The Active Player.
+    Active,
+    /// The owner of `self`, the carrying card. Only a Card Effect has it.
+    Controller,
+    /// The opponent of the acting Player in an action, of the controller in a Card Effect.
+    Opponent,
+}
+
+/// The Players a Player-state write in an action or a Card Effect changes (ADR-0041).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlayerTarget {
+    /// Every Player, in seat order.
+    Each,
+    Active,
+    Controller,
+    Opponent,
+}
+
+/// `{ ref: player.<id>, player: <selector> }`: a Player state of one Player (ADR-0041).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlayerRef {
+    pub(super) selector: PlayerRefSelector,
+    pub(super) state: PlayerStateId,
+}
+
+impl PlayerRef {
+    pub fn selector(&self) -> PlayerRefSelector {
+        self.selector
+    }
+
+    pub fn state(&self) -> &PlayerStateId {
+        &self.state
+    }
 }
 
 /// `{ ref: <param> }`: the card a param is bound to.
@@ -602,6 +692,19 @@ pub enum Cost {
     /// Moves `card` from the zone it is in onto the Top of `to`, a zone of its owner, as the
     /// `move` effect does.
     Move { card: CardRef, to: ZoneId },
+    /// Sets the Player state `state` of each target to `value`, if it changes (ADR-0041).
+    SetPlayerState {
+        player: PlayerTarget,
+        state: PlayerStateId,
+        value: FieldValue,
+    },
+    /// Adds `amount` to the int Player state `state` of each target, with checked arithmetic
+    /// (ADR-0041). The amount is evaluated once, when the cost is paid.
+    AddPlayerState {
+        player: PlayerTarget,
+        state: PlayerStateId,
+        amount: Amount,
+    },
 }
 
 /// An effect of an action.
@@ -617,11 +720,12 @@ pub enum Effect {
         state: StateName,
         value: FieldValue,
     },
-    /// Adds `amount` to the int instance state `state` of `card`, with checked arithmetic.
+    /// Adds `amount` to the int instance state `state` of `card`, with checked arithmetic. The
+    /// amount is evaluated when the effect runs (ADR-0041).
     AddState {
         card: CardRef,
         state: StateName,
-        amount: i64,
+        amount: Amount,
     },
     /// Draws for `player`: moves `count` cards one at a time from the Top of `from` onto the Top
     /// of `to` of that player; an empty `from` emits DrawFromEmptyZone and stops.
@@ -648,6 +752,39 @@ pub enum Effect {
     /// everything nested in them. `param` is an Action Param validated like any other. Only a
     /// Triggered Card Effect has it.
     ChooseCard { decider: Decider, param: Param },
+    /// Sets the Player state `state` of each target to `value`, if it changes (ADR-0041).
+    SetPlayerState {
+        player: PlayerTarget,
+        state: PlayerStateId,
+        value: FieldValue,
+    },
+    /// Adds `amount` to the int Player state `state` of each target, with checked arithmetic; an
+    /// overflow refuses the Action (ADR-0041). The amount is evaluated once, when the effect runs,
+    /// and every target gets that amount.
+    AddPlayerState {
+        player: PlayerTarget,
+        state: PlayerStateId,
+        amount: Amount,
+    },
+}
+
+/// What an `add_state` of an action, a cost or a Card Effect adds: an int literal, an int read, or
+/// the difference of two (ADR-0041).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Amount {
+    Literal(i64),
+    Operand(AmountOperand),
+    /// `sub: [a, b]`: `a - b`, checked.
+    Sub(AmountOperand, AmountOperand),
+}
+
+/// An int an [`Amount`] reads: a literal, a card's int field or int instance state (a field with its
+/// active Field Modifiers), or a Player's int state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AmountOperand {
+    Literal(i64),
+    Value(ValueRef),
+    PlayerValue(PlayerRef),
 }
 
 /// The Player a Choice asks.
@@ -761,6 +898,19 @@ pub enum AutomaticStep {
         then: Vec<AutomaticStep>,
         otherwise: Vec<AutomaticStep>,
     },
+    /// Sets the Player state `state` of each selected Player to `value`, if it changes (ADR-0041).
+    SetPlayerState {
+        player: PlayerSelector,
+        state: PlayerStateId,
+        value: FieldValue,
+    },
+    /// Adds `amount` to the int Player state `state` of each selected Player, with checked
+    /// arithmetic (ADR-0041).
+    AddPlayerState {
+        player: PlayerSelector,
+        state: PlayerStateId,
+        amount: i64,
+    },
 }
 
 /// A declared win condition: when it holds for a Player, that Player loses (ADR-0014). Its id is
@@ -799,6 +949,10 @@ pub enum WinConditionWhen {
         subject: CardTypeId,
         condition: Expression,
     },
+    /// `condition` holds for a Player when it is true, reading that Player's Player state (its
+    /// Player Refs are all `PlayerRefSelector::Judged`), in the GameState the transition produced
+    /// (ADR-0041).
+    PlayerState(Expression),
 }
 
 /// Which Player loses when a win condition holds.

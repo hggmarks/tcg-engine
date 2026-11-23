@@ -15,7 +15,7 @@ use super::{
     ObservedStep,
 };
 use crate::invariants::Invariant;
-use crate::test_support::{effects, independent_fold, viewer};
+use crate::test_support::{effects, independent_fold, player_state, viewer};
 use crate::{self_play, Checks, SelfPlayGame};
 
 const MAX_STEPS: usize = 1_000;
@@ -687,4 +687,241 @@ fn the_relabelling_maps_every_card_a_paused_resolution_and_an_answer_names() {
         );
     }
     assert!(moved_a_card, "no stream relabelled a card");
+}
+
+// ---- Player state (ticket #96, step 4, ADR-0041)
+//
+// Player state is fully public and no Event of it names a card, so the Relabelling leaves
+// `PlayerStateChanged` alone, and the leak check must still hold on steps that change it.
+
+/// The Game of the Player-state fixture the tests below play, as the Events of each step: seat 0
+/// summons its `tithe_unit` (a card move and three Player-state changes), then drains each Player.
+struct StateGame {
+    ruleset: DeclarativeRuleset,
+    creation: tcg_engine::declarative::GameCreation,
+    actions: Vec<Action>,
+    traces: Vec<Vec<Event>>,
+    /// The engine's GameState after the creation, then after each Action.
+    states: Vec<tcg_engine::declarative::GameState>,
+}
+
+fn state_game() -> StateGame {
+    use tcg_engine::ruleset::Ruleset;
+    let (ruleset, decks) = player_state();
+    let creation = ruleset
+        .create_game(&decks, Seed(1))
+        .expect("the decks create a game");
+    let declared = |player: u32, name: &str, cards: &[u32]| Action::Declared {
+        player: PlayerId(player),
+        action: ActionId::new(name),
+        arguments: cards
+            .iter()
+            .map(|card| tcg_engine::declarative::Argument::Card(id(*card)))
+            .collect(),
+    };
+    let actions = vec![
+        declared(0, "summon", &[5]),
+        declared(0, "drain_all", &[]),
+        declared(0, "drain", &[]),
+    ];
+    let mut state = creation.opening.state.clone();
+    let mut states = vec![state.clone()];
+    let mut traces = Vec::new();
+    for action in &actions {
+        let transition = ruleset
+            .transition(&state, action)
+            .expect("the Action is accepted");
+        traces.push(transition.trace.events().to_vec());
+        state = transition.state;
+        states.push(state.clone());
+    }
+    StateGame {
+        ruleset,
+        creation,
+        actions,
+        traces,
+        states,
+    }
+}
+
+impl StateGame {
+    /// The Events up to the step `step` (`None` is the Opening Position) and the step's Action.
+    fn up_to(&self, step: Option<usize>) -> (GameEvents, Option<&Action>) {
+        let traces = match step {
+            None => Vec::new(),
+            Some(index) => self.traces[..=index].to_vec(),
+        };
+        let events = GameEvents {
+            creation: self.creation.opening.trace.events().to_vec(),
+            traces,
+        };
+        (events, step.map(|index| &self.actions[index]))
+    }
+}
+
+fn is_player_state(event: &Event) -> bool {
+    matches!(event, Event::PlayerStateChanged { .. })
+}
+
+#[test]
+fn the_relabelling_leaves_player_state_changed_unchanged() {
+    let game = state_game();
+    let (events, _) = game.up_to(Some(game.actions.len() - 1));
+    let changes: usize = events
+        .traces
+        .iter()
+        .map(|trace| trace.iter().filter(|event| is_player_state(event)).count())
+        .sum();
+    assert_eq!(
+        changes,
+        3 + 2 + 1,
+        "the script changes Player state six times"
+    );
+
+    let every_card: BTreeSet<CardInstanceId> = game
+        .creation
+        .opening
+        .state
+        .cards()
+        .iter()
+        .map(|card| card.id())
+        .collect();
+    let mut moved_a_card = false;
+    for seat in 0..2 {
+        let who = viewer(seat);
+        let hidden = hidden_cards(&game.ruleset, who, &events);
+        assert!(!hidden.is_empty());
+        for to_relabel in [&hidden, &every_card] {
+            for stream in 0..8 {
+                let mut rng = RandomState::from_seed(Seed(stream));
+                let relabelled = relabel(&game.ruleset, who, to_relabel, &events, None, &mut rng);
+                moved_a_card |= relabelled.events != events;
+                // The same positions of each list hold the same `PlayerStateChanged`, equal.
+                let lists = std::iter::once((&events.creation, &relabelled.events.creation))
+                    .chain(events.traces.iter().zip(&relabelled.events.traces));
+                for (list, (before, after)) in lists.enumerate() {
+                    assert_eq!(before.len(), after.len());
+                    for (position, (one, other)) in before.iter().zip(after).enumerate() {
+                        assert_eq!(
+                            is_player_state(one),
+                            is_player_state(other),
+                            "seat {seat}, stream {stream}, list {list}, position {position}"
+                        );
+                        if is_player_state(one) {
+                            assert_eq!(
+                                one, other,
+                                "seat {seat}, stream {stream}, list {list}, position {position}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(moved_a_card, "the Relabelling rewrote no card Event");
+}
+
+#[test]
+fn observations_ignore_hidden_cards_on_steps_that_change_player_state() {
+    let game = state_game();
+    let empty = &game.creation.empty;
+    let mut changed_a_step = 0;
+    for seat in 0..2 {
+        let who = viewer(seat);
+        for step in [None, Some(0), Some(1), Some(2)] {
+            let (events, action) = game.up_to(step);
+            let at = step.map_or(0, |index| index + 1);
+            let observed = replay_observed_step(&game.ruleset, who, empty, &events, action)
+                .expect("the Game replays from the Empty GameState");
+            // The step shows the engine's Player state of both Players.
+            for player in 0..2 {
+                assert_eq!(
+                    observed.step.state.player_state(PlayerId(player)),
+                    game.states[at].player_state(PlayerId(player)),
+                    "seat {seat}, step {step:?}, Player {player}"
+                );
+            }
+            let hidden = hidden_cards(&game.ruleset, who, &events);
+            for stream in 0..8 {
+                let mut rng = RandomState::from_seed(Seed(stream));
+                let relabelled = relabel(&game.ruleset, who, &hidden, &events, action, &mut rng);
+                let replayed = replay_observed_step(
+                    &game.ruleset,
+                    who,
+                    empty,
+                    &relabelled.events,
+                    relabelled.action.as_ref(),
+                )
+                .expect("a Relabelling of the Hidden Cards applies");
+                assert_eq!(
+                    check_hidden_cards_ignored(&observed.step, &replayed.step),
+                    Vec::new(),
+                    "seat {seat}, step {step:?}, stream {stream}"
+                );
+            }
+            if step.is_some() {
+                assert!(events
+                    .traces
+                    .last()
+                    .is_some_and(|trace| trace.iter().any(is_player_state)));
+                changed_a_step += 1;
+            }
+        }
+    }
+    assert_eq!(
+        changed_a_step, 6,
+        "every step of the script changes Player state"
+    );
+}
+
+#[test]
+fn the_observation_checks_name_a_player_state_that_differs() {
+    use tcg_engine::declarative::ObservedEvent;
+    use tcg_engine::ruleset_definition::{FieldValue, PlayerStateId};
+
+    let game = state_game();
+    let who = viewer(0);
+    let (events, action) = game.up_to(Some(0));
+    let observed = replay_observed_step(&game.ruleset, who, &game.creation.empty, &events, action)
+        .expect("the Game replays");
+
+    // The same step with one Player's `life_points` altered, and nothing else: only the Player
+    // state differs, so a violation must be about it.
+    let alter = ObservedEvent::PlayerStateChanged {
+        player: PlayerId(1),
+        state: PlayerStateId::new("life_points"),
+        value: FieldValue::Int(1),
+    };
+    let mut tampered = observed.step.clone();
+    tampered.state = observed
+        .step
+        .state
+        .apply_events(&[alter])
+        .expect("the change applies");
+    let named = "the Player state `life_points` of Player 1 is Int(4000) in observed and Int(1) in relabelled";
+
+    let violations = check_hidden_cards_ignored(&observed.step, &tampered);
+    assert_eq!(violations.len(), 1, "{violations:?}");
+    assert_eq!(
+        violations[0].invariant,
+        Invariant::ObservationsIgnoreHiddenCards
+    );
+    assert!(
+        violations[0].detail.contains(named),
+        "the detail should say `{named}`: {}",
+        violations[0].detail
+    );
+
+    // The consistency check names it too, between the previous Observed GameState folded with the
+    // Observed Events and the next one.
+    let violations =
+        crate::check_observed_consistency(who, &observed.step.state, &[], &tampered.state);
+    assert_eq!(violations.len(), 1, "{violations:?}");
+    assert!(
+        violations[0].detail.contains(
+            "the Player state `life_points` of Player 1 is Int(4000) in applying the Observed Events and Int(1) in the next one"
+        ),
+        "{}",
+        violations[0].detail
+    );
 }

@@ -5,10 +5,11 @@
 //! right: all the operands of an expression are checked (each with its own errors) before the type
 //! rule of their operator.
 
-use super::draft::{ExpressionDraft, RefDraft};
+use super::draft::{AmountDraft, ExpressionDraft, RefDraft};
 use super::error::{DefinitionError, DefinitionErrorKind, RefType, ReferenceTarget};
 use super::model::{
-    CardRef, CardType, CardTypeId, CardValue, Expression, FieldType, ParamAlternative, ParamName,
+    Amount, AmountOperand, CardRef, CardType, CardTypeId, CardValue, Expression, FieldType,
+    ParamAlternative, ParamName, PlayerRef, PlayerRefSelector, PlayerStateSchema, PlayerTarget,
     ValueRef, Zone,
 };
 use crate::definition_path::DefinitionPath;
@@ -44,11 +45,28 @@ impl ScopedParam {
     }
 }
 
+/// Where an expression or a Player-state write stands, which says which Player selectors it may
+/// use (ADR-0041).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Scope {
+    /// An action: its params' `where`, its costs and its effects. `active` is the Active Player,
+    /// `opponent` the acting Player's opponent.
+    Action,
+    /// A Card Effect: `controller` is the owner of `self`, `opponent` the controller's opponent.
+    CardEffect,
+    /// A win condition.
+    WinCondition,
+}
+
 /// What the refs of an action (or of a win condition) are checked against.
 #[derive(Debug, Clone)]
 pub(super) struct Refs<'a> {
     pub(super) zones: &'a [Zone],
     pub(super) card_types: &'a [CardType],
+    pub(super) player_state: &'a [PlayerStateSchema],
+    /// The number of Players of the ruleset: `opponent` is defined for exactly 2.
+    pub(super) players: u32,
+    pub(super) scope: Scope,
     pub(super) params: Vec<ScopedParam>,
     /// What a ref to a name nothing declares is a dangling reference to: a param, or for a win
     /// condition a card type.
@@ -300,6 +318,10 @@ fn check_expression(
         }
         ExpressionDraft::Ref(reference) => {
             let parsed = parse_ref(reference, &at)?;
+            // `player` is reserved: a ref that starts with it reads Player state (ADR-0041).
+            if parsed.param == PLAYER {
+                return check_player_ref(&parsed, None, reference, refs, at);
+            }
             let param = find_param(refs, parsed.param, &at)?;
             let Some(name) = parsed.name else {
                 return fail(
@@ -317,6 +339,22 @@ fn check_expression(
                 }),
                 found,
             ))
+        }
+        ExpressionDraft::PlayerRef {
+            reference,
+            selector,
+        } => {
+            let parsed = parse_ref(reference, &at)?;
+            // The `player:` key belongs to a Player ref only.
+            if parsed.param != PLAYER {
+                return fail(
+                    at,
+                    DefinitionErrorKind::InvalidReference {
+                        reference: reference.0.clone(),
+                    },
+                );
+            }
+            check_player_ref(&parsed, Some(selector), reference, refs, at)
         }
         ExpressionDraft::Eq(left, right) => {
             let at = at.key("eq");
@@ -394,6 +432,231 @@ fn check_expression(
     }
 }
 
+/// An `amount` of an `add_state` of an action, a cost or a Card Effect (ADR-0041): an int literal,
+/// an int read or `sub` of two of them, whose operands are literals and reads, never an operator.
+/// `at` is the path of the amount, and an operand of `sub` is at `sub[i]`.
+pub(super) fn check_amount(
+    draft: &AmountDraft,
+    refs: &Refs<'_>,
+    at: DefinitionPath,
+) -> Result<Amount, DefinitionError> {
+    match draft {
+        AmountDraft::Literal(value) => Ok(Amount::Literal(*value)),
+        AmountDraft::Sub(left, right) => {
+            let at = at.key("sub");
+            let left = check_operand(left, refs, at.clone().index(0))?;
+            let right = check_operand(right, refs, at.index(1))?;
+            Ok(Amount::Sub(left, right))
+        }
+        AmountDraft::Other => fail(at, DefinitionErrorKind::InvalidAmount),
+        read @ (AmountDraft::Ref(_) | AmountDraft::PlayerRef { .. }) => {
+            check_operand(read, refs, at).map(Amount::Operand)
+        }
+    }
+}
+
+/// One operand of an amount: a literal, or a ref to an int (the card's field or state, or a
+/// Player's state). An operator is an invalid amount.
+fn check_operand(
+    draft: &AmountDraft,
+    refs: &Refs<'_>,
+    at: DefinitionPath,
+) -> Result<AmountOperand, DefinitionError> {
+    match draft {
+        AmountDraft::Literal(value) => Ok(AmountOperand::Literal(*value)),
+        AmountDraft::Sub(..) | AmountDraft::Other => fail(at, DefinitionErrorKind::InvalidAmount),
+        AmountDraft::Ref(reference) => {
+            let parsed = parse_ref(reference, &at)?;
+            if parsed.param == PLAYER {
+                // A Player Ref without its `player:` key.
+                return player_operand(&parsed, None, reference, refs, at);
+            }
+            if parsed.name.is_none() {
+                find_param(refs, parsed.param, &at)?;
+                return fail(
+                    at,
+                    DefinitionErrorKind::CardRefNotAValue {
+                        reference: reference.0.clone(),
+                    },
+                );
+            }
+            validate_value_ref(reference, FieldType::Int, refs, at).map(AmountOperand::Value)
+        }
+        AmountDraft::PlayerRef {
+            reference,
+            selector,
+        } => {
+            let parsed = parse_ref(reference, &at)?;
+            if parsed.param != PLAYER {
+                return fail(
+                    at,
+                    DefinitionErrorKind::InvalidReference {
+                        reference: reference.0.clone(),
+                    },
+                );
+            }
+            player_operand(&parsed, Some(selector), reference, refs, at)
+        }
+    }
+}
+
+/// A Player Ref as an operand: it must be an int.
+fn player_operand(
+    parsed: &ParsedRef<'_>,
+    selector: Option<&String>,
+    reference: &RefDraft,
+    refs: &Refs<'_>,
+    at: DefinitionPath,
+) -> Result<AmountOperand, DefinitionError> {
+    let (expression, found) = check_player_ref(parsed, selector, reference, refs, at.clone())?;
+    if found != FieldType::Int {
+        return fail(
+            at,
+            DefinitionErrorKind::ReferenceTypeMismatch {
+                expected: RefType::Value(FieldType::Int),
+                found: RefType::Value(found),
+            },
+        );
+    }
+    match expression {
+        Expression::PlayerValue(read) => Ok(AmountOperand::PlayerValue(read)),
+        // `check_player_ref` gives nothing else.
+        _ => fail(at, DefinitionErrorKind::InvalidAmount),
+    }
+}
+
+/// The amount of an `add_state` in a setup or an automatic step: an int literal, nothing binds a
+/// card or names a Player to read there (ADR-0041).
+pub(super) fn check_literal_amount(
+    draft: &AmountDraft,
+    at: DefinitionPath,
+) -> Result<i64, DefinitionError> {
+    match draft {
+        AmountDraft::Literal(value) => Ok(*value),
+        _ => fail(at, DefinitionErrorKind::InvalidAmount),
+    }
+}
+
+/// The first name of a ref to Player state.
+pub(super) const PLAYER: &str = "player";
+
+/// The schema of the Player state `id`, or the dangling reference at `at`.
+pub(super) fn find_player_state<'a>(
+    schemas: &'a [PlayerStateSchema],
+    id: &str,
+    at: DefinitionPath,
+) -> Result<&'a PlayerStateSchema, DefinitionError> {
+    match schemas.iter().find(|schema| schema.id.as_str() == id) {
+        Some(schema) => Ok(schema),
+        None => fail(
+            at,
+            DefinitionErrorKind::DanglingReference {
+                target: ReferenceTarget::PlayerState,
+                id: id.to_string(),
+            },
+        ),
+    }
+}
+
+/// `opponent` is defined for exactly 2 Players.
+fn check_two_players(players: u32, at: DefinitionPath) -> Result<(), DefinitionError> {
+    if players == 2 {
+        Ok(())
+    } else {
+        fail(
+            at,
+            DefinitionErrorKind::OpponentNeedsTwoPlayers {
+                players: u64::from(players),
+            },
+        )
+    }
+}
+
+/// A Player ref `player.<id>` with the text of its `player:` key, if it has one (ADR-0041). The
+/// state is checked first, then the selector, which the scope limits to the Players it can name.
+fn check_player_ref(
+    parsed: &ParsedRef<'_>,
+    selector: Option<&String>,
+    reference: &RefDraft,
+    refs: &Refs<'_>,
+    at: DefinitionPath,
+) -> Result<(Expression, FieldType), DefinitionError> {
+    let Some(name) = parsed.name else {
+        return fail(
+            at,
+            DefinitionErrorKind::InvalidReference {
+                reference: reference.0.clone(),
+            },
+        );
+    };
+    let schema = find_player_state(refs.player_state, name, at.clone())?;
+    // A win condition reads the Player it judges: no selector, and the ref is Judged.
+    if refs.scope == Scope::WinCondition {
+        if selector.is_some() {
+            return fail(at, DefinitionErrorKind::PlayerSelectorInWinCondition);
+        }
+        return Ok((
+            Expression::PlayerValue(PlayerRef {
+                selector: PlayerRefSelector::Judged,
+                state: schema.id.clone(),
+            }),
+            schema.state_type,
+        ));
+    }
+    let Some(selector) = selector else {
+        return fail(at, DefinitionErrorKind::MissingPlayerSelector);
+    };
+    let selected = match selector.as_str() {
+        "active" => PlayerRefSelector::Active,
+        "opponent" => {
+            check_two_players(refs.players, at.clone())?;
+            PlayerRefSelector::Opponent
+        }
+        "controller" if refs.scope == Scope::CardEffect => PlayerRefSelector::Controller,
+        "controller" => return fail(at, DefinitionErrorKind::ControllerOutsideCardEffect),
+        other => {
+            return fail(
+                at,
+                DefinitionErrorKind::UnknownPlayerSelector {
+                    selector: other.to_string(),
+                },
+            )
+        }
+    };
+    Ok((
+        Expression::PlayerValue(PlayerRef {
+            selector: selected,
+            state: schema.id.clone(),
+        }),
+        schema.state_type,
+    ))
+}
+
+/// The Players a write of Player state targets, checked for its scope (ADR-0041): `each`, `active`
+/// and `opponent` anywhere, `controller` in a Card Effect only. `at` is the `player` key.
+pub(super) fn validate_target(
+    selector: &str,
+    refs: &Refs<'_>,
+    at: DefinitionPath,
+) -> Result<PlayerTarget, DefinitionError> {
+    match selector {
+        "each" => Ok(PlayerTarget::Each),
+        "active" => Ok(PlayerTarget::Active),
+        "opponent" => {
+            check_two_players(refs.players, at)?;
+            Ok(PlayerTarget::Opponent)
+        }
+        "controller" if refs.scope == Scope::CardEffect => Ok(PlayerTarget::Controller),
+        "controller" => fail(at, DefinitionErrorKind::ControllerOutsideCardEffect),
+        other => fail(
+            at,
+            DefinitionErrorKind::UnknownPlayerSelector {
+                selector: other.to_string(),
+            },
+        ),
+    }
+}
+
 /// The two operands of `gte` or `lte`: both int, the first that is not reported.
 fn check_ints(
     operator: &'static str,
@@ -419,6 +682,18 @@ fn check_ints(
     Ok((left, right))
 }
 
+/// Whether an expression reads Player state anywhere.
+pub(super) fn reads_player_state(expression: &Expression) -> bool {
+    match expression {
+        Expression::PlayerValue(_) => true,
+        Expression::Literal(_) | Expression::Value(_) | Expression::IsCardType { .. } => false,
+        Expression::Eq(left, right)
+        | Expression::Gte(left, right)
+        | Expression::Lte(left, right) => reads_player_state(left) || reads_player_state(right),
+        Expression::And(operands) => operands.iter().any(reads_player_state),
+    }
+}
+
 /// The params an expression reads, each once, in the order a depth-first, left-to-right walk first
 /// meets them.
 pub(super) fn params_read(expression: &Expression) -> Vec<&ParamName> {
@@ -429,7 +704,7 @@ pub(super) fn params_read(expression: &Expression) -> Vec<&ParamName> {
             }
         }
         match expression {
-            Expression::Literal(_) => {}
+            Expression::Literal(_) | Expression::PlayerValue(_) => {}
             Expression::Value(value) => note(found, &value.param),
             Expression::IsCardType { card, .. } => note(found, &card.param),
             Expression::Eq(left, right)
@@ -462,6 +737,9 @@ mod tests {
         Refs {
             zones: &[],
             card_types: &[],
+            player_state: &[],
+            players: 2,
+            scope: Scope::Action,
             params: params
                 .iter()
                 .map(|(name, ids)| ScopedParam {

@@ -7,7 +7,7 @@ use super::state::{CardInstanceId, Loss};
 use crate::card_catalog::CardId;
 use crate::player::PlayerId;
 use crate::random::RandomState;
-use crate::ruleset_definition::{FieldValue, PhaseId, StateName, ZoneId};
+use crate::ruleset_definition::{FieldValue, PhaseId, PlayerStateId, StateName, ZoneId};
 use crate::turn::TurnNumber;
 
 /// A fact that occurred. Applying Events through `GameState::apply` is the only way a declarative
@@ -54,6 +54,15 @@ pub enum Event {
     CardStateChanged {
         card: CardInstanceId,
         state: StateName,
+        value: FieldValue,
+    },
+    /// The Player state `state` of `player` changed to `value` (ADR-0041). The Player has that
+    /// state, and `value` is of the type of its current value. The Ruleset emits it only for a
+    /// value that actually changes. The initial values are in the Empty GameState: no Event
+    /// creates them.
+    PlayerStateChanged {
+        player: PlayerId,
+        state: PlayerStateId,
         value: FieldValue,
     },
     /// A draw found the zone empty. It changes nothing; win conditions read it (ADR-0014).

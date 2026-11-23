@@ -15,7 +15,8 @@ use super::state::CardInstanceId;
 use super::turn_cycle;
 use crate::player::PlayerId;
 use crate::ruleset_definition::{
-    Cost, Decider, Effect, EffectPlayer, FieldValue, ParamName, StateName, ValueRef, ZoneId,
+    Amount, Cost, Decider, Effect, EffectPlayer, FieldValue, ParamName, PlayerStateId,
+    PlayerTarget, StateName, ValueRef, ZoneId,
 };
 
 /// Pays one cost on behalf of `player`, the acting Player.
@@ -30,7 +31,52 @@ pub(super) fn pay(
         Cost::Tap { zone, count } => tap(ruleset, execution, bound, player, zone, count),
         Cost::TapCard { card } => tap_card(execution, bound, card.param()),
         Cost::Move { card, to } => move_card(execution, bound, card.param(), to),
+        Cost::SetPlayerState {
+            player,
+            state,
+            value,
+        } => set_player_state(execution, bound, *player, state, value),
+        Cost::AddPlayerState {
+            player,
+            state,
+            amount,
+        } => add_player_state(ruleset, execution, bound, *player, state, amount),
     }
+}
+
+/// Sets the Player state `state` of each Player `target` names to `value`, in seat order for
+/// `each`.
+fn set_player_state(
+    execution: &mut Execution,
+    bound: &BoundCards,
+    target: PlayerTarget,
+    state: &PlayerStateId,
+    value: &FieldValue,
+) -> Result<(), Rejection> {
+    for player in expression::target_players(&execution.state, bound, target)? {
+        execution
+            .set_player_state(player, state, value)
+            .map_err(Rejection::EventRejected)?;
+    }
+    Ok(())
+}
+
+/// Adds `amount` to the int Player state `state` of each Player `target` names, with checked
+/// arithmetic: an overflow refuses the whole Action. The amount is evaluated once, before anyone
+/// changes, so every target gets the same amount (ADR-0041).
+fn add_player_state(
+    ruleset: &DeclarativeRuleset,
+    execution: &mut Execution,
+    bound: &BoundCards,
+    target: PlayerTarget,
+    state: &PlayerStateId,
+    amount: &Amount,
+) -> Result<(), Rejection> {
+    let amount = expression::amount(ruleset, &execution.state, bound, amount)?;
+    for player in expression::target_players(&execution.state, bound, target)? {
+        execution.add_player_state(player, state, amount)?;
+    }
+    Ok(())
 }
 
 /// Taps the card bound to `param`, which must be untapped.
@@ -370,6 +416,7 @@ fn run_at(
             amount,
         } => {
             let card = bound.card(card.param())?;
+            let amount = expression::amount(ruleset, &execution.state, bound, amount)?;
             let Some(FieldValue::Int(current)) = execution
                 .state
                 .card(card)
@@ -377,13 +424,29 @@ fn run_at(
             else {
                 return Err(Rejection::CardDataMismatch { card });
             };
-            let Some(sum) = current.checked_add(*amount) else {
+            let Some(sum) = current.checked_add(amount) else {
                 return Err(Rejection::StateOverflow {
                     card,
                     state: state.clone(),
                 });
             };
             change_state(execution, card, state, FieldValue::Int(sum)).map(done)
+        }
+        Effect::SetPlayerState {
+            player,
+            state,
+            value,
+        } => {
+            set_player_state(execution, bound, *player, state, value)?;
+            Ok(Flow::Done)
+        }
+        Effect::AddPlayerState {
+            player,
+            state,
+            amount,
+        } => {
+            add_player_state(ruleset, execution, bound, *player, state, amount)?;
+            Ok(Flow::Done)
         }
         Effect::Draw {
             player,

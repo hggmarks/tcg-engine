@@ -1,0 +1,14 @@
+# The cards of player-state-ruleset.yaml (ticket #96). `tithe_unit` writes Player state when it
+# enters the field: its controller gains 500 Life Points and its controller's opponent is marked.
+meta: { ruleset: pstate, ruleset_version: 1 }
+
+cards:
+  - { id: plain_unit, type: unit, fields: { name: "Plain Unit", power: 1 } }
+  - id: tithe_unit
+    type: unit
+    fields: { name: "Tithe Unit", power: 2 }
+    effects:
+      - on: { enter: field }
+        do:
+          - add_state: { player: controller, state: life_points, amount: 500 }
+          - set_state: { player: opponent, state: summoned, value: true }

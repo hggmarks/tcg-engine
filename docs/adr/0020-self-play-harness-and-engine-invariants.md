@@ -28,3 +28,5 @@ Invariants 2 and 6 cannot be violated through the public API (the GameState's fi
 **Status**: accepted
 
 Amended by ADR-0027: a ruleset whose Action Phase lists no action does not load; in the `NoLegalAction` test `play_creature` and `pass_turn` get a param with `where: false`, and `attack` has no attacker at the start.
+
+Amended by ADR-0041: the Invariants are unchanged and extend to Player state: event-sourced consistency and the Recomputed GameState compare whole GameStates, Player state included, and a violation that is only in Player state names the state and both values. No Invariant is added.

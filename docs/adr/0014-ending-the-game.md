@@ -16,4 +16,6 @@ Amends ADR-0010 (a new Event, the outcome in the GameState, nothing applies afte
 
 **Status**: accepted
 
+Amended by ADR-0041: a `when` may also be an expression whose refs are Player Refs without a `player:` key, a Player-state condition. It holds for a Player when it is true on that Player's own state in the GameState the transition produced, `loser: owner` being the Player whose state is read; it is judged for each Player at the same moments and in the same order as the other forms, so a Player still has one Loss, the first condition in declaration order is its reason, and every Player losing together is a drawn Game.
+
 Amended by ADR-0016: a `when` written as an expression is supported (it is about one card type, the Subject, and holds on the GameState the transition produced), so `UnsupportedWinCondition` is gone. The evaluation order is unchanged: once per transition, Players in seat order, first condition in declaration order.

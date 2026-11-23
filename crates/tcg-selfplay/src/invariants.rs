@@ -278,6 +278,27 @@ fn state_difference(recomputed: &GameState, next: &GameState) -> Option<String> 
         });
     }
     for &player in next.player_order().players() {
+        let (folded, carried) = (
+            recomputed.player_state(player).unwrap_or_default(),
+            next.player_state(player).unwrap_or_default(),
+        );
+        if folded != carried {
+            return Some(
+                match folded.iter().zip(carried).find(|(one, other)| one != other) {
+                    Some(((state, folded_value), (_, carried_value))) => format!(
+                        "the Player state `{}` of Player {} is {folded_value:?} in the Recomputed GameState and {carried_value:?} in the engine's",
+                        state.as_str(),
+                        player.0
+                    ),
+                    None => format!(
+                        "Player {} has {} Player state values in the Recomputed GameState and {} in the engine's",
+                        player.0,
+                        folded.len(),
+                        carried.len()
+                    ),
+                },
+            );
+        }
         if recomputed.zones(player) != next.zones(player) {
             let zone = next
                 .zones(player)

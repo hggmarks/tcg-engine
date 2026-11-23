@@ -17,10 +17,10 @@ use tcg_engine::player::PlayerId;
 use tcg_engine::random::Seed;
 use tcg_engine::ruleset::{Ruleset, Transition};
 use tcg_engine::ruleset_definition::{
-    ActionDraft, ActionId, CardTypeId, CardValue, EffectDraft, Expression, ExpressionDraft,
-    FieldName, FieldValue, ParamAlternativeDraft, ParamCardsDraft, ParamDraft, ParamName,
-    ParamOwner, RefDraft, StateName, WinConditionId, WinConditionWhen, WinConditionWhenDraft,
-    ZoneId,
+    ActionDraft, ActionId, AmountDraft, CardTypeId, CardValue, EffectDraft, Expression,
+    ExpressionDraft, FieldName, FieldValue, ParamAlternativeDraft, ParamCardsDraft, ParamDraft,
+    ParamName, ParamOwner, RefDraft, StateName, WinConditionId, WinConditionWhen,
+    WinConditionWhenDraft, ZoneId,
 };
 use tcg_loader::{
     load_card_catalog, load_deck_list, load_ruleset_definition, parse_ruleset_draft, LoadError,
@@ -443,7 +443,7 @@ fn the_loader_reads_where_one_of_if_and_add_state_as_plain_drafts() {
                     otherwise: vec![power_check(vec![EffectDraft::AddState {
                         card: reference("target"),
                         state: "current_life".to_string(),
-                        amount: -1,
+                        amount: AmountDraft::Literal(-1),
                     }])],
                 },
             ],

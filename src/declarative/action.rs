@@ -22,7 +22,8 @@ use crate::card_catalog::{ActivatedCardEffect, CardEffect};
 use crate::player::PlayerId;
 use crate::ruleset::{EventTrace, Ruleset, Transition};
 use crate::ruleset_definition::{
-    ActionId, CardTypeId, FieldName, ParamName, PhaseKind, StateName, Window, WindowId, ZoneId,
+    ActionId, CardTypeId, FieldName, ParamName, PhaseKind, PlayerStateId, StateName, Window,
+    WindowId, ZoneId,
 };
 
 /// An Action of the declarative Ruleset: a Declared Action, an Answer to the decision a Resolution
@@ -179,6 +180,14 @@ pub enum Rejection {
     StateOverflow {
         card: CardInstanceId,
         state: StateName,
+    },
+    /// A `sub` amount `a - b` that does not fit an int (ADR-0041).
+    ArithmeticOverflow,
+    /// Adding to the int Player state `state` of `player` would go beyond what an int can hold, in
+    /// either direction (ADR-0041).
+    PlayerStateOverflow {
+        player: PlayerId,
+        state: PlayerStateId,
     },
     /// A derived read of the int field `field` of `card` would go beyond what an int can hold: its
     /// base value plus the Field Modifiers that are active, or the sum of those (ADR-0024).
@@ -350,6 +359,13 @@ impl fmt::Display for Rejection {
                 "adding to the state `{}` of the card instance {} overflows",
                 state.as_str(),
                 card.0
+            ),
+            Self::ArithmeticOverflow => write!(f, "a `sub` amount overflows"),
+            Self::PlayerStateOverflow { player, state } => write!(
+                f,
+                "adding to the state `{}` of Player {} overflows",
+                state.as_str(),
+                player.0
             ),
             Self::DerivedValueOverflow { card, field } => write!(
                 f,
@@ -647,7 +663,7 @@ impl DeclarativeRuleset {
             execution
                 .apply(Event::ItemResolved { item: item.clone() })
                 .map_err(Rejection::EventRejected)?;
-            let bound = BoundCards::of_item(&item.bound);
+            let bound = BoundCards::of_item(&item.bound, item.controller);
             let effects = match &item.source {
                 StackSource::Action(id) => {
                     let Some(declared) = self.definition().action(id) else {

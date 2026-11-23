@@ -3,6 +3,7 @@
 
 mod card_choice;
 mod common;
+mod duel_games;
 mod effects_games;
 mod invariant_checks;
 mod observation_checks;

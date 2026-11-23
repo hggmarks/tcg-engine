@@ -117,6 +117,7 @@ impl Observer {
                 Ok(self.observed_card(*card).map_or(Sight::Unseen, Sight::Kept))
             }
             Event::ZoneShuffled { .. }
+            | Event::PlayerStateChanged { .. }
             | Event::TurnBegan { .. }
             | Event::PhaseBegan { .. }
             | Event::DrawFromEmptyZone { .. }
@@ -237,6 +238,7 @@ mod tests {
                 },
             ],
             card_types: Vec::new(),
+            player_state: Vec::new(),
             inputs: Vec::new(),
             setup: Vec::new(),
             actions: Vec::new(),
