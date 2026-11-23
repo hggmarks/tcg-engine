@@ -1,0 +1,101 @@
+# A small ruleset for the Player-state tests (ticket #96, ADR-0041): two Players, one card type
+# and actions that read and write Player state in every context the format allows it. The tests
+# edit single lines of this text to make each load error. Format: rulesets/formats.md.
+meta: { id: pstate, version: 1 }
+
+parameters:
+  players: 2
+  starting_player: 0
+
+zones:
+  - { id: deck,  visibility: hidden, ordered: true }
+  - { id: hand,  visibility: owner,  ordered: false }
+  - { id: field, visibility: public, ordered: false }
+
+card_types:
+  - id: unit
+    fields:
+      - { name: name,  type: text }
+      - { name: power, type: int }
+    instance_state: []
+    effects: true
+
+inputs:
+  - { id: main_deck, card_types: [unit], size: 6, max_copies: 6, zone: deck }
+
+# Every Player starts with each of these at its `init`.
+player_state:
+  - { id: life_points, type: int, init: 4000 }
+  - { id: summoned, type: bool, init: false }
+
+setup:
+  - draw: { player: each, from: deck, to: hand, count: 3 }
+
+turn:
+  phases:
+    - id: start
+      automatic: []
+    - id: main
+      actions: [summon, bully, mark_opponent, drain, drain_all, heal, keep_flag, pay_to_hurt, overflow, pass_turn]
+    - id: end
+      automatic: []
+
+actions:
+  # Legal while the acting Player has not summoned yet this turn: a `where` reading Player state.
+  - id: summon
+    params:
+      - name: card
+        zone: hand
+        card_type: unit
+        where: { eq: [{ ref: player.summoned, player: active }, false] }
+    effects:
+      - move: { card: { ref: card }, to: field }
+      - set_state: { player: active, state: summoned, value: true }
+
+  # Legal while the opponent has lost some Life Points: a `where` reading the opponent's state.
+  - id: bully
+    params:
+      - name: card
+        zone: hand
+        card_type: unit
+        where: { lte: [{ ref: player.life_points, player: opponent }, 3999] }
+    effects:
+      - move: { card: { ref: card }, to: field }
+
+  - id: mark_opponent
+    effects:
+      - set_state: { player: opponent, state: summoned, value: true }
+
+  - id: drain
+    effects:
+      - add_state: { player: opponent, state: life_points, amount: -300 }
+
+  - id: drain_all
+    effects:
+      - add_state: { player: each, state: life_points, amount: -100 }
+
+  - id: heal
+    effects:
+      - add_state: { player: active, state: life_points, amount: 500 }
+
+  # Writes that change nothing: the value is the one the Player has.
+  - id: keep_flag
+    effects:
+      - set_state: { player: active, state: summoned, value: false }
+      - add_state: { player: active, state: life_points, amount: 0 }
+
+  - id: pay_to_hurt
+    cost:
+      - add_state: { player: active, state: life_points, amount: -1000 }
+    effects:
+      - add_state: { player: opponent, state: life_points, amount: -2000 }
+
+  - id: overflow
+    effects:
+      - add_state: { player: active, state: life_points, amount: 9223372036854775807 }
+
+  - id: pass_turn
+    effects: [ { end_turn: {} } ]
+
+effects:
+  active_zone: field
