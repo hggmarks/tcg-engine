@@ -255,6 +255,18 @@ impl DeclarativeRuleset {
                 }
             }
             (Event::CardStateChanged { .. }, Sight::Unseen) => return Ok(None),
+            (
+                Event::PlayerStateChanged {
+                    player,
+                    state,
+                    value,
+                },
+                Sight::NoCard,
+            ) => ObservedEvent::PlayerStateChanged {
+                player: *player,
+                state: state.clone(),
+                value: value.clone(),
+            },
             (Event::TurnBegan { player, turn }, Sight::NoCard) => ObservedEvent::TurnBegan {
                 player: *player,
                 turn: *turn,
@@ -356,6 +368,7 @@ mod tests {
                 },
             ],
             card_types: Vec::new(),
+            player_state: Vec::new(),
             inputs: Vec::new(),
             setup: Vec::new(),
             actions: Vec::new(),
@@ -384,6 +397,7 @@ mod tests {
             PlayerOrder::new(vec![PlayerId(0), PlayerId(1)]).expect("two Players"),
             PlayerId(0),
             &[ZoneId::new("field"), ZoneId::new("hand")],
+            &[],
             RandomState::from_seed(Seed(1)),
         )
     }

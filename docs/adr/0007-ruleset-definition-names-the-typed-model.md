@@ -5,3 +5,5 @@
 This amends decision 3 of ADR-0004 (the typed-model names) and nothing else in it. It does not conflict with ADR-0001.
 
 **Status**: accepted
+
+Amended by ADR-0041: the typed model `RulesetDefinition` also holds the ruleset's Player-State Schemas (`player_state()`), the new top-level key of the format that ADR-0004's decision 1 lists (marked there). The names this ADR settles are unchanged.

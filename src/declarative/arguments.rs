@@ -20,27 +20,33 @@ use super::state::{CardInstanceId, GameState};
 use crate::player::PlayerId;
 use crate::ruleset_definition::{ActionDefinition, Param, ParamAlternative, ParamName, ParamOwner};
 
-/// The cards an Action supplied, by the name of the param each fills.
+/// The cards an Action supplied, by the name of the param each fills, and the Player acting, when
+/// there is one: what an expression reads its Player refs against (ADR-0041).
 #[derive(Debug, Clone)]
 pub(super) struct BoundCards {
     cards: Vec<(ParamName, CardInstanceId)>,
+    /// The acting Player of an action, whose opponent `opponent` is. `None` in a Card Effect, where
+    /// `opponent` is the opponent of the owner of `self`.
+    acting: Option<PlayerId>,
 }
 
 impl BoundCards {
-    /// One card bound to one name.
+    /// One card bound to one name, in a Card Effect (no acting Player).
     pub(super) fn of(param: ParamName, card: CardInstanceId) -> Self {
         Self {
             cards: vec![(param, card)],
+            acting: None,
         }
     }
 
-    /// The bindings a Stack Item kept, in param order.
-    pub(super) fn of_item(bound: &[BoundCard]) -> Self {
+    /// The bindings a Stack Item kept, in param order, for its `controller`, who took the action.
+    pub(super) fn of_item(bound: &[BoundCard], controller: PlayerId) -> Self {
         Self {
             cards: bound
                 .iter()
                 .map(|bound| (bound.param.clone(), bound.card))
                 .collect(),
+            acting: Some(controller),
         }
     }
 
@@ -48,7 +54,15 @@ impl BoundCards {
     pub(super) fn with(&self, param: ParamName, card: CardInstanceId) -> Self {
         let mut cards = self.cards.clone();
         cards.push((param, card));
-        Self { cards }
+        Self {
+            cards,
+            acting: self.acting,
+        }
+    }
+
+    /// The Player acting, if this is an action's.
+    pub(super) fn acting(&self) -> Option<PlayerId> {
+        self.acting
     }
 
     /// The names bound so far, in binding order, `self` left out: what a Paused Resolution keeps
@@ -92,7 +106,10 @@ pub(super) fn bind(
             found: u64::try_from(arguments.len()).unwrap_or(u64::MAX),
         });
     }
-    let mut bound = BoundCards { cards: Vec::new() };
+    let mut bound = BoundCards {
+        cards: Vec::new(),
+        acting: Some(actor),
+    };
     for (param, argument) in params.iter().zip(arguments) {
         let Argument::Card(card) = *argument;
         if state.card(card).is_none() {
@@ -252,8 +269,13 @@ pub(super) fn fillings(
     actor: PlayerId,
     declared: &ActionDefinition,
 ) -> Vec<Vec<CardInstanceId>> {
-    let mut partial: Vec<(BoundCards, Vec<CardInstanceId>)> =
-        vec![(BoundCards { cards: Vec::new() }, Vec::new())];
+    let mut partial: Vec<(BoundCards, Vec<CardInstanceId>)> = vec![(
+        BoundCards {
+            cards: Vec::new(),
+            acting: Some(actor),
+        },
+        Vec::new(),
+    )];
     for param in declared.params() {
         let candidates = candidate_cards(state, actor, param);
         let mut next = Vec::new();

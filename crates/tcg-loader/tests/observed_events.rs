@@ -23,7 +23,7 @@ use tcg_engine::player::PlayerId;
 use tcg_engine::random::Seed;
 use tcg_engine::ruleset::{LegalActions, Observations, Ruleset, Transition};
 use tcg_engine::ruleset_definition::{
-    ActionId, FieldValue, PhaseId, StateName, WinConditionId, ZoneId,
+    ActionId, FieldValue, PhaseId, PlayerStateId, StateName, WinConditionId, ZoneId,
 };
 use tcg_engine::turn::TurnNumber;
 use tcg_loader::{load_card_catalog, load_deck_list, load_ruleset_definition};
@@ -197,6 +197,7 @@ fn card_of(event: &ObservedEvent) -> Option<ObservedCard> {
         | ObservedEvent::UnseenCardMoved { .. }
         | ObservedEvent::ZoneShuffled { .. }
         | ObservedEvent::UnseenZoneShuffled { .. }
+        | ObservedEvent::PlayerStateChanged { .. }
         | ObservedEvent::TurnBegan { .. }
         | ObservedEvent::PhaseBegan { .. }
         | ObservedEvent::DrawFromEmptyZone { .. }
@@ -868,6 +869,15 @@ fn binds_every_field_with_its_type(event: &ObservedEvent) {
         ObservedEvent::UnseenCardCreated { owner, zone } => {
             let _: &PlayerId = owner;
             let _: &ZoneId = zone;
+        }
+        ObservedEvent::PlayerStateChanged {
+            player,
+            state,
+            value,
+        } => {
+            let _: &PlayerId = player;
+            let _: &PlayerStateId = state;
+            let _: &FieldValue = value;
         }
         ObservedEvent::CardMoved {
             card,

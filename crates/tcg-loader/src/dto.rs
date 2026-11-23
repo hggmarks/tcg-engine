@@ -13,8 +13,9 @@ use tcg_engine::ruleset_definition::{
     ActionDraft, AutomaticStepDraft, CardTypeDraft, ConditionDraft, CostDraft, DeckInputDraft,
     EffectDraft, EffectsDraft, ExpressionDraft, FieldDraft, FieldTypeDraft, FieldValue,
     InitializerDraft, InstanceStateDraft, MetaDraft, ParamAlternativeDraft, ParamCardsDraft,
-    ParamDraft, ParametersDraft, PhaseDraft, RefDraft, RulesetDraft, SetupStepDraft, TurnDraft,
-    Visibility, WinConditionDraft, WinConditionWhenDraft, WindowDraft, ZoneDraft,
+    ParamDraft, ParametersDraft, PhaseDraft, PlayerStateDraft, RefDraft, RulesetDraft,
+    SetupStepDraft, TurnDraft, Visibility, WinConditionDraft, WinConditionWhenDraft, WindowDraft,
+    ZoneDraft,
 };
 
 #[derive(Deserialize)]
@@ -24,6 +25,8 @@ pub(crate) struct RulesetDto {
     parameters: ParametersDto,
     zones: Vec<ZoneDto>,
     card_types: Vec<CardTypeDto>,
+    #[serde(default)]
+    player_state: Vec<PlayerStateDto>,
     inputs: Vec<InputDto>,
     #[serde(default)]
     setup: Vec<SetupStepDto>,
@@ -40,6 +43,17 @@ pub(crate) struct RulesetDto {
     // An absent key is `None`; a present key must be a block.
     #[serde(default, deserialize_with = "some")]
     effects: Option<EffectsDto>,
+}
+
+/// A Player-State Schema: `{ id, type, init }`. `init` is a scalar that keeps its YAML type; the
+/// engine checks it against the declared type without coercion (ADR-0041).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PlayerStateDto {
+    id: String,
+    #[serde(rename = "type")]
+    state_type: FieldTypeDto,
+    init: ScalarDto,
 }
 
 /// The `effects` block: the zone where Card Effects act.
@@ -142,6 +156,8 @@ fn only_one_key<'de, A: MapAccess<'de>>(
 pub(crate) enum ExpressionDto {
     Literal(FieldValue),
     Ref(String),
+    /// `{ ref: <text>, player: <selector> }`: a ref with the `player:` key of a Player ref.
+    PlayerRef(String, String),
     Eq(Box<ExpressionDto>, Box<ExpressionDto>),
     Gte(Box<ExpressionDto>, Box<ExpressionDto>),
     Lte(Box<ExpressionDto>, Box<ExpressionDto>),
@@ -149,8 +165,8 @@ pub(crate) enum ExpressionDto {
     IsCardType(String, String),
 }
 
-/// `ref` and the operators, for the error of an unknown one.
-const EXPRESSION_KEYS: &[&str] = &["ref", "eq", "gte", "lte", "and", "is_card_type"];
+/// `ref`, `player` and the operators, for the error of an unknown one.
+const EXPRESSION_KEYS: &[&str] = &["ref", "player", "eq", "gte", "lte", "and", "is_card_type"];
 
 /// Reads the value of the operator `key`, whose key was just read from `map`, and checks that it
 /// was the only key.
@@ -159,7 +175,25 @@ fn read_operator<'de, A: MapAccess<'de>>(
     map: &mut A,
 ) -> Result<ExpressionDto, A::Error> {
     let expression = match key {
-        "ref" => ExpressionDto::Ref(map.next_value()?),
+        // The one map with two keys: `ref` and `player`, in either order (ADR-0041).
+        "ref" | "player" => {
+            let first: String = map.next_value()?;
+            match map.next_key::<String>()? {
+                None if key == "ref" => return Ok(ExpressionDto::Ref(first)),
+                None => return Err(de::Error::custom("a `player` key needs a `ref` key")),
+                Some(other) if other == "ref" && key == "player" => {
+                    let reference: String = map.next_value()?;
+                    only_one_key(map, "an expression names one operator")?;
+                    return Ok(ExpressionDto::PlayerRef(reference, first));
+                }
+                Some(other) if other == "player" && key == "ref" => {
+                    let selector: String = map.next_value()?;
+                    only_one_key(map, "an expression names one operator")?;
+                    return Ok(ExpressionDto::PlayerRef(first, selector));
+                }
+                Some(_) => return Err(de::Error::custom("an expression names one operator")),
+            }
+        }
         "eq" => {
             let Pair(left, right) = map.next_value()?;
             ExpressionDto::Eq(Box::new(left), Box::new(right))
@@ -292,6 +326,10 @@ impl ExpressionDto {
         match self {
             Self::Literal(value) => ExpressionDraft::Literal(value),
             Self::Ref(reference) => ExpressionDraft::Ref(RefDraft(reference)),
+            Self::PlayerRef(reference, selector) => ExpressionDraft::PlayerRef {
+                reference: RefDraft(reference),
+                selector,
+            },
             Self::Eq(left, right) => ExpressionDraft::Eq(boxed(left), boxed(right)),
             Self::Gte(left, right) => ExpressionDraft::Gte(boxed(left), boxed(right)),
             Self::Lte(left, right) => ExpressionDraft::Lte(boxed(left), boxed(right)),
@@ -316,6 +354,28 @@ impl ExpressionDto {
 enum SetupStepDto {
     Shuffle(ShuffleDto),
     Draw(DrawDto),
+    SetState(SetPlayerStateDto),
+    AddState(AddPlayerStateDto),
+}
+
+/// `set_state: { player, state, value }` of a Player state, in a setup step, a cost or an
+/// automatic step without `zone` (ADR-0041).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SetPlayerStateDto {
+    player: String,
+    state: String,
+    value: ScalarDto,
+}
+
+/// `add_state: { player, state, amount }` of a Player state (ADR-0041).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct AddPlayerStateDto {
+    player: String,
+    state: String,
+    #[serde(deserialize_with = "scalar::strict_i64")]
+    amount: i64,
 }
 
 #[derive(Deserialize)]
@@ -516,6 +576,8 @@ struct RefDto {
 pub(crate) enum CostDto {
     Tap(TapDto),
     Move(MoveEffectDto),
+    SetState(SetPlayerStateDto),
+    AddState(AddPlayerStateDto),
 }
 
 /// `tap: { zone, count }` taps mana, `tap: { card }` taps one card. The keys are read into
@@ -593,18 +655,29 @@ pub(crate) struct MoveEffectDto {
     to: String,
 }
 
+/// `set_state: { card, state, value }` of an instance state, or `set_state: { player, state, value }`
+/// of a Player state. The engine checks that exactly one of `card` and `player` is there
+/// (ADR-0041).
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct SetStateEffectDto {
-    card: RefDto,
+    #[serde(default, deserialize_with = "some")]
+    card: Option<RefDto>,
+    #[serde(default, deserialize_with = "some")]
+    player: Option<String>,
     state: String,
     value: ScalarDto,
 }
 
+/// `add_state: { card, state, amount }` or `add_state: { player, state, amount }`, like
+/// [`SetStateEffectDto`].
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct AddStateEffectDto {
-    card: RefDto,
+    #[serde(default, deserialize_with = "some")]
+    card: Option<RefDto>,
+    #[serde(default, deserialize_with = "some")]
+    player: Option<String>,
     state: String,
     #[serde(deserialize_with = "scalar::strict_i64")]
     amount: i64,
@@ -738,11 +811,14 @@ struct UntapDto {
     zones: Vec<String>,
 }
 
+/// `set_state: { player, zone, state, value }` sets an instance state on the cards of `zone`;
+/// without `zone` it sets a Player state (ADR-0041).
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SetStateDto {
     player: String,
-    zone: String,
+    #[serde(default, deserialize_with = "some")]
+    zone: Option<String>,
     state: String,
     value: ScalarDto,
 }
@@ -764,6 +840,7 @@ struct MoveDto {
 enum AutomaticStepDto {
     Untap(UntapDto),
     SetState(SetStateDto),
+    AddState(AddPlayerStateDto),
     Draw(DrawDto),
     Move(MoveDto),
     If {
@@ -774,7 +851,16 @@ enum AutomaticStepDto {
 }
 
 /// The keys a step may have, for the error of an unknown one.
-const STEP_KEYS: &[&str] = &["untap", "set_state", "draw", "move", "if", "then", "else"];
+const STEP_KEYS: &[&str] = &[
+    "untap",
+    "set_state",
+    "add_state",
+    "draw",
+    "move",
+    "if",
+    "then",
+    "else",
+];
 
 impl<'de> Deserialize<'de> for AutomaticStepDto {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
@@ -802,6 +888,7 @@ impl<'de> Deserialize<'de> for AutomaticStepDto {
                     let found = match key.as_str() {
                         "untap" => Some(AutomaticStepDto::Untap(map.next_value()?)),
                         "set_state" => Some(AutomaticStepDto::SetState(map.next_value()?)),
+                        "add_state" => Some(AutomaticStepDto::AddState(map.next_value()?)),
                         "draw" => Some(AutomaticStepDto::Draw(map.next_value()?)),
                         "move" => Some(AutomaticStepDto::Move(map.next_value()?)),
                         "if" => {
@@ -1010,6 +1097,15 @@ impl RulesetDto {
                 .into_iter()
                 .map(CardTypeDto::into_draft)
                 .collect(),
+            player_state: self
+                .player_state
+                .into_iter()
+                .map(|schema| PlayerStateDraft {
+                    id: schema.id,
+                    state_type: schema.state_type.into_draft(),
+                    init: schema.init.0,
+                })
+                .collect(),
             inputs: self.inputs.into_iter().map(InputDto::into_draft).collect(),
             setup: self
                 .setup
@@ -1082,6 +1178,16 @@ impl CostDto {
                     card: RefDraft(step.card.reference),
                     to: step.to,
                 },
+                CostDto::SetState(step) => CostDraft::SetPlayerState {
+                    player: step.player,
+                    state: step.state,
+                    value: step.value.0,
+                },
+                CostDto::AddState(step) => CostDraft::AddPlayerState {
+                    player: step.player,
+                    state: step.state,
+                    amount: step.amount,
+                },
             })
             .collect()
     }
@@ -1099,15 +1205,35 @@ impl EffectDto {
                 card: RefDraft(step.card.reference),
                 to: step.to,
             },
-            Self::SetState(step) => EffectDraft::SetState {
-                card: RefDraft(step.card.reference),
-                state: step.state,
-                value: step.value.0,
+            Self::SetState(step) => match (step.card, step.player) {
+                (Some(card), None) => EffectDraft::SetState {
+                    card: RefDraft(card.reference),
+                    state: step.state,
+                    value: step.value.0,
+                },
+                (None, Some(player)) => EffectDraft::SetPlayerState {
+                    player,
+                    state: step.state,
+                    value: step.value.0,
+                },
+                _ => EffectDraft::MalformedStateTarget {
+                    primitive: "set_state",
+                },
             },
-            Self::AddState(step) => EffectDraft::AddState {
-                card: RefDraft(step.card.reference),
-                state: step.state,
-                amount: step.amount,
+            Self::AddState(step) => match (step.card, step.player) {
+                (Some(card), None) => EffectDraft::AddState {
+                    card: RefDraft(card.reference),
+                    state: step.state,
+                    amount: step.amount,
+                },
+                (None, Some(player)) => EffectDraft::AddPlayerState {
+                    player,
+                    state: step.state,
+                    amount: step.amount,
+                },
+                _ => EffectDraft::MalformedStateTarget {
+                    primitive: "add_state",
+                },
             },
             Self::Draw(step) => EffectDraft::Draw {
                 player: step.player,
@@ -1168,11 +1294,23 @@ impl AutomaticStepDto {
                 player: step.player,
                 zones: step.zones,
             },
-            Self::SetState(step) => AutomaticStepDraft::SetState {
+            Self::SetState(step) => match step.zone {
+                Some(zone) => AutomaticStepDraft::SetState {
+                    player: step.player,
+                    zone,
+                    state: step.state,
+                    value: step.value.0,
+                },
+                None => AutomaticStepDraft::SetPlayerState {
+                    player: step.player,
+                    state: step.state,
+                    value: step.value.0,
+                },
+            },
+            Self::AddState(step) => AutomaticStepDraft::AddPlayerState {
                 player: step.player,
-                zone: step.zone,
                 state: step.state,
-                value: step.value.0,
+                amount: step.amount,
             },
             Self::Draw(step) => AutomaticStepDraft::Draw {
                 player: step.player,
@@ -1281,6 +1419,16 @@ impl SetupStepDto {
                 from: step.from,
                 to: step.to,
                 count: step.count,
+            },
+            Self::SetState(step) => SetupStepDraft::SetPlayerState {
+                player: step.player,
+                state: step.state,
+                value: step.value.0,
+            },
+            Self::AddState(step) => SetupStepDraft::AddPlayerState {
+                player: step.player,
+                state: step.state,
+                amount: step.amount,
             },
         }
     }

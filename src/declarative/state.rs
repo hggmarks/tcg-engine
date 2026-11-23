@@ -13,7 +13,8 @@ use crate::card_catalog::CardId;
 use crate::player::{PlayerId, PlayerOrder};
 use crate::random::RandomState;
 use crate::ruleset_definition::{
-    FieldType, FieldValue, PhaseId, StateName, WinConditionId, ZoneId,
+    FieldType, FieldValue, PhaseId, PlayerStateId, PlayerStateSchema, StateName, WinConditionId,
+    ZoneId,
 };
 use crate::turn::TurnNumber;
 
@@ -152,8 +153,9 @@ impl TerminalOutcome {
 }
 
 /// The complete state of one declarative Game: Players by seat, the Active Player, the Turn Number
-/// and phase, each Player's zones, every card instance, the Random State, the Pending Decision while
-/// a Resolution is paused and, once the Game has ended, its Terminal Outcome.
+/// and phase, each Player's zones and Player state, every card instance, the Random State, the
+/// Pending Decision while a Resolution is paused and, once the Game has ended, its Terminal
+/// Outcome.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GameState {
     player_order: PlayerOrder,
@@ -161,6 +163,9 @@ pub struct GameState {
     turn_number: Option<TurnNumber>,
     phase: Option<PhaseId>,
     zones: Vec<(PlayerId, Vec<ZoneCards>)>,
+    /// The Player state of each Player in seat order, each in the order of the ruleset's
+    /// Player-State Schemas (ADR-0041).
+    player_state: Vec<(PlayerId, Vec<(PlayerStateId, FieldValue)>)>,
     cards: Vec<CardInstance>,
     random_state: RandomState,
     outcome: Option<TerminalOutcome>,
@@ -204,6 +209,18 @@ pub enum ApplyError {
     },
     /// A draw-from-empty fact names a zone that holds cards.
     ZoneNotEmpty { player: PlayerId, zone: ZoneId },
+    /// The Player has no Player state named `state` (ADR-0041).
+    UnknownPlayerState {
+        player: PlayerId,
+        state: PlayerStateId,
+    },
+    /// The new value of the Player state is not of the type of its current value.
+    PlayerStateTypeMismatch {
+        player: PlayerId,
+        state: PlayerStateId,
+        expected: FieldType,
+        found: FieldType,
+    },
     /// A phase began, but no Turn has begun.
     NoTurnInProgress,
     /// The Game has ended: no Event applies after `GameEnded`.
@@ -282,6 +299,20 @@ impl fmt::Display for ApplyError {
                 zone.as_str(),
                 player.0
             ),
+            Self::UnknownPlayerState { player, state } => {
+                write!(f, "Player {} has no state `{}`", player.0, state.as_str())
+            }
+            Self::PlayerStateTypeMismatch {
+                player,
+                state,
+                expected,
+                found,
+            } => write!(
+                f,
+                "the state `{}` of Player {} is {expected:?}, not {found:?}",
+                state.as_str(),
+                player.0
+            ),
             Self::NoTurnInProgress => write!(f, "no Turn is in progress"),
             Self::GameAlreadyEnded => write!(f, "the Game has already ended"),
             Self::NoLoser => write!(f, "a Game cannot end without a loser"),
@@ -311,14 +342,24 @@ impl fmt::Display for ApplyError {
 impl std::error::Error for ApplyError {}
 
 impl GameState {
-    /// The Empty GameState: every Player has every zone, all empty, and there are no card
-    /// instances.
+    /// The Empty GameState: every Player has every zone, all empty, every Player-State Schema at
+    /// its `init`, and there are no card instances.
     pub(super) fn empty(
         player_order: PlayerOrder,
         active_player: PlayerId,
         zones: &[ZoneId],
+        player_state: &[PlayerStateSchema],
         random_state: RandomState,
     ) -> GameState {
+        let initial: Vec<(PlayerStateId, FieldValue)> = player_state
+            .iter()
+            .map(|schema| (schema.id().clone(), schema.init().clone()))
+            .collect();
+        let player_state = player_order
+            .players()
+            .iter()
+            .map(|&player| (player, initial.clone()))
+            .collect();
         let zones = player_order
             .players()
             .iter()
@@ -339,6 +380,7 @@ impl GameState {
             turn_number: None,
             phase: None,
             zones,
+            player_state,
             cards: Vec::new(),
             random_state,
             outcome: None,
@@ -393,6 +435,37 @@ impl GameState {
             .iter()
             .find(|held| held.cards.contains(&card))
             .map(|held| &held.zone)
+    }
+
+    /// The Player state of `player` in the order of the ruleset's Player-State Schemas (ADR-0041);
+    /// `None` for a Player not in the Game.
+    pub fn player_state(&self, player: PlayerId) -> Option<&[(PlayerStateId, FieldValue)]> {
+        self.player_state
+            .iter()
+            .find(|(owner, _)| *owner == player)
+            .map(|(_, values)| values.as_slice())
+    }
+
+    /// The value of the Player state `state` of `player`; `None` for an unknown Player or state.
+    pub fn player_state_value(
+        &self,
+        player: PlayerId,
+        state: &PlayerStateId,
+    ) -> Option<&FieldValue> {
+        self.player_state(player)?
+            .iter()
+            .find(|(name, _)| name == state)
+            .map(|(_, value)| value)
+    }
+
+    /// The opponent of `player`: the first Player in seat order other than `player`, the rule of
+    /// Priority and of `decider: opponent`. It is the one opponent of a Game of 2 Players.
+    pub(crate) fn opponent_of(&self, player: PlayerId) -> Option<PlayerId> {
+        self.player_order
+            .players()
+            .iter()
+            .copied()
+            .find(|&other| other != player)
     }
 
     /// Every card instance, in id order.
@@ -595,6 +668,35 @@ impl GameState {
                 if let Some((_, current)) = Arc::make_mut(&mut instance.state).get_mut(position) {
                     current.clone_from(value);
                 }
+                Ok(())
+            }
+            Event::PlayerStateChanged {
+                player,
+                state,
+                value,
+            } => {
+                let Some((_, values)) = self
+                    .player_state
+                    .iter_mut()
+                    .find(|(owner, _)| owner == player)
+                else {
+                    return Err(ApplyError::UnknownPlayer { player: *player });
+                };
+                let Some((_, current)) = values.iter_mut().find(|(name, _)| name == state) else {
+                    return Err(ApplyError::UnknownPlayerState {
+                        player: *player,
+                        state: state.clone(),
+                    });
+                };
+                if current.field_type() != value.field_type() {
+                    return Err(ApplyError::PlayerStateTypeMismatch {
+                        player: *player,
+                        state: state.clone(),
+                        expected: current.field_type(),
+                        found: value.field_type(),
+                    });
+                }
+                current.clone_from(value);
                 Ok(())
             }
             Event::DrawFromEmptyZone { player, zone } => {

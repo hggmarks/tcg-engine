@@ -9,6 +9,8 @@ pub struct RulesetDraft {
     pub parameters: ParametersDraft,
     pub zones: Vec<ZoneDraft>,
     pub card_types: Vec<CardTypeDraft>,
+    /// The Player-State Schemas, in order. Empty means none (ADR-0041).
+    pub player_state: Vec<PlayerStateDraft>,
     pub inputs: Vec<DeckInputDraft>,
     /// The Setup Steps, in order. Empty means no steps.
     pub setup: Vec<SetupStepDraft>,
@@ -88,6 +90,14 @@ pub enum InitializerDraft {
     FromField(String),
 }
 
+/// An unvalidated Player-State Schema: `{ id, type, init }` (ADR-0041).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlayerStateDraft {
+    pub id: String,
+    pub state_type: FieldTypeDraft,
+    pub init: FieldValue,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeckInputDraft {
     pub id: String,
@@ -110,6 +120,18 @@ pub enum SetupStepDraft {
         from: String,
         to: String,
         count: u32,
+    },
+    /// `set_state: { player, state, value }` with no `zone` (ADR-0041).
+    SetPlayerState {
+        player: String,
+        state: String,
+        value: FieldValue,
+    },
+    /// `add_state: { player, state, amount }` (ADR-0041).
+    AddPlayerState {
+        player: String,
+        state: String,
+        amount: i64,
     },
 }
 
@@ -176,6 +198,12 @@ pub enum ExpressionDraft {
         card: RefDraft,
         card_type: String,
     },
+    /// `{ ref: player.<id>, player: <selector> }`: a ref with a `player:` key, which only a Player
+    /// ref may have (ADR-0041). A Player ref without the key is a plain [`ExpressionDraft::Ref`].
+    PlayerRef {
+        reference: RefDraft,
+        selector: String,
+    },
 }
 
 /// The text of a ref, such as `card` or `card.cost`; the engine parses it.
@@ -197,6 +225,18 @@ pub enum CostDraft {
         card: RefDraft,
         to: String,
     },
+    /// `set_state: { player, state, value }` (ADR-0041).
+    SetPlayerState {
+        player: String,
+        state: String,
+        value: FieldValue,
+    },
+    /// `add_state: { player, state, amount }` (ADR-0041).
+    AddPlayerState {
+        player: String,
+        state: String,
+        amount: i64,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -216,6 +256,24 @@ pub enum EffectDraft {
         card: RefDraft,
         state: String,
         amount: i64,
+    },
+    /// `set_state: { player, state, value }`: the Player state `state` of the Players `player`
+    /// selects (ADR-0041).
+    SetPlayerState {
+        player: String,
+        state: String,
+        value: FieldValue,
+    },
+    /// `add_state: { player, state, amount }` (ADR-0041).
+    AddPlayerState {
+        player: String,
+        state: String,
+        amount: i64,
+    },
+    /// A `set_state` or `add_state` (`primitive` is its key) that names both a `card` and a
+    /// `player`, or neither: always an `InvalidStateTarget` (ADR-0041).
+    MalformedStateTarget {
+        primitive: &'static str,
     },
     /// `draw: { player, from, to, count }`; `player` is `controller`, the only selector of an
     /// effect.
@@ -288,6 +346,18 @@ pub enum AutomaticStepDraft {
         to: String,
         count: u32,
         position: String,
+    },
+    /// `set_state: { player, state, value }` with no `zone`: a Player state (ADR-0041).
+    SetPlayerState {
+        player: String,
+        state: String,
+        value: FieldValue,
+    },
+    /// `add_state: { player, state, amount }` (ADR-0041).
+    AddPlayerState {
+        player: String,
+        state: String,
+        amount: i64,
     },
     If {
         condition: ConditionDraft,

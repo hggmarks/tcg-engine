@@ -103,6 +103,7 @@ impl fmt::Display for CatalogErrorKind {
                     ReferenceTarget::InstanceState => "instance state",
                     ReferenceTarget::Param => "param",
                     ReferenceTarget::FieldOrInstanceState => "field or instance state",
+                    ReferenceTarget::PlayerState => "player state",
                 };
                 write!(f, "no {target} has the id `{id}`")
             }

@@ -119,6 +119,7 @@ fn base() -> RulesetDraft {
                 effects: false,
             },
         ],
+        player_state: vec![],
         inputs: vec![],
         setup: vec![],
         actions: vec![],

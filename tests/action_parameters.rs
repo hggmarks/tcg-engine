@@ -50,6 +50,7 @@ fn draft_with_play_creature(count: &str) -> RulesetDraft {
             instance_state: vec![bool_state("tapped"), bool_state("recently_played")],
             effects: false,
         }],
+        player_state: vec![],
         inputs: vec![],
         setup: vec![],
         actions: vec![],

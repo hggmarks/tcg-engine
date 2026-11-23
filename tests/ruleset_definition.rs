@@ -134,6 +134,7 @@ fn small_ruleset_draft() -> RulesetDraft {
             ),
             card_type("mana", vec![], vec![tapped()]),
         ],
+        player_state: vec![],
         inputs: vec![
             input("leader", &["leader"], 1, None, "leader_zone"),
             input("main_deck", &["creature"], 50, Some(4), "deck"),
@@ -161,6 +162,7 @@ fn draft_with_card_types(card_types: Vec<CardTypeDraft>) -> RulesetDraft {
         },
         zones: vec![],
         card_types,
+        player_state: vec![],
         inputs: vec![],
         setup: vec![],
         actions: vec![],
@@ -600,6 +602,7 @@ fn ids_may_repeat_across_lists() {
                 vec![tapped()],
             ),
         ],
+        player_state: vec![],
         inputs: vec![
             input("mana_deck", &["mana"], 10, None, "mana_deck"),
             input("leader", &["leader"], 1, None, "mana_deck"),

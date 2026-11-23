@@ -13,8 +13,11 @@ use super::action::Rejection;
 use super::arguments::BoundCards;
 use super::creation::DeclarativeRuleset;
 use super::modifiers;
-use super::state::{CardInstanceId, GameState};
-use crate::ruleset_definition::{CardValue, Expression, FieldValue};
+use super::state::{ApplyError, CardInstanceId, GameState};
+use crate::player::PlayerId;
+use crate::ruleset_definition::{
+    CardValue, Expression, FieldValue, ParamName, PlayerRef, PlayerRefSelector, PlayerTarget,
+};
 
 /// Which value a ref reads.
 #[derive(Debug, Clone, Copy)]
@@ -72,6 +75,7 @@ fn evaluate(
             let card = bound.card(reference.param())?;
             read_in(ruleset, state, card, reference.value(), mode)
         }
+        Expression::PlayerValue(reference) => read_player_state(state, bound, reference),
         Expression::Eq(left, right) => {
             let left = evaluate(ruleset, state, bound, left, mode)?;
             let right = evaluate(ruleset, state, bound, right, mode)?;
@@ -103,6 +107,89 @@ fn evaluate(
                 .and_then(|instance| ruleset.catalog().card(instance.definition()))
                 .ok_or(Rejection::CardDataMismatch { card })?;
             Ok(FieldValue::Bool(definition.card_type() == card_type))
+        }
+    }
+}
+
+/// The Player a selector names, for an expression that reads against `bound` (ADR-0041): `active`
+/// is the Active Player; `controller` is the owner of `self`; `opponent` is the opponent of the
+/// acting Player in an action and of the owner of `self` in a Card Effect.
+fn selected_player(
+    state: &GameState,
+    bound: &BoundCards,
+    selector: Selected,
+) -> Result<PlayerId, Rejection> {
+    let controller = || -> Result<PlayerId, Rejection> {
+        let card = bound.card(&ParamName::new("self"))?;
+        state
+            .card(card)
+            .map(|instance| instance.owner())
+            .ok_or(Rejection::CardDataMismatch { card })
+    };
+    match selector {
+        Selected::Active => Ok(state.active_player()),
+        Selected::Controller => controller(),
+        Selected::Opponent => {
+            let of = match bound.acting() {
+                Some(acting) => acting,
+                None => controller()?,
+            };
+            state
+                .opponent_of(of)
+                .ok_or(Rejection::EventRejected(ApplyError::UnknownPlayer {
+                    player: of,
+                }))
+        }
+    }
+}
+
+/// A selector of a Player that is one Player.
+#[derive(Debug, Clone, Copy)]
+enum Selected {
+    Active,
+    Controller,
+    Opponent,
+}
+
+/// The value of the Player state a Player ref reads. A Judged ref belongs to a win condition,
+/// which has no Judged Player here: an internal inconsistency.
+fn read_player_state(
+    state: &GameState,
+    bound: &BoundCards,
+    reference: &PlayerRef,
+) -> Result<FieldValue, Rejection> {
+    let selected = match reference.selector() {
+        PlayerRefSelector::Active => Selected::Active,
+        PlayerRefSelector::Controller => Selected::Controller,
+        PlayerRefSelector::Opponent => Selected::Opponent,
+        PlayerRefSelector::Judged => return Err(Rejection::ExpressionTypeMismatch),
+    };
+    let player = selected_player(state, bound, selected)?;
+    state
+        .player_state_value(player, reference.state())
+        .cloned()
+        .ok_or_else(|| {
+            Rejection::EventRejected(ApplyError::UnknownPlayerState {
+                player,
+                state: reference.state().clone(),
+            })
+        })
+}
+
+/// The Players a Player-state write targets, in seat order for `each` (ADR-0041).
+pub(super) fn target_players(
+    state: &GameState,
+    bound: &BoundCards,
+    target: PlayerTarget,
+) -> Result<Vec<PlayerId>, Rejection> {
+    match target {
+        PlayerTarget::Each => Ok(state.player_order().players().to_vec()),
+        PlayerTarget::Active => selected_player(state, bound, Selected::Active).map(|p| vec![p]),
+        PlayerTarget::Controller => {
+            selected_player(state, bound, Selected::Controller).map(|p| vec![p])
+        }
+        PlayerTarget::Opponent => {
+            selected_player(state, bound, Selected::Opponent).map(|p| vec![p])
         }
     }
 }

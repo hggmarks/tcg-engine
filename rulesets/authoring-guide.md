@@ -4,7 +4,7 @@ How to write a ruleset, its card catalog and a deck list. This is a how-to; [for
 
 ## The three files and the load order
 
-- The **ruleset** (`*.yaml`) declares zones, card types, deck inputs, setup, turn, actions and win conditions.
+- The **ruleset** (`*.yaml`) declares zones, card types, Player state, deck inputs, setup, turn, actions and win conditions.
 - The **card catalog** lists the cards. It names the ruleset it is written for.
 - A **deck list** says which cards fill each deck input of one Player.
 
@@ -12,7 +12,7 @@ They load in this order, each one checked against the one before: `load_ruleset_
 
 ## 1. The ruleset
 
-Start with the structure: `meta`, `parameters`, `zones`, `card_types` and `inputs`. Then add `setup`, `actions`, `turn` and `win_conditions`. The loader first reads the whole file for syntax (unknown keys, forbidden YAML features, values of the wrong type). The engine then validates the meaning section by section in that order, so a semantic error in an early section hides one in a later section.
+Start with the structure: `meta`, `parameters`, `zones`, `card_types` and `inputs` (and `player_state`, if Players hold values of their own: see below). Then add `setup`, `actions`, `turn` and `win_conditions`. The loader first reads the whole file for syntax (unknown keys, forbidden YAML features, values of the wrong type). The engine then validates the meaning section by section in that order, so a semantic error in an early section hides one in a later section.
 
 <!-- guide-example: ruleset -->
 ```yaml
@@ -32,6 +32,9 @@ card_types:
     instance_state: []
     effects: false
 
+player_state:
+  - { id: life_points, type: int, init: 20 }
+
 inputs:
   - { id: main_deck, card_types: [creature], size: 6, max_copies: 2, zone: deck }
 
@@ -48,11 +51,14 @@ turn:
           else:
             - draw: { player: active, from: deck, to: hand, count: 1 }
     - id: main
-      actions: [pass_turn]
+      actions: [smite, pass_turn]
     - id: end
       automatic: []
 
 actions:
+  - id: smite
+    effects:
+      - add_state: { player: opponent, state: life_points, amount: -3 }
   - id: pass_turn
     effects: [ { end_turn: {} } ]
 
@@ -62,6 +68,7 @@ win_conditions:
     loser: owner
 ```
 
+- `player_state` declares values every Player holds, each `{ id, type: int | bool, init }` (ADR-0041). The engine names none, so Life Points are the ruleset's: here `life_points` starts at 20 for each Player. An action changes it with `set_state` or `add_state` and a `player:` in place of `card:` (`smite` takes 3 from the opponent: a negative `amount` subtracts, and `each`, `active` and `opponent` are the selectors of an action; a Card Effect also has `controller`), and an expression reads it as `{ ref: player.life_points, player: opponent }`, for a `where` for example. Each change is the Event `PlayerStateChanged`, and `player` is a reserved id, so no param or card type is named so. See `formats.md`, Player state.
 - Every zone says who sees it (`hidden`, `owner` or `public`) and whether its order matters. The zone a `shuffle` shuffles and the `from` of a `draw` must be `ordered` (ADR-0013); the `to` of a `draw` need not be.
 - `inputs` say what each Player brings. Each one fills the zone it names when the Game is created, before `setup` runs.
 - The turn has exactly one phase with `actions`: the Game waits there for the Active Player (or, while a Response Window is open, for the Player with Priority, ADR-0037), and `end_turn` is the only way out. `pass_turn` is a plain action whose effect is `end_turn`. The phase must list at least one action that ends the Turn (its effects end with a top-level `end_turn`, and `end_turn` is allowed nowhere else in an action, never inside an `if`), and every action you declare must be listed by it, or by the `actions` of a Response Window (ADR-0027, ADR-0037).

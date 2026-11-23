@@ -14,7 +14,9 @@ use crate::declarative::stack::{StackItem, StackSource};
 use crate::declarative::state::CardInstanceId;
 use crate::declarative::state::{GameState, TerminalOutcome};
 use crate::player::{PlayerId, PlayerOrder};
-use crate::ruleset_definition::{ActionId, FieldValue, ParamName, PhaseId, StateName, ZoneId};
+use crate::ruleset_definition::{
+    ActionId, FieldValue, ParamName, PhaseId, PlayerStateId, StateName, ZoneId,
+};
 use crate::turn::TurnNumber;
 
 /// A GameState as one Viewer sees it: the facts every Viewer sees, each zone as the Viewer's
@@ -29,6 +31,8 @@ pub struct ObservedGameState {
     outcome: Option<TerminalOutcome>,
     pending: Option<ObservedPendingDecision>,
     stack: Vec<ObservedStackItem>,
+    /// The Player state of every Player, which is fully public (ADR-0041).
+    player_state: Vec<(PlayerId, Vec<(PlayerStateId, FieldValue)>)>,
     zones: Vec<(PlayerId, Vec<ObservedZone>)>,
     cards: Vec<VisibleCard>,
 }
@@ -196,6 +200,15 @@ impl ObservedGameState {
     /// The Terminal Outcome; `None` while the Game is on.
     pub fn outcome(&self) -> Option<&TerminalOutcome> {
         self.outcome.as_ref()
+    }
+
+    /// The Player state of `player` in the order of the ruleset's Player-State Schemas; `None` for
+    /// a Player not in the Game. Every Viewer sees all of it (ADR-0041).
+    pub fn player_state(&self, player: PlayerId) -> Option<&[(PlayerStateId, FieldValue)]> {
+        self.player_state
+            .iter()
+            .find(|(owner, _)| *owner == player)
+            .map(|(_, values)| values.as_slice())
     }
 
     /// The zones of `player` in declared order; `None` for a Player not in the Game.
@@ -414,6 +427,28 @@ impl ObservedGameState {
                     return Err(misfit);
                 }
                 entry.clone_from(value);
+                Ok(())
+            }
+            ObservedEvent::PlayerStateChanged {
+                player,
+                state,
+                value,
+            } => {
+                let values = self
+                    .player_state
+                    .iter_mut()
+                    .find(|(owner, _)| owner == player)
+                    .map(|(_, values)| values)
+                    .ok_or(misfit)?;
+                let current = values
+                    .iter_mut()
+                    .find(|(name, _)| name == state)
+                    .map(|(_, current)| current)
+                    .ok_or(misfit)?;
+                if current.field_type() != value.field_type() {
+                    return Err(misfit);
+                }
+                current.clone_from(value);
                 Ok(())
             }
             ObservedEvent::TurnBegan { player, turn } => {
@@ -763,6 +798,17 @@ pub(super) fn observe(
                 kind: pending.kind(),
             }),
         stack,
+        player_state: state
+            .player_order()
+            .players()
+            .iter()
+            .map(|&player| {
+                (
+                    player,
+                    state.player_state(player).unwrap_or_default().to_vec(),
+                )
+            })
+            .collect(),
         zones,
         cards,
     })

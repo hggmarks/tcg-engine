@@ -259,6 +259,11 @@ fn describe(game: &SelfPlayGame, event: &Event) -> String {
         Event::ZoneShuffled { player, zone, .. } => {
             format!("Player {}'s {} is shuffled", player.0, zone.as_str())
         }
+        Event::PlayerStateChanged {
+            player,
+            state,
+            value,
+        } => format!("Player {} has {} = {value:?}", player.0, state.as_str()),
         Event::TurnBegan { player, turn } => {
             format!("Turn {} begins for Player {}", turn.get(), player.0)
         }

@@ -375,7 +375,9 @@ fn relabel_ids(event: &mut Event, map: &impl Fn(CardInstanceId) -> CardInstanceI
                 *card = map(*card);
             }
         }
+        // Player state names no card (ADR-0041).
         Event::CardCreated { .. }
+        | Event::PlayerStateChanged { .. }
         | Event::TurnBegan { .. }
         | Event::PhaseBegan { .. }
         | Event::DrawFromEmptyZone { .. }

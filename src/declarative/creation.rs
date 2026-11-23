@@ -11,7 +11,7 @@ use std::fmt;
 
 use super::action::Rejection;
 use super::event::Event;
-use super::execution::Execution;
+use super::execution::{Execution, StepError};
 use super::game_end;
 use super::state::{ApplyError, CardInstanceId, GameState};
 use super::turn_cycle;
@@ -21,8 +21,8 @@ use crate::player::{PlayerId, PlayerOrder};
 use crate::random::{RandomState, Seed};
 use crate::ruleset::{EventTrace, Transition};
 use crate::ruleset_definition::{
-    FieldValue, Initializer, RulesetDefinition, RulesetId, RulesetVersion, SetupStep, StateName,
-    ZoneId,
+    FieldValue, Initializer, PlayerStateId, RulesetDefinition, RulesetId, RulesetVersion,
+    SetupStep, StateName, ZoneId,
 };
 use crate::turn::TurnNumber;
 
@@ -68,6 +68,12 @@ pub enum GameCreationError {
         player: PlayerId,
         zone: ZoneId,
     },
+    /// A setup step or a step of the first Turn's start added to the int Player state `state` of
+    /// `player` past what an int can hold (ADR-0041).
+    PlayerStateOverflow {
+        player: PlayerId,
+        state: PlayerStateId,
+    },
     /// An Event creation generated was rejected: an internal inconsistency, never expected.
     EventRejected(ApplyError),
     /// Evaluating a win condition at the end of creation failed: the GameState or the catalog does
@@ -107,6 +113,12 @@ impl fmt::Display for GameCreationError {
                 zone.as_str(),
                 player.0
             ),
+            Self::PlayerStateOverflow { player, state } => write!(
+                f,
+                "adding to the state `{}` of Player {} overflows",
+                state.as_str(),
+                player.0
+            ),
             Self::EventRejected(error) => write!(f, "an Event was rejected: {error}"),
             Self::WinConditionRejected(rejection) => {
                 write!(f, "a win condition could not be evaluated: {rejection}")
@@ -116,6 +128,17 @@ impl fmt::Display for GameCreationError {
 }
 
 impl std::error::Error for GameCreationError {}
+
+impl From<StepError> for GameCreationError {
+    fn from(error: StepError) -> Self {
+        match error {
+            StepError::Apply(error) => GameCreationError::EventRejected(error),
+            StepError::PlayerStateOverflow { player, state } => {
+                GameCreationError::PlayerStateOverflow { player, state }
+            }
+        }
+    }
+}
 
 impl DeclarativeRuleset {
     /// Builds the Ruleset from a validated definition and a catalog. A catalog for another ruleset
@@ -182,6 +205,7 @@ impl DeclarativeRuleset {
             order.clone(),
             active_player,
             &zone_ids,
+            definition.player_state(),
             RandomState::from_seed(seed),
         );
 
@@ -192,7 +216,7 @@ impl DeclarativeRuleset {
         self.run_setup(&mut execution)?;
         if definition.turn().is_some() {
             turn_cycle::begin_turn(definition, &mut execution, active_player, TurnNumber::FIRST)
-                .map_err(GameCreationError::EventRejected)?;
+                .map_err(GameCreationError::from)?;
         }
         game_end::end_game_if_lost(self, &mut execution).map_err(|rejection| match rejection {
             Rejection::EventRejected(error) => GameCreationError::EventRejected(error),
@@ -297,6 +321,28 @@ impl DeclarativeRuleset {
                                 random_state,
                             })
                             .map_err(rejected)?;
+                    }
+                }
+                SetupStep::SetPlayerState {
+                    player,
+                    state,
+                    value,
+                } => {
+                    for player in execution.select(*player) {
+                        execution
+                            .set_player_state(player, state, value)
+                            .map_err(rejected)?;
+                    }
+                }
+                SetupStep::AddPlayerState {
+                    player,
+                    state,
+                    amount,
+                } => {
+                    for player in execution.select(*player) {
+                        execution
+                            .add_player_state(player, state, *amount)
+                            .map_err(GameCreationError::from)?;
                     }
                 }
                 SetupStep::Draw {
