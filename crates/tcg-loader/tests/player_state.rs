@@ -10,7 +10,7 @@
 
 use tcg_engine::declarative::{
     Action, ApplyError, Argument, CardInstanceId, DeclarativeRuleset, Event, GameCreation,
-    GameState, Rejection,
+    GameState, Loss, Rejection,
 };
 use tcg_engine::definition_path::DefinitionPath;
 use tcg_engine::player::PlayerId;
@@ -18,7 +18,7 @@ use tcg_engine::random::Seed;
 use tcg_engine::ruleset::{LegalActions, Ruleset, Transition};
 use tcg_engine::ruleset_definition::{
     ActionId, DefinitionError, DefinitionErrorKind, FieldType, FieldTypeDraft, FieldValue,
-    ParamName, PlayerStateId, ReferenceTarget, ZoneId,
+    ParamName, PlayerStateId, ReferenceTarget, WinConditionId, ZoneId,
 };
 use tcg_loader::{load_card_catalog, load_deck_list, load_ruleset_definition, LoadError};
 
@@ -891,5 +891,272 @@ fn a_where_reading_player_state_decides_whether_an_action_is_legal() {
             param: ParamName::new("card"),
             card: TITHE_0,
         })
+    );
+}
+
+// ---- AC3: win conditions on Player state (ticket #96, step 2)
+//
+// A Player-state win condition is a `when` expression whose refs are Player Refs without a
+// `player:` key: it holds for a Player when it is true reading that Player's state, in the GameState
+// the transition produced. The tests edit the fixture: a smaller `init`, and a `win_conditions`
+// section appended to the text.
+
+/// One win condition entry: `lte: [{ ref: player.life_points }, threshold]`, loser `owner`.
+fn life_condition(id: &str, threshold: i64) -> String {
+    format!(
+        "  - id: {id}\n    when: {{ lte: [{{ ref: player.life_points }}, {threshold}] }}\n    loser: owner\n"
+    )
+}
+
+/// The fixture with these win conditions appended, and every Player starting at `init` life.
+fn with_win_conditions(init: i64, conditions: &[String]) -> String {
+    let smaller = edit(
+        RULESET,
+        "{ id: life_points, type: int, init: 4000 }",
+        &format!("{{ id: life_points, type: int, init: {init} }}"),
+    );
+    format!("{smaller}\nwin_conditions:\n{}", conditions.concat())
+}
+
+/// A Game of the fixture whose Players start at `init` life and lose at 0 or less (`life_out`).
+fn life_out_game(init: i64) -> (DeclarativeRuleset, GameCreation) {
+    let ruleset = ruleset_of(&with_win_conditions(init, &[life_condition("life_out", 0)]));
+    let creation = created(&ruleset);
+    (ruleset, creation)
+}
+
+fn loss(player: u32, reason: &str) -> Loss {
+    Loss {
+        player: p(player),
+        reason: WinConditionId::new(reason),
+    }
+}
+
+#[test]
+fn a_player_state_win_condition_ends_the_game_when_a_field_reaches_its_threshold() {
+    let (ruleset, creation) = life_out_game(600);
+    let start = creation.opening.state;
+    assert!(start.outcome().is_none());
+
+    // One transition short of 0: seat 1 has 300 left, and the Game goes on.
+    let short = take(&ruleset, &start, &act(0, "drain", &[]));
+    assert_eq!(
+        short.trace.events().to_vec(),
+        vec![changed(1, "life_points", int(300))]
+    );
+    assert!(short.state.outcome().is_none());
+
+    // The transition that reaches exactly 0 ends it: `GameEnded` is its last Event, and the Player
+    // whose state was read is the loser.
+    let last = take(&ruleset, &short.state, &act(0, "drain", &[]));
+    assert_eq!(
+        last.trace.events().to_vec(),
+        vec![
+            changed(1, "life_points", int(0)),
+            Event::GameEnded {
+                losses: vec![loss(1, "life_out")],
+            },
+        ]
+    );
+    let outcome = last.state.outcome().expect("the Game has ended");
+    assert_eq!(outcome.winners(), [p(0)].as_slice());
+    assert_eq!(outcome.losses(), [loss(1, "life_out")].as_slice());
+    assert!(!outcome.is_drawn_game());
+
+    // No Action is accepted afterwards.
+    assert_eq!(
+        ruleset.transition(&last.state, &act(0, "drain", &[])),
+        Err(Rejection::GameOver)
+    );
+}
+
+#[test]
+fn a_player_state_below_its_threshold_also_loses() {
+    // 200 life, a drain of 300: from above 0 to -100.
+    let (ruleset, creation) = life_out_game(200);
+    let ended = take(&ruleset, &creation.opening.state, &act(0, "drain", &[]));
+    assert_eq!(
+        ended.trace.events().to_vec(),
+        vec![
+            changed(1, "life_points", int(-100)),
+            Event::GameEnded {
+                losses: vec![loss(1, "life_out")],
+            },
+        ]
+    );
+    let outcome = ended.state.outcome().expect("the Game has ended");
+    assert_eq!(outcome.winners(), [p(0)].as_slice());
+}
+
+#[test]
+fn both_players_reaching_the_threshold_in_one_transition_is_a_drawn_game() {
+    let (ruleset, creation) = life_out_game(100);
+    // Seat 1 is the Active Player, and the losses are still in seat order.
+    let passed = take(&ruleset, &creation.opening.state, &act(0, "pass_turn", &[]));
+    assert!(passed.state.outcome().is_none());
+    assert_eq!(passed.state.active_player(), p(1));
+
+    let drawn = take(&ruleset, &passed.state, &act(1, "drain_all", &[]));
+    assert_eq!(
+        drawn.trace.events().to_vec(),
+        vec![
+            changed(0, "life_points", int(0)),
+            changed(1, "life_points", int(0)),
+            Event::GameEnded {
+                losses: vec![loss(0, "life_out"), loss(1, "life_out")],
+            },
+        ]
+    );
+    let outcome = drawn.state.outcome().expect("the Game has ended");
+    assert!(outcome.is_drawn_game());
+    assert!(outcome.winners().is_empty());
+}
+
+#[test]
+fn a_player_state_win_condition_is_judged_at_the_end_of_creation() {
+    // Both Players start at 0: the Opening Position already holds the Terminal Outcome.
+    let (_, creation) = life_out_game(0);
+    let outcome = creation
+        .opening
+        .state
+        .outcome()
+        .expect("the Game ends at creation");
+    assert!(outcome.is_drawn_game());
+    assert_eq!(
+        outcome.losses(),
+        [loss(0, "life_out"), loss(1, "life_out")].as_slice()
+    );
+    assert_eq!(
+        creation.opening.trace.events().last(),
+        Some(&Event::GameEnded {
+            losses: vec![loss(0, "life_out"), loss(1, "life_out")],
+        })
+    );
+    // The Empty GameState is not judged: it is only the starting point of the fold.
+    assert!(creation.empty.outcome().is_none());
+}
+
+#[test]
+fn the_first_win_condition_in_declaration_order_is_a_players_reason() {
+    // A Player who meets both conditions in one transition gets the one declared first.
+    let early_first = with_win_conditions(
+        300,
+        &[
+            life_condition("early_out", 0),
+            life_condition("life_out", 0),
+        ],
+    );
+    let ruleset = ruleset_of(&early_first);
+    let creation = created(&ruleset);
+    let ended = take(&ruleset, &creation.opening.state, &act(0, "drain", &[]));
+    assert_eq!(
+        ended.state.outcome().expect("ended").losses(),
+        [loss(1, "early_out")].as_slice()
+    );
+
+    let late_first = with_win_conditions(
+        300,
+        &[
+            life_condition("life_out", 0),
+            life_condition("early_out", 0),
+        ],
+    );
+    let ruleset = ruleset_of(&late_first);
+    let creation = created(&ruleset);
+    let ended = take(&ruleset, &creation.opening.state, &act(0, "drain", &[]));
+    assert_eq!(
+        ended.state.outcome().expect("ended").losses(),
+        [loss(1, "life_out")].as_slice()
+    );
+}
+
+#[test]
+fn applying_the_trace_of_a_player_state_loss_reproduces_the_outcome() {
+    let (ruleset, creation) = life_out_game(100);
+    let mut state = creation.opening.state.clone();
+    let mut events = creation.opening.trace.events().to_vec();
+    for action in [act(0, "pass_turn", &[]), act(1, "drain_all", &[])] {
+        let next = take(&ruleset, &state, &action);
+        events.extend(next.trace.events().iter().cloned());
+        assert_eq!(
+            state.apply_trace(next.trace.events()),
+            Ok(next.state.clone())
+        );
+        state = next.state;
+    }
+    // The whole record folded over the Empty GameState gives the final state, Terminal Outcome
+    // included.
+    let folded = creation
+        .empty
+        .apply_trace(&events)
+        .expect("the record applies");
+    assert_eq!(folded, state);
+    assert_eq!(folded.outcome(), state.outcome());
+    assert!(folded.outcome().expect("ended").is_drawn_game());
+    // Nothing applies after `GameEnded`.
+    assert_eq!(
+        state.clone().apply(&changed(0, "life_points", int(5))),
+        Err(ApplyError::GameAlreadyEnded)
+    );
+}
+
+#[test]
+fn a_player_selector_in_a_win_condition_is_a_load_error() {
+    let yaml = edit(
+        &with_win_conditions(4000, &[life_condition("life_out", 0)]),
+        "{ ref: player.life_points }, 0",
+        "{ ref: player.life_points, player: active }, 0",
+    );
+    assert_eq!(
+        definition_error(&yaml),
+        DefinitionError {
+            path: DefinitionPath::root()
+                .key("win_conditions")
+                .id("life_out")
+                .key("when")
+                .key("lte")
+                .index(0),
+            kind: DefinitionErrorKind::PlayerSelectorInWinCondition,
+        }
+    );
+}
+
+#[test]
+fn a_win_condition_mixing_card_and_player_refs_is_a_load_error() {
+    let mixed = "  - id: life_out\n    when: { and: [{ lte: [{ ref: player.life_points }, 0] }, { lte: [{ ref: unit.power }, 0] }] }\n    loser: owner\n";
+    let yaml = with_win_conditions(4000, &[mixed.to_string()]);
+    assert_eq!(
+        definition_error(&yaml),
+        DefinitionError {
+            path: DefinitionPath::root()
+                .key("win_conditions")
+                .id("life_out")
+                .key("when"),
+            kind: DefinitionErrorKind::MixedWinConditionSubject,
+        }
+    );
+}
+
+#[test]
+fn a_win_condition_on_an_undeclared_player_state_is_a_load_error() {
+    let yaml = edit(
+        &with_win_conditions(4000, &[life_condition("life_out", 0)]),
+        "{ ref: player.life_points }, 0",
+        "{ ref: player.mana }, 0",
+    );
+    assert_eq!(
+        definition_error(&yaml),
+        DefinitionError {
+            path: DefinitionPath::root()
+                .key("win_conditions")
+                .id("life_out")
+                .key("when")
+                .key("lte")
+                .index(0),
+            kind: DefinitionErrorKind::DanglingReference {
+                target: ReferenceTarget::PlayerState,
+                id: "mana".to_string(),
+            },
+        }
     );
 }
