@@ -1,9 +1,9 @@
-//! Ending the Game: evaluating the win conditions (ADR-0014, ADR-0016).
+//! Ending the Game: evaluating the win conditions (ADR-0014, ADR-0016, ADR-0041).
 //!
 //! The win conditions are evaluated once at the end of every accepted transition and of Game
 //! creation, never one Event at a time: so a loss that happens together with another is not turned
 //! into a win for whoever lost second. `draw_from_empty` reads the Events of that transition; an
-//! expression reads the GameState the transition produced.
+//! expression, of a card type or of Player state, reads the GameState the transition produced.
 
 use super::action::Rejection;
 use super::arguments::BoundCards;
@@ -65,6 +65,14 @@ fn loses(
                 )
             }))
         }
+        // The Owner of a Player-state condition is the Player whose state it reads: it holds for
+        // the judged Player when it is true on their own state (ADR-0041).
+        (WinConditionWhen::PlayerState(condition), Loser::Owner) => expression::holds(
+            ruleset,
+            &execution.state,
+            &BoundCards::judging(player),
+            condition,
+        ),
         // The Owner of an expression is the owner of a card instance of the Subject, in any zone,
         // that makes it true.
         (WinConditionWhen::Expression { subject, condition }, Loser::Owner) => {

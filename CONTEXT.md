@@ -301,7 +301,7 @@ Any Player other than the acting Player. With two Players it is the other one; t
 A literal scalar, a Value Ref *(Amended by ADR-0041: or a Player Ref)*, or one operator over Expressions: `eq: [a, b]` (same type), `gte: [a, b]` and `lte: [a, b]` (ints), `and: [e, ...]` (bools; `and: []` holds) and `is_card_type: [<card ref>, <card type id>]`. The types are the Field Types and the operators give bool; a Card Ref is not a value. Checked at load, depth-first and left to right.
 
 **Subject**:
-The card type an expression Win Condition is about: the first name of its Refs (`leader` in `leader.current_life`). The expression must read exactly one.
+The card type an expression Win Condition is about: the first name of its Refs (`leader` in `leader.current_life`). The expression must read exactly one *(a Player-state condition has none: it reads no card)*.
 
 **Add State**:
 The Action Effect `add_state: { card, state, amount }`. It adds the integer literal `amount` to an int instance state with checked arithmetic: an overflow in either direction is a State Overflow Rejection, and a sum equal to the current value emits no Event.
@@ -613,7 +613,7 @@ The `ObservationError` for Events or a GameState that do not fit the Observer or
 ## Ending the Game
 
 **Win Condition**:
-A declared rule `{ id, when, loser }` of the ruleset's `win_conditions`. When its `when` holds for a Player, that Player is a loser of the Game, and the id is the reason. A `when` is `draw_from_empty: <zone>` (holds for a Player when a draw of theirs in the transition found the zone empty) or an Expression about one Subject (holds for a Player when some card instance of the Subject owned by them, in any zone, in `state.cards()` order, makes it true in the GameState the transition produced). The only `loser` is `owner`: the Player the condition holds for, for an expression the owner of that card instance. Absent means the Game never ends.
+A declared rule `{ id, when, loser }` of the ruleset's `win_conditions`. When its `when` holds for a Player, that Player is a loser of the Game, and the id is the reason. A `when` is `draw_from_empty: <zone>` (holds for a Player when a draw of theirs in the transition found the zone empty) or an Expression about one Subject (holds for a Player when some card instance of the Subject owned by them, in any zone, in `state.cards()` order, makes it true in the GameState the transition produced) *(Amended by ADR-0041: or a Player-state condition, an Expression whose refs are Player Refs without a `player:` key, which holds for a Player when it is true reading that Player's own Player state in the GameState the transition produced; a `player:` key there is `PlayerSelectorInWinCondition`, and mixing a Subject with Player state is `MixedWinConditionSubject`)*. The only `loser` is `owner`: the Player the condition holds for, for an expression the owner of that card instance *(for a Player-state condition, the Player whose state is read)*. Absent means the Game never ends.
 
 **Loss**:
 A Player who lost and the Win Condition id that made them lose. A Player has at most one Loss: for each Player in seat order, the first Win Condition in declaration order that holds for them is their reason.

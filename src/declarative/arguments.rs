@@ -28,14 +28,26 @@ pub(super) struct BoundCards {
     /// The acting Player of an action, whose opponent `opponent` is. `None` in a Card Effect, where
     /// `opponent` is the opponent of the owner of `self`.
     acting: Option<PlayerId>,
+    /// The Player a Player-state win condition is judged for: what a Judged Player Ref reads.
+    judged: Option<PlayerId>,
 }
 
 impl BoundCards {
+    /// No card, the Player `player` being judged by a Player-state win condition (ADR-0041).
+    pub(super) fn judging(player: PlayerId) -> Self {
+        Self {
+            cards: Vec::new(),
+            acting: None,
+            judged: Some(player),
+        }
+    }
+
     /// One card bound to one name, in a Card Effect (no acting Player).
     pub(super) fn of(param: ParamName, card: CardInstanceId) -> Self {
         Self {
             cards: vec![(param, card)],
             acting: None,
+            judged: None,
         }
     }
 
@@ -47,6 +59,7 @@ impl BoundCards {
                 .map(|bound| (bound.param.clone(), bound.card))
                 .collect(),
             acting: Some(controller),
+            judged: None,
         }
     }
 
@@ -57,7 +70,13 @@ impl BoundCards {
         Self {
             cards,
             acting: self.acting,
+            judged: self.judged,
         }
+    }
+
+    /// The Player being judged, if this is a win condition's.
+    pub(super) fn judged(&self) -> Option<PlayerId> {
+        self.judged
     }
 
     /// The Player acting, if this is an action's.
@@ -109,6 +128,7 @@ pub(super) fn bind(
     let mut bound = BoundCards {
         cards: Vec::new(),
         acting: Some(actor),
+        judged: None,
     };
     for (param, argument) in params.iter().zip(arguments) {
         let Argument::Card(card) = *argument;
@@ -273,6 +293,7 @@ pub(super) fn fillings(
         BoundCards {
             cards: Vec::new(),
             acting: Some(actor),
+            judged: None,
         },
         Vec::new(),
     )];

@@ -127,6 +127,9 @@ fn selected_player(
             .ok_or(Rejection::CardDataMismatch { card })
     };
     match selector {
+        // Only a Player-state win condition judges a Player; a Judged ref anywhere else has none:
+        // an internal inconsistency.
+        Selected::Judged => bound.judged().ok_or(Rejection::ExpressionTypeMismatch),
         Selected::Active => Ok(state.active_player()),
         Selected::Controller => controller(),
         Selected::Opponent => {
@@ -146,13 +149,13 @@ fn selected_player(
 /// A selector of a Player that is one Player.
 #[derive(Debug, Clone, Copy)]
 enum Selected {
+    Judged,
     Active,
     Controller,
     Opponent,
 }
 
-/// The value of the Player state a Player ref reads. A Judged ref belongs to a win condition,
-/// which has no Judged Player here: an internal inconsistency.
+/// The value of the Player state a Player ref reads.
 fn read_player_state(
     state: &GameState,
     bound: &BoundCards,
@@ -162,7 +165,7 @@ fn read_player_state(
         PlayerRefSelector::Active => Selected::Active,
         PlayerRefSelector::Controller => Selected::Controller,
         PlayerRefSelector::Opponent => Selected::Opponent,
-        PlayerRefSelector::Judged => return Err(Rejection::ExpressionTypeMismatch),
+        PlayerRefSelector::Judged => Selected::Judged,
     };
     let player = selected_player(state, bound, selected)?;
     state

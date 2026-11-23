@@ -475,7 +475,7 @@ fn check_player_ref(
     refs: &Refs<'_>,
     at: DefinitionPath,
 ) -> Result<(Expression, FieldType), DefinitionError> {
-    let (Some(name), true) = (parsed.name, refs.scope != Scope::WinCondition) else {
+    let Some(name) = parsed.name else {
         return fail(
             at,
             DefinitionErrorKind::InvalidReference {
@@ -484,6 +484,19 @@ fn check_player_ref(
         );
     };
     let schema = find_player_state(refs.player_state, name, at.clone())?;
+    // A win condition reads the Player it judges: no selector, and the ref is Judged.
+    if refs.scope == Scope::WinCondition {
+        if selector.is_some() {
+            return fail(at, DefinitionErrorKind::PlayerSelectorInWinCondition);
+        }
+        return Ok((
+            Expression::PlayerValue(PlayerRef {
+                selector: PlayerRefSelector::Judged,
+                state: schema.id.clone(),
+            }),
+            schema.state_type,
+        ));
+    }
     let Some(selector) = selector else {
         return fail(at, DefinitionErrorKind::MissingPlayerSelector);
     };
@@ -561,6 +574,18 @@ fn check_ints(
         }
     }
     Ok((left, right))
+}
+
+/// Whether an expression reads Player state anywhere.
+pub(super) fn reads_player_state(expression: &Expression) -> bool {
+    match expression {
+        Expression::PlayerValue(_) => true,
+        Expression::Literal(_) | Expression::Value(_) | Expression::IsCardType { .. } => false,
+        Expression::Eq(left, right)
+        | Expression::Gte(left, right)
+        | Expression::Lte(left, right) => reads_player_state(left) || reads_player_state(right),
+        Expression::And(operands) => operands.iter().any(reads_player_state),
+    }
 }
 
 /// The params an expression reads, each once, in the order a depth-first, left-to-right walk first

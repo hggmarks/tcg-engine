@@ -237,6 +237,13 @@ pub enum DefinitionErrorKind {
     /// `actions[x].params[card].where.eq[0]`: outside a win condition a Player ref says whose
     /// state it reads (ADR-0041).
     MissingPlayerSelector,
+    /// A `player:` key on a Player Ref inside a win condition, at the ref, such as
+    /// `win_conditions[life_out].when.lte[0]`: a Player-state win condition reads the Player it
+    /// judges, so its refs have no selector (ADR-0041).
+    PlayerSelectorInWinCondition,
+    /// A win condition that reads both a card type (its Subject) and Player state, at
+    /// `win_conditions[<id>].when`: a condition is judged for one kind of thing (ADR-0041).
+    MixedWinConditionSubject,
     /// A `player: opponent` (a read or a write) in a ruleset that does not have exactly 2 Players,
     /// at the ref or the `player` key of the write: "the opponent" is defined for two Players only,
     /// and `players` is how many the ruleset has (ADR-0041).
@@ -431,6 +438,14 @@ impl fmt::Display for DefinitionErrorKind {
             Self::MissingPlayerSelector => write!(
                 f,
                 "a ref to a Player state needs the `player:` key that says whose it is"
+            ),
+            Self::PlayerSelectorInWinCondition => write!(
+                f,
+                "a win condition reads the Player it judges: its Player refs take no `player:` key"
+            ),
+            Self::MixedWinConditionSubject => write!(
+                f,
+                "a win condition reads either one card type or Player state, not both"
             ),
             Self::OpponentNeedsTwoPlayers { players } => write!(
                 f,

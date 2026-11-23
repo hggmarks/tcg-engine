@@ -11,8 +11,8 @@ use super::draft::{
 };
 use super::error::{DefinitionError, DefinitionErrorKind, ReferenceTarget};
 use super::expression::{
-    check_condition, fail, find_player_state, params_read, validate_card_ref, validate_target,
-    validate_value_ref, Refs, Scope, ScopedParam, PLAYER,
+    check_condition, fail, find_player_state, params_read, reads_player_state, validate_card_ref,
+    validate_target, validate_value_ref, Refs, Scope, ScopedParam, PLAYER,
 };
 use super::model::{
     ActionDefinition, ActionId, AutomaticStep, CardType, CardTypeId, Condition, Cost, Decider,
@@ -385,16 +385,25 @@ fn validate_win_condition(
                 false,
             );
             let condition = check_condition(draft, &refs, when_at.clone())?;
-            let subject = match params_read(&condition).as_slice() {
-                [subject] => CardTypeId::new(subject.as_str()),
-                other => {
+            let reads_players = reads_player_state(&condition);
+            match (params_read(&condition).as_slice(), reads_players) {
+                // Only Player state: judged for each Player on their own state (ADR-0041).
+                ([], true) => WinConditionWhen::PlayerState(condition),
+                // Both a Subject and Player state.
+                ([_, ..], true) => {
+                    return fail(when_at, DefinitionErrorKind::MixedWinConditionSubject)
+                }
+                ([subject], false) => WinConditionWhen::Expression {
+                    subject: CardTypeId::new(subject.as_str()),
+                    condition,
+                },
+                (other, false) => {
                     return fail(
                         when_at,
                         DefinitionErrorKind::InvalidSubjectCount { found: other.len() },
                     )
                 }
-            };
-            WinConditionWhen::Expression { subject, condition }
+            }
         }
         WinConditionWhenDraft::DrawFromEmpty { zone } => WinConditionWhen::DrawFromEmpty(
             validate_zone_reference(zone, zones, when_at.key("draw_from_empty"))?,

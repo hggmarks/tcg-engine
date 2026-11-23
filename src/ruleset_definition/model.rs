@@ -604,7 +604,8 @@ pub enum Expression {
 /// The Player a Player Ref reads (ADR-0041).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlayerRefSelector {
-    /// No `player:` key: the Player a win condition judges. Only a win condition has it.
+    /// No `player:` key: the Player a win condition judges. Only a `WinConditionWhen::PlayerState`
+    /// has it.
     Judged,
     /// The Active Player.
     Active,
@@ -927,6 +928,10 @@ pub enum WinConditionWhen {
         subject: CardTypeId,
         condition: Expression,
     },
+    /// `condition` holds for a Player when it is true, reading that Player's Player state (its
+    /// Player Refs are all `PlayerRefSelector::Judged`), in the GameState the transition produced
+    /// (ADR-0041).
+    PlayerState(Expression),
 }
 
 /// Which Player loses when a win condition holds.
