@@ -12,7 +12,7 @@ The harness of ADR-0020 and ADR-0026 now also checks what each Viewer observes (
 
 **Three Invariants, after the nine.** `Invariant` gains `ObservationsStayConsistent`, `ObservationsIgnoreHiddenCards` and `ObservedActionsRoundTrip`, appended after `RejectionLeavesStateIntact` in this order. Each is checked for every Viewer (`Viewer::Player`, seats in order) at the Opening Position and after every transition, in `self_play` and in `verify_record`.
 
-- *Observations stay consistent*, `check_observed_consistency(viewer, previous, events, next)`: `previous.apply_events(events)` must equal `next`. The detail names the Observed Event that does not apply, or the first part that differs (Turn Number, Active Player, phase, outcome *(Amended by ADR-0033: the Pending Decision, after the outcome)*, a Player's zone and its count or cards, a Visible Card and its owner, definition or state).
+- *Observations stay consistent*, `check_observed_consistency(viewer, previous, events, next)`: `previous.apply_events(events)` must equal `next`. The detail names the Observed Event that does not apply, or the first part that differs (Turn Number, Active Player, phase, outcome *(Amended by ADR-0033: the Pending Decision, after the outcome)*, *(Amended by ADR-0041: a Player's Player state, naming the state and both values, before the zones)* a Player's zone and its count or cards, a Visible Card and its owner, definition or state).
 - *Observations ignore hidden cards*, `check_hidden_cards_ignored(observed, relabelled)`: the real Observed Step and the Observed Step of the Relabelled Game must be equal. The detail names the first part that differs, in this order: the Observed Event at index i, the Taken Action, a part of the Observed GameState, a Derived Read (handle and field).
 - *Observed Actions round-trip*, `check_observed_actions(ruleset, observer, state, legal)`: `observed_legal_actions` translated back with `translate_action` must equal `legal` filtered to the Viewer's Player, in the same order and of the same length; the detail names the first index that differs. An `ObservationError` from either call is the violation. `legal` is the harness's own listing of the GameState (the one the policy draws from next; for an ended GameState, `legal_actions`, which is empty), listed once and reused.
 
@@ -58,3 +58,5 @@ Observing every Viewer at every step costs about 8 times the nine engine checks,
 **Conflicts.** ADR-0020's "at most one violation per Invariant" becomes per (Invariant, Viewer), and its `Checks` gain `EngineOnly` (marked there). ADR-0026's "with checks on, self-play lists through it" also holds for `EngineOnly` (marked there). ADR-0028's Known limit is answered above (marked there). No other ADR changes.
 
 **Status**: accepted
+
+Amended by ADR-0041: the Relabelling leaves `PlayerStateChanged` unchanged, the three observation checks name a difference in Player state, and no Invariant is added (marked above and in ADR-0041).

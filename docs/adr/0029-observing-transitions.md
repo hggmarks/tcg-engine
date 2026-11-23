@@ -24,6 +24,7 @@ The second half of the Observer (ticket [24], #64, of the Observations roadmap #
 | `ZoneShuffled` | zone unseen | `UnseenZoneShuffled`: player, zone; no order |
 | `CardStateChanged` | kept | `CardStateChanged`: handle, state, value |
 | `CardStateChanged` | unseen | none |
+| `PlayerStateChanged` *(added by ADR-0041)* | | the same in full: player, state and value, always, for every Viewer |
 | `TurnBegan`, `PhaseBegan`, `DrawFromEmptyZone`, `GameEnded` | | the same, always |
 | `DecisionPending` *(added by ADR-0033)* | | `DecisionPending`: decider and kind, always; never the Paused Resolution |
 | `ItemPushed`, `ItemResolved`, `ItemFizzled` *(added by ADR-0037)* | | the same Event with the whole Observed Stack Item (controller, source *(amended by ADR-0038: an `ObservedStackSource`, an ability's card as a handle, `None` once left)*, bound cards as handles, `None` once left), always |
@@ -48,3 +49,5 @@ A seen shuffle maps each id through the Observer; an id with no handle is `Obser
 **Conflicts.** ADR-0028's `ObserverOutOfStep` is extended and marked as amended there. ADR-0010's event model is unchanged.
 
 **Status**: accepted
+
+Amended by ADR-0041: `PlayerStateChanged` is observed in full (marked in the table), and the Observed GameState folds it.
