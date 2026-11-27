@@ -1,7 +1,7 @@
-# The Duel Ruleset v1 (tickets [39] and [40] of the Phase G roadmap): a face-up duel between two
-# Players, each with Life Points and a deck of monsters, with a Main and a Battle phase. Spec:
-# duel-ruleset.md. Format: ../formats.md.
-meta: { id: duel, version: 2 }
+# The Duel Ruleset v2 (tickets [39], [40] and [41] of the Phase G roadmap): a face-up duel between
+# two Players, each with Life Points and a deck of monsters, with a Main and a Battle phase, monster
+# positions and combat between monsters. Spec: duel-ruleset.md. Format: ../formats.md.
+meta: { id: duel, version: 3 }
 
 parameters:
   players: 2
@@ -22,6 +22,11 @@ card_types:
       - { name: def,   type: int }
     instance_state:
       - { name: attacked, type: bool, init: false }
+      # "attack" or "defence", face-up this phase (ADR-0043). A monster enters in the position its
+      # summon or set gives; the init is the position of a card that has not arrived.
+      - { name: position, type: text, init: "attack" }
+      # Whether the monster arrived or changed position this Turn: it may not change position then.
+      - { name: position_fixed, type: bool, init: false }
     effects: false
 
 # Values every Player holds (ADR-0041). The engine names none: Life Points are this ruleset's.
@@ -49,18 +54,20 @@ turn:
           else:
             - draw: { player: active, from: deck, to: hand, count: 1 }
     - id: main
-      actions: [normal_summon, to_battle, end_turn]
+      actions: [normal_summon, set_monster, change_position, to_battle, end_turn]
     - id: battle
-      actions: [direct_attack, end_turn]
+      actions: [attack, direct_attack, end_turn]
     - id: end
       automatic:
-        # The Player's Turn is over: they may summon again and their monsters may attack again.
+        # The Player's Turn is over: they may summon again, and their monsters may attack again and
+        # change position again.
         - set_state: { player: active, state: normal_summoned, value: false }
         - set_state: { player: active, zone: monster_zone, state: attacked, value: false }
+        - set_state: { player: active, zone: monster_zone, state: position_fixed, value: false }
 
 actions:
-  # A monster of level 1 to 4 goes from the hand to the Monster Zone, once per Turn, while the
-  # Monster Zone holds at most 2 monsters (so it holds 3 at most).
+  # A monster of level 1 to 4 goes from the hand to the Monster Zone in attack position, once per
+  # Turn, while the Monster Zone holds at most 2 monsters (so it holds 3 at most).
   - id: normal_summon
     params:
       - name: card
@@ -75,12 +82,93 @@ actions:
     effects:
       - move: { card: { ref: card }, to: monster_zone }
       - set_state: { player: active, state: normal_summoned, value: true }
+      - set_state: { card: { ref: card }, state: position, value: "attack" }
+      - set_state: { card: { ref: card }, state: position_fixed, value: true }
+
+  # The same as a Normal Summon, in defence position: it shares the once-per-Turn flag and the
+  # Monster Zone's room. The set monster is face-up and public until Phase H.
+  - id: set_monster
+    params:
+      - name: card
+        zone: hand
+        card_type: monster
+        where:
+          and:
+            - { gte: [{ ref: card.level }, 1] }
+            - { lte: [{ ref: card.level }, 4] }
+            - { eq: [{ ref: player.normal_summoned, player: active }, false] }
+            - { lte: [{ count: { zone: monster_zone, player: active } }, 2] }
+    effects:
+      - move: { card: { ref: card }, to: monster_zone }
+      - set_state: { player: active, state: normal_summoned, value: true }
+      - set_state: { card: { ref: card }, state: position, value: "defence" }
+      - set_state: { card: { ref: card }, state: position_fixed, value: true }
+
+  # A monster of the acting Player's Monster Zone that did not arrive or change position this Turn
+  # goes to the other position.
+  - id: change_position
+    params:
+      - name: monster
+        zone: monster_zone
+        card_type: monster
+        where: { eq: [{ ref: monster.position_fixed }, false] }
+    effects:
+      - set_state: { card: { ref: monster }, state: position_fixed, value: true }
+      - if: { eq: [{ ref: monster.position }, "attack"] }
+        then:
+          - set_state: { card: { ref: monster }, state: position, value: "defence" }
+        else:
+          - set_state: { card: { ref: monster }, state: position, value: "attack" }
 
   - id: to_battle
     effects: [ { advance_phase: {} } ]
 
-  # A monster of the acting Player's Monster Zone that has not attacked this Turn hits the opponent
-  # for its ATK, when the opponent has no monster and it is not the Game's first Turn.
+  # An attack-position monster of the acting Player's Monster Zone that has not attacked this Turn
+  # attacks a monster of the opponent's Monster Zone, never on the Game's first Turn (no opponent
+  # monster can exist then, so the clause states the rule rather than filters). Damage comes before
+  # destruction in each branch. Against an attack-position target the lower ATK is destroyed and its
+  # controller loses the difference (the `sub` is negative); a tie destroys both, no damage. Against
+  # a defence-position target ATK above DEF destroys it, ATK below DEF costs the attacker's
+  # controller the difference, equal changes nothing.
+  - id: attack
+    params:
+      - name: attacker
+        zone: monster_zone
+        card_type: monster
+        where:
+          and:
+            - { eq: [{ ref: attacker.attacked }, false] }
+            - { eq: [{ ref: attacker.position }, "attack"] }
+            - { eq: [{ first_turn: {} }, false] }
+      - { name: target, owner: opponent, zone: monster_zone, card_type: monster }
+    effects:
+      - set_state: { card: { ref: attacker }, state: attacked, value: true }
+      - if: { eq: [{ ref: target.position }, "attack"] }
+        then:
+          - if: { gt: [{ ref: attacker.atk }, { ref: target.atk }] }
+            then:
+              - add_state: { player: opponent, state: life_points, amount: { sub: [{ ref: target.atk }, { ref: attacker.atk }] } }
+              - move: { card: { ref: target }, to: graveyard }
+            else:
+              - if: { lt: [{ ref: attacker.atk }, { ref: target.atk }] }
+                then:
+                  - add_state: { player: active, state: life_points, amount: { sub: [{ ref: attacker.atk }, { ref: target.atk }] } }
+                  - move: { card: { ref: attacker }, to: graveyard }
+                else:
+                  - move: { card: { ref: target }, to: graveyard }
+                  - move: { card: { ref: attacker }, to: graveyard }
+        else:
+          - if: { gt: [{ ref: attacker.atk }, { ref: target.def }] }
+            then:
+              - move: { card: { ref: target }, to: graveyard }
+            else:
+              - if: { lt: [{ ref: attacker.atk }, { ref: target.def }] }
+                then:
+                  - add_state: { player: active, state: life_points, amount: { sub: [{ ref: attacker.atk }, { ref: target.def }] } }
+
+  # An attack-position monster of the acting Player's Monster Zone that has not attacked this Turn
+  # hits the opponent for its ATK, when the opponent has no monster and it is not the Game's first
+  # Turn.
   - id: direct_attack
     params:
       - name: attacker
@@ -89,6 +177,7 @@ actions:
         where:
           and:
             - { eq: [{ ref: attacker.attacked }, false] }
+            - { eq: [{ ref: attacker.position }, "attack"] }
             - { eq: [{ count: { zone: monster_zone, player: opponent } }, 0] }
             - { eq: [{ first_turn: {} }, false] }
     effects:
