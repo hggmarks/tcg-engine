@@ -478,10 +478,7 @@ fn an_empty_turn_is_read_and_the_engine_rejects_it() {
     // `setup` (ticket #21), `turn` and `actions` (ticket #22) and `win_conditions` (ticket #23)
     // are all loaded: an empty turn is read, and the engine is the one to reject it.
     let error = definition_error(&format!("{FIXTURE}turn:\n  phases: []\n"));
-    assert_eq!(
-        error.kind,
-        DefinitionErrorKind::InvalidActionPhaseCount { found: 0 }
-    );
+    assert_eq!(error.kind, DefinitionErrorKind::NoActionPhase);
 }
 
 #[test]

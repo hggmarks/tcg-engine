@@ -1,0 +1,6 @@
+# The deck of both Players of phases-ruleset.yaml (ticket #97). The deck is not shuffled and its top
+# is its last card, so each Player opens with three `plain_unit`.
+inputs:
+  - input: main_deck
+    cards:
+      - { card: plain_unit, count: 6 }

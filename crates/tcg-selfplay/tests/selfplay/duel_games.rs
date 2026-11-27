@@ -6,7 +6,9 @@
 //!
 //! Everything runs on the real Duel Ruleset, catalog and sample decks.
 
+use tcg_engine::declarative::Event;
 use tcg_engine::random::Seed;
+use tcg_engine::ruleset_definition::PhaseId;
 use tcg_selfplay::{self_play, Checks, FailureKind};
 
 use crate::common::{duel, duel_decks, edit, DUEL_DECK_A, DUEL_DECK_B, MAX_STEPS};
@@ -129,5 +131,16 @@ fn replay_reproduces_a_duel_game() {
             "Seed {seed}: the Terminal Outcome is reproduced"
         );
         assert_eq!(replay.state.outcome(), game.state.outcome());
+        // The Game visits Battle (ticket #97): the replay reproduces the phase change.
+        let battle = Event::PhaseBegan {
+            phase: PhaseId::new("battle"),
+        };
+        assert!(
+            replay
+                .traces
+                .iter()
+                .any(|trace| trace.events().contains(&battle)),
+            "Seed {seed}: the replayed Game has a PhaseBegan of Battle"
+        );
     }
 }
