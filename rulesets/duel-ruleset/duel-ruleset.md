@@ -19,7 +19,7 @@ Each Player holds two values (ADR-0041), both public:
 | Name | Type | Starts at | Meaning |
 |---|---|---|---|
 | `life_points` | int | 4000 | The Player's Life Points. They may go below 0 (the Game ends then). |
-| `normal_summoned` | bool | false | Whether the Player has made their Normal Summon this Turn. |
+| `normal_summoned` | bool | false | Whether the Player has made their Normal Summon or Set this Turn. |
 
 ## Zones
 
@@ -38,7 +38,7 @@ A monster destroyed in combat goes to its owner's Graveyard.
 
 | Type | Fields | Instance state | Effects |
 |---|---|---|---|
-| **Monster** | `name` (text), `level` (int), `atk` (int), `def` (int) | `attacked` (bool, starts false), `position` (text, starts `"attack"`), `position_fixed` (bool, starts false) | No |
+| **Monster** | `name` (text), `level` (int), `atk` (int), `def` (int) | `attacked` (bool, starts false), `position` (text, starts `"attack"`: the value of a card that has not arrived, since every monster arrives by a summon or a set that gives its own), `position_fixed` (bool, starts false) | No |
 
 `def` is the monster's defence, read when a monster attacks a monster in defence position. `position` is `"attack"` or `"defence"`; `position_fixed` is true while the monster has arrived or changed position this Turn (see *Position Change*). The catalog lists sixteen monsters of level 1 to 4, with ATK from 300 to 1800. A catalog must keep to these constraints: **level at least 1, ATK and DEF at least 0**. The rules rely on them (a monster of level 0 or below is not summonable, and an ATK below 0 would heal the opponent).
 
@@ -109,12 +109,12 @@ Moves the Turn from Main to Battle. The Turn, its number and the Active Player d
 
 ### Attack
 
-The acting Player chooses a monster in their Monster Zone, the **attacker**, that **has not attacked this Turn** (`attacked` is false), is in **attack position**, and a monster in the opponent's Monster Zone, the **target**. An attack is never legal on the Game's first Turn (no opponent monster can exist then, so the rule only states what the setup guarantees). The attacker becomes `attacked`, and:
+The acting Player chooses a monster in their Monster Zone, the **attacker**, that **has not attacked this Turn** (`attacked` is false), is in **attack position**, and a monster in the opponent's Monster Zone, the **target**. An attack is never legal on the Game's first Turn (no opponent monster can exist then, as the turn order leaves the opponent no Turn before it, so the rule only states what the turn order guarantees). The attacker becomes `attacked`, and:
 
-- **Target in attack position.** The monster with the lower ATK is destroyed (it goes to its owner's Graveyard) and its controller loses Life Points equal to the difference of the two ATK. Equal ATK destroys both monsters (the target first, then the attacker) and nobody loses Life Points.
-- **Target in defence position.** If the attacker's ATK is greater than the target's DEF the target is destroyed and nobody loses Life Points. If it is less, the attacker's controller loses Life Points equal to the difference. If they are equal nothing happens.
+- **Target in attack position.** The monster with the lower ATK is destroyed (it goes to its owner's Graveyard) and its owner loses Life Points equal to the difference of the two ATK. Equal ATK destroys both monsters (the target first, then the attacker) and nobody loses Life Points.
+- **Target in defence position.** If the attacker's ATK is greater than the target's DEF the target is destroyed and nobody loses Life Points. If it is less, the attacker's owner loses Life Points equal to the difference. If they are equal nothing happens.
 
-The Life Points change comes before the destruction in the Event Trace. A monster in defence position cannot attack, so the attack is not legal for it.
+The Life Points change comes before the destruction in the Event Trace. A destroyed monster keeps its instance state as it was when it left the Monster Zone, and nothing reads it in the Graveyard. A monster in defence position cannot attack, so the attack is not legal for it.
 
 ### Direct Attack
 
@@ -146,7 +146,7 @@ Face-down cards, flipping and traps are the successor roadmap's (Phase H).
 - **Life Points**: the Player state `life_points`. A Player starts at 4000 and loses at 0 or fewer.
 - **Normal Summon**: moving a monster of level 1 to 4 from the Hand to the Monster Zone in attack position, once per Turn, while the Monster Zone holds at most 2 monsters.
 - **Set**: a Normal Summon in defence position; it shares the Normal Summon's once-per-Turn flag. The set monster is face-up until Phase H.
-- **Position**: a monster's `position`, `"attack"` or `"defence"`. **Attack position** and **defence position** are its two values.
+- **Monster Position**: a monster's `position`, `"attack"` or `"defence"`; **attack position** and **defence position** are its two values. A Normal Summon puts a monster in attack position and a Set in defence position, and a Position Change moves it to the other. Face-up and public this phase (face-down cards are Phase H's). Not the `Position` of the engine's `move` step.
 - **Position Change**: the Action that moves a monster to the other position, once per Turn per monster, never on the Turn it arrived.
 - **Attack**: an attack-position monster hitting a monster of the opponent's Monster Zone: ATK against ATK, or ATK against DEF, once per Turn per monster, in Battle.
 - **Battle**: the second phase where a Player acts, entered by To Battle from Main; attacks are taken there.

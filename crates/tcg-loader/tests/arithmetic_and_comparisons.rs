@@ -21,7 +21,9 @@ use tcg_engine::ruleset_definition::{
     ActionId, CardTypeId, DefinitionError, DefinitionErrorKind, FieldType, FieldValue, ParamName,
     PlayerStateId, WinConditionId, WinConditionWhen,
 };
-use tcg_loader::{load_card_catalog, load_deck_list, load_ruleset_definition, LoadError};
+use tcg_loader::{
+    load_card_catalog, load_deck_list, load_ruleset_definition, LoadError, YamlErrorKind,
+};
 
 const RULESET: &str = include_str!("fixtures/arithmetic-ruleset.yaml");
 const CATALOG: &str = include_str!("fixtures/arithmetic-catalog.yaml");
@@ -635,6 +637,55 @@ fn a_non_int_amount_is_a_load_error_at_the_amount() {
             },
         }
     );
+}
+
+#[test]
+fn an_operator_the_language_lacks_in_an_amount_is_a_syntax_error() {
+    // `mul`, `or` and `not` are not operators (ADR-0016's exclusions stand): in an amount, as in any
+    // Expression, each is an unknown operator, a syntax error, and no longer `InvalidAmount`.
+    let unknown = |error: &tcg_loader::YamlError, key: &str| {
+        matches!(
+            &error.kind,
+            YamlErrorKind::Malformed { message }
+                if message.contains(&format!("unknown variant `{key}`"))
+        )
+    };
+    for (amount, key) in [
+        ("{ mul: [2, 3] }", "mul"),
+        ("{ or: [true, false] }", "or"),
+        ("{ not: true }", "not"),
+    ] {
+        match load_ruleset_definition(&probe_text(amount)) {
+            Err(LoadError::Yaml(error)) => {
+                assert!(unknown(&error, key), "`{amount}`: {error:?}");
+            }
+            other => panic!("`{amount}`: expected a syntax error, got {other:?}"),
+        }
+        // The same in a setup step, where the amount is a literal only: still a syntax error and
+        // not `InvalidAmount`, which is for a well-formed Expression.
+        let setup = edit(
+            RULESET,
+            "  - draw: { player: each, from: deck, to: hand, count: 3 }",
+            &format!("  - draw: {{ player: each, from: deck, to: hand, count: 3 }}\n  - add_state: {{ player: each, state: life_points, amount: {amount} }}"),
+        );
+        assert!(
+            matches!(
+                load_ruleset_definition(&setup),
+                Err(LoadError::Yaml(error)) if unknown(&error, key)
+            ),
+            "setup `{amount}`"
+        );
+    }
+    // A wrong operand count in a setup step is a syntax error as well.
+    let setup = edit(
+        RULESET,
+        "  - draw: { player: each, from: deck, to: hand, count: 3 }",
+        "  - draw: { player: each, from: deck, to: hand, count: 3 }\n  - add_state: { player: each, state: life_points, amount: { add: [1] } }",
+    );
+    assert!(matches!(
+        load_ruleset_definition(&setup),
+        Err(LoadError::Yaml(_))
+    ));
 }
 
 #[test]

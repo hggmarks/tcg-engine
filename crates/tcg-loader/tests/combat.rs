@@ -17,10 +17,10 @@ use tcg_engine::player::PlayerId;
 use tcg_engine::random::Seed;
 use tcg_engine::ruleset::{Ruleset, Transition};
 use tcg_engine::ruleset_definition::{
-    ActionDraft, ActionId, CardTypeId, CardValue, DefinitionErrorKind, EffectDraft, Expression,
-    ExpressionDraft, FieldName, FieldType, FieldValue, ParamAlternativeDraft, ParamCardsDraft,
-    ParamDraft, ParamName, ParamOwner, RefDraft, StateName, WinConditionId, WinConditionWhen,
-    WinConditionWhenDraft, ZoneId,
+    ActionDraft, ActionId, CardTypeId, CardValue, EffectDraft, Expression, ExpressionDraft,
+    FieldName, FieldValue, ParamAlternativeDraft, ParamCardsDraft, ParamDraft, ParamName,
+    ParamOwner, RefDraft, StateName, WinConditionId, WinConditionWhen, WinConditionWhenDraft,
+    ZoneId,
 };
 use tcg_loader::{
     load_card_catalog, load_deck_list, load_ruleset_definition, parse_ruleset_draft, LoadError,
@@ -584,35 +584,6 @@ fn a_malformed_param_expression_or_if_effect_is_a_yaml_error() {
         ),
         effects().index(1).key("then").index(0),
     );
-    // `add_state` takes an unquoted integer amount: since ADR-0043 the amount is an Expression, so
-    // a quoted one is a text, an `ExpressionTypeMismatch` at the amount and no longer a syntax
-    // error.
-    match load_ruleset_definition(&edit(SMALL_RULESET, "amount: -1", "amount: \"-1\"")) {
-        Err(LoadError::Definition(error)) => {
-            assert_eq!(
-                error.path,
-                path()
-                    .key("actions")
-                    .id("attack")
-                    .key("effects")
-                    .index(1)
-                    .key("else")
-                    .index(0)
-                    .key("then")
-                    .index(0)
-                    .key("add_state")
-                    .key("amount")
-            );
-            assert_eq!(
-                error.kind,
-                DefinitionErrorKind::ExpressionTypeMismatch {
-                    expected: FieldType::Int,
-                    found: FieldType::Text,
-                }
-            );
-        }
-        other => panic!("expected a definition error, got {other:?}"),
-    }
 }
 
 // ---- attacking a creature

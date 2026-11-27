@@ -411,18 +411,6 @@ The second, independent ruleset (`rulesets/duel-ruleset/`, `meta.id: duel`), wri
 **Arithmetic Overflow**:
 The Rejection `ArithmeticOverflow`: an `add` or a `sub` Expression whose result does not fit an int (ADR-0041 for `sub` in an Amount, widened by ADR-0043 to `add` and `sub` anywhere). It leaves the GameState untouched and emits no Event; in the `where` of one of several alternatives the alternative does not fit, with one alternative it is the Rejection (ADR-0032, ADR-0043).
 
-**Position**:
-The text instance state `position` of a Duel monster: `"attack"` or `"defence"` (ADR-0043). A monster that has not arrived holds the init, `"attack"`; a Normal Summon puts it in **Attack Position** and a Set in **Defence Position**, and a **Position Change** moves it to the other. Face-up and public this phase (face-down cards are Phase H's), so every Viewer's Observed Card state holds it.
-
-**Set**:
-The Duel Action `set_monster`: a Normal Summon in Defence Position. It shares the once-per-Turn flag `normal_summoned`, the level range and the Monster Zone's room of the Normal Summon (ADR-0043).
-
-**Position Change**:
-The Duel Action `change_position`: a monster of the acting Player's Monster Zone whose `position_fixed` is false is fixed and moves to the other position. A monster arrives with `position_fixed` true, the End phase of its controller's Turn lifts it, so a monster changes position at most once per Turn and never on the Turn it arrived (Main only; ADR-0043).
-
-**Attack Between Monsters**:
-The Duel Action `attack` (Battle): an attack-position monster that has not attacked this Turn, not on Turn 1, hits a monster in the opponent's Monster Zone. Against an attack-position target the lower ATK goes to its owner's Graveyard and its controller loses the difference (a tie sends both, no damage); against a defence-position target ATK above DEF sends it to the Graveyard, ATK below DEF costs the attacker's controller the difference, equal changes nothing (ADR-0043).
-
 **End Turn In Pushed Action**:
 A Definition Error at an `end_turn` in the effects of a pushed action (one a Response Window lists or opens), at its own path, such as `actions[x].effects[1]`: its effects run on a Pass, which does not leave the Action phase (ADR-0037; *Amended by ADR-0042: any action phase*).
 

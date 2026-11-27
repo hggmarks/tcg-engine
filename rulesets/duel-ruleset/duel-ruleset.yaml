@@ -32,7 +32,7 @@ card_types:
 # Values every Player holds (ADR-0041). The engine names none: Life Points are this ruleset's.
 player_state:
   - { id: life_points,     type: int,  init: 4000 }
-  - { id: normal_summoned, type: bool, init: false }   # whether the Player summoned this Turn
+  - { id: normal_summoned, type: bool, init: false }   # whether the Player made their Normal Summon or Set this Turn
 
 inputs:
   - { id: main_deck, card_types: [monster], size: 40, max_copies: 3, zone: deck }
@@ -127,9 +127,9 @@ actions:
   # attacks a monster of the opponent's Monster Zone, never on the Game's first Turn (no opponent
   # monster can exist then, so the clause states the rule rather than filters). Damage comes before
   # destruction in each branch. Against an attack-position target the lower ATK is destroyed and its
-  # controller loses the difference (the `sub` is negative); a tie destroys both, no damage. Against
+  # owner loses the difference (the `sub` is negative); a tie destroys both, no damage. Against
   # a defence-position target ATK above DEF destroys it, ATK below DEF costs the attacker's
-  # controller the difference, equal changes nothing.
+  # owner the difference, equal changes nothing.
   - id: attack
     params:
       - name: attacker
