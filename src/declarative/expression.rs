@@ -16,8 +16,8 @@ use super::modifiers;
 use super::state::{ApplyError, CardInstanceId, GameState};
 use crate::player::PlayerId;
 use crate::ruleset_definition::{
-    Amount, AmountOperand, CardValue, Expression, FieldValue, ParamName, PlayerRef,
-    PlayerRefSelector, PlayerTarget,
+    Amount, CardValue, Expression, FieldValue, ParamName, PlayerRef, PlayerRefSelector,
+    PlayerTarget,
 };
 use crate::turn::TurnNumber;
 
@@ -110,13 +110,33 @@ fn evaluate(
             }
             Ok(FieldValue::Bool(left == right))
         }
+        Expression::Gt(left, right) => {
+            let (left, right) = ints(ruleset, state, bound, left, right, mode)?;
+            Ok(FieldValue::Bool(left > right))
+        }
         Expression::Gte(left, right) => {
             let (left, right) = ints(ruleset, state, bound, left, right, mode)?;
             Ok(FieldValue::Bool(left >= right))
         }
+        Expression::Lt(left, right) => {
+            let (left, right) = ints(ruleset, state, bound, left, right, mode)?;
+            Ok(FieldValue::Bool(left < right))
+        }
         Expression::Lte(left, right) => {
             let (left, right) = ints(ruleset, state, bound, left, right, mode)?;
             Ok(FieldValue::Bool(left <= right))
+        }
+        Expression::Add(left, right) => {
+            let (left, right) = ints(ruleset, state, bound, left, right, mode)?;
+            left.checked_add(right)
+                .map(FieldValue::Int)
+                .ok_or(Rejection::ArithmeticOverflow)
+        }
+        Expression::Sub(left, right) => {
+            let (left, right) = ints(ruleset, state, bound, left, right, mode)?;
+            left.checked_sub(right)
+                .map(FieldValue::Int)
+                .ok_or(Rejection::ArithmeticOverflow)
         }
         Expression::And(operands) => {
             for operand in operands {
@@ -205,41 +225,22 @@ fn read_player_state(
         })
 }
 
-/// The int an `amount` evaluates to against the GameState as it stands (ADR-0041). A card's field is
-/// read as any expression does, with its active Field Modifiers; an instance state as it stands; a
-/// Player's state as it stands. `sub` is checked.
+/// The int an `amount` evaluates to against the GameState as it stands (ADR-0043). It is an
+/// Expression like any other: a card's field is read with its active Field Modifiers, an instance
+/// state and a Player's state as they stand, and `add` and `sub` are checked.
 pub(super) fn amount(
     ruleset: &DeclarativeRuleset,
     state: &GameState,
     bound: &BoundCards,
     amount: &Amount,
 ) -> Result<i64, Rejection> {
-    match amount {
-        Amount::Literal(value) => Ok(*value),
-        Amount::Operand(operand) => operand_value(ruleset, state, bound, operand),
-        Amount::Sub(left, right) => {
-            let left = operand_value(ruleset, state, bound, left)?;
-            let right = operand_value(ruleset, state, bound, right)?;
-            left.checked_sub(right).ok_or(Rejection::ArithmeticOverflow)
-        }
-    }
-}
-
-fn operand_value(
-    ruleset: &DeclarativeRuleset,
-    state: &GameState,
-    bound: &BoundCards,
-    operand: &AmountOperand,
-) -> Result<i64, Rejection> {
-    let value = match operand {
-        AmountOperand::Literal(value) => return Ok(*value),
-        AmountOperand::Value(reference) => {
-            let card = bound.card(reference.param())?;
-            read(ruleset, state, card, reference.value())?
-        }
-        AmountOperand::PlayerValue(reference) => read_player_state(state, bound, reference)?,
-    };
-    match value {
+    match evaluate(
+        ruleset,
+        state,
+        bound,
+        amount.expression(),
+        ReadMode::Derived,
+    )? {
         FieldValue::Int(value) => Ok(value),
         FieldValue::Bool(_) | FieldValue::Text(_) => Err(Rejection::ExpressionTypeMismatch),
     }

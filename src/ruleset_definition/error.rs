@@ -258,11 +258,11 @@ pub enum DefinitionErrorKind {
     /// `actions[x].params[card].where.eq[0]`: outside a win condition a Player ref says whose
     /// state it reads (ADR-0041).
     MissingPlayerSelector,
-    /// An `amount` of an `add_state` that is not an int literal, an int ref or `sub` of two of
-    /// those, at the amount (`…add_state.amount`) or at the operand of a `sub`
-    /// (`…add_state.amount.sub[1]`): a nested operator, or another operator. In a setup or an
-    /// automatic step the amount must be an int literal, so a ref or a `sub` is it too, at
-    /// `setup[i].add_state.amount` (ADR-0041).
+    /// The `amount` of an `add_state` in a setup or an automatic step that is not an int literal,
+    /// at `setup[i].add_state.amount`: nothing binds a card or names a Player to read there, so a
+    /// ref, an operator or a literal of another type is it (ADR-0041, ADR-0043). An amount of an
+    /// action, a cost or a Card Effect is an int Expression, and a non-int one is an
+    /// `ExpressionTypeMismatch`.
     InvalidAmount,
     /// A `player:` key on a Player Ref inside a win condition, at the ref, such as
     /// `win_conditions[life_out].when.lte[0]`: a Player-state win condition reads the Player it
@@ -488,7 +488,7 @@ impl fmt::Display for DefinitionErrorKind {
             ),
             Self::InvalidAmount => write!(
                 f,
-                "an amount is an integer, a ref to an int, or `sub` of two of those (only an integer in a setup or an automatic step)"
+                "the amount of a setup or an automatic step is an integer"
             ),
             Self::PlayerSelectorInWinCondition => write!(
                 f,

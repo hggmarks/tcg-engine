@@ -10,12 +10,12 @@ use crate::scalar::{self, ScalarDto};
 use serde::de::{self, Deserializer, IgnoredAny, MapAccess, SeqAccess, Visitor};
 use serde::Deserialize;
 use tcg_engine::ruleset_definition::{
-    ActionDraft, AmountDraft, AutomaticStepDraft, CardTypeDraft, ConditionDraft, CostDraft,
-    DeckInputDraft, EffectDraft, EffectsDraft, ExpressionDraft, FieldDraft, FieldTypeDraft,
-    FieldValue, InitializerDraft, InstanceStateDraft, MetaDraft, ParamAlternativeDraft,
-    ParamCardsDraft, ParamDraft, ParametersDraft, PhaseDraft, PlayerStateDraft, RefDraft,
-    RulesetDraft, SetupStepDraft, TurnDraft, Visibility, WinConditionDraft, WinConditionWhenDraft,
-    WindowDraft, ZoneDraft,
+    ActionDraft, AutomaticStepDraft, CardTypeDraft, ConditionDraft, CostDraft, DeckInputDraft,
+    EffectDraft, EffectsDraft, ExpressionDraft, FieldDraft, FieldTypeDraft, FieldValue,
+    InitializerDraft, InstanceStateDraft, MetaDraft, ParamAlternativeDraft, ParamCardsDraft,
+    ParamDraft, ParametersDraft, PhaseDraft, PlayerStateDraft, RefDraft, RulesetDraft,
+    SetupStepDraft, TurnDraft, Visibility, WinConditionDraft, WinConditionWhenDraft, WindowDraft,
+    ZoneDraft,
 };
 
 #[derive(Deserialize)]
@@ -150,8 +150,8 @@ fn only_one_key<'de, A: MapAccess<'de>>(
 }
 
 /// An expression: a literal scalar, `{ ref: <text> }`, or a single-key map with an operator
-/// (`eq`, `gte`, `lte` over two expressions, `and` over a list, `is_card_type` over a card ref and
-/// a card type id). The operands of `eq`, `gte`, `lte` and `is_card_type` are exactly two. An
+/// (`eq`, `gt`, `gte`, `lt`, `lte`, `add`, `sub` over two expressions, `and` over a list, `is_card_type` over a card ref and
+/// a card type id). The operands of all but `and` are exactly two. An
 /// unknown operator is an unknown key of the map. No `untagged`: a visitor reads the shape.
 pub(crate) enum ExpressionDto {
     Literal(FieldValue),
@@ -159,8 +159,14 @@ pub(crate) enum ExpressionDto {
     /// `{ ref: <text>, player: <selector> }`: a ref with the `player:` key of a Player ref.
     PlayerRef(String, String),
     Eq(Box<ExpressionDto>, Box<ExpressionDto>),
+    Gt(Box<ExpressionDto>, Box<ExpressionDto>),
     Gte(Box<ExpressionDto>, Box<ExpressionDto>),
+    Lt(Box<ExpressionDto>, Box<ExpressionDto>),
     Lte(Box<ExpressionDto>, Box<ExpressionDto>),
+    /// `add: [a, b]` (ADR-0043).
+    Add(Box<ExpressionDto>, Box<ExpressionDto>),
+    /// `sub: [a, b]` (ADR-0043).
+    Sub(Box<ExpressionDto>, Box<ExpressionDto>),
     And(Vec<ExpressionDto>),
     IsCardType(String, String),
     /// `count: { zone, player }` (ADR-0042).
@@ -183,8 +189,12 @@ const EXPRESSION_KEYS: &[&str] = &[
     "ref",
     "player",
     "eq",
+    "gt",
     "gte",
+    "lt",
     "lte",
+    "add",
+    "sub",
     "and",
     "is_card_type",
     "count",
@@ -221,13 +231,29 @@ fn read_operator<'de, A: MapAccess<'de>>(
             let Pair(left, right) = map.next_value()?;
             ExpressionDto::Eq(Box::new(left), Box::new(right))
         }
+        "gt" => {
+            let Pair(left, right) = map.next_value()?;
+            ExpressionDto::Gt(Box::new(left), Box::new(right))
+        }
         "gte" => {
             let Pair(left, right) = map.next_value()?;
             ExpressionDto::Gte(Box::new(left), Box::new(right))
         }
+        "lt" => {
+            let Pair(left, right) = map.next_value()?;
+            ExpressionDto::Lt(Box::new(left), Box::new(right))
+        }
         "lte" => {
             let Pair(left, right) = map.next_value()?;
             ExpressionDto::Lte(Box::new(left), Box::new(right))
+        }
+        "add" => {
+            let Pair(left, right) = map.next_value()?;
+            ExpressionDto::Add(Box::new(left), Box::new(right))
+        }
+        "sub" => {
+            let Pair(left, right) = map.next_value()?;
+            ExpressionDto::Sub(Box::new(left), Box::new(right))
         }
         "and" => ExpressionDto::And(map.next_value()?),
         "is_card_type" => {
@@ -284,7 +310,7 @@ impl<'de> Deserialize<'de> for ExpressionDto {
     }
 }
 
-/// The two operands of `eq`, `gte` and `lte`: a list of exactly two expressions.
+/// The two operands of `eq`, `gt`, `gte`, `lt`, `lte`, `add` and `sub`: a list of exactly two expressions.
 struct Pair(ExpressionDto, ExpressionDto);
 
 impl<'de> Deserialize<'de> for Pair {
@@ -359,8 +385,12 @@ impl ExpressionDto {
                 selector,
             },
             Self::Eq(left, right) => ExpressionDraft::Eq(boxed(left), boxed(right)),
+            Self::Gt(left, right) => ExpressionDraft::Gt(boxed(left), boxed(right)),
             Self::Gte(left, right) => ExpressionDraft::Gte(boxed(left), boxed(right)),
+            Self::Lt(left, right) => ExpressionDraft::Lt(boxed(left), boxed(right)),
             Self::Lte(left, right) => ExpressionDraft::Lte(boxed(left), boxed(right)),
+            Self::Add(left, right) => ExpressionDraft::Add(boxed(left), boxed(right)),
+            Self::Sub(left, right) => ExpressionDraft::Sub(boxed(left), boxed(right)),
             Self::And(operands) => ExpressionDraft::And(
                 operands
                     .into_iter()
@@ -377,110 +407,6 @@ impl ExpressionDto {
             },
             Self::FirstTurn => ExpressionDraft::FirstTurn,
         }
-    }
-}
-
-/// An `amount` of an `add_state` (ADR-0041): an unquoted integer, `{ ref: <text> }`,
-/// `{ ref: player.<id>, player: <selector> }` or `{ sub: [a, b] }` of two of those. Any other map
-/// key is kept as an operator the engine rejects (`InvalidAmount`), so a bad amount is a definition
-/// error at its path; a bool or a text is a syntax error, as the integer it replaces was.
-pub(crate) struct AmountDto(AmountDraft);
-
-impl AmountDto {
-    fn into_draft(self) -> AmountDraft {
-        self.0
-    }
-}
-
-impl<'de> Deserialize<'de> for AmountDto {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        struct AmountVisitor;
-
-        impl<'de> Visitor<'de> for AmountVisitor {
-            type Value = AmountDto;
-
-            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.write_str("an unquoted integer, a ref or a `sub` of two of them")
-            }
-
-            fn visit_i64<E: de::Error>(self, value: i64) -> Result<AmountDto, E> {
-                Ok(AmountDto(AmountDraft::Literal(value)))
-            }
-
-            fn visit_u64<E: de::Error>(self, value: u64) -> Result<AmountDto, E> {
-                i64::try_from(value)
-                    .map(|value| AmountDto(AmountDraft::Literal(value)))
-                    .map_err(|_| E::custom("the integer does not fit in 64 bits"))
-            }
-
-            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<AmountDto, A::Error> {
-                let Some(key) = map.next_key::<String>()? else {
-                    return Err(de::Error::custom("an amount names one operator"));
-                };
-                match key.as_str() {
-                    "ref" | "player" => match read_operator(&key, &mut map)? {
-                        ExpressionDto::Ref(reference) => {
-                            Ok(AmountDto(AmountDraft::Ref(RefDraft(reference))))
-                        }
-                        ExpressionDto::PlayerRef(reference, selector) => {
-                            Ok(AmountDto(AmountDraft::PlayerRef {
-                                reference: RefDraft(reference),
-                                selector,
-                            }))
-                        }
-                        _ => Err(de::Error::custom("an amount names one operator")),
-                    },
-                    "sub" => {
-                        let AmountPair(left, right) = map.next_value()?;
-                        only_one_key(&mut map, "an amount names one operator")?;
-                        Ok(AmountDto(AmountDraft::Sub(
-                            Box::new(left.0),
-                            Box::new(right.0),
-                        )))
-                    }
-                    _ => {
-                        // Another operator: its operands are not read, the engine rejects it.
-                        let _: IgnoredAny = map.next_value()?;
-                        only_one_key(&mut map, "an amount names one operator")?;
-                        Ok(AmountDto(AmountDraft::Other))
-                    }
-                }
-            }
-        }
-
-        deserializer.deserialize_any(AmountVisitor)
-    }
-}
-
-/// The two operands of `sub`: a list of exactly two amounts.
-struct AmountPair(AmountDto, AmountDto);
-
-impl<'de> Deserialize<'de> for AmountPair {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        struct PairVisitor;
-
-        impl<'de> Visitor<'de> for PairVisitor {
-            type Value = AmountPair;
-
-            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.write_str("a list of exactly two operands")
-            }
-
-            fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<AmountPair, A::Error> {
-                let left = seq
-                    .next_element()?
-                    .ok_or_else(|| de::Error::invalid_length(0, &self))?;
-                let right = seq
-                    .next_element()?
-                    .ok_or_else(|| de::Error::invalid_length(1, &self))?;
-                if seq.next_element::<IgnoredAny>()?.is_some() {
-                    return Err(de::Error::invalid_length(3, &self));
-                }
-                Ok(AmountPair(left, right))
-            }
-        }
-
-        deserializer.deserialize_seq(PairVisitor)
     }
 }
 
@@ -511,7 +437,7 @@ pub(crate) struct SetPlayerStateDto {
 pub(crate) struct AddPlayerStateDto {
     player: String,
     state: String,
-    amount: AmountDto,
+    amount: ExpressionDto,
 }
 
 #[derive(Deserialize)]
@@ -816,7 +742,7 @@ pub(crate) struct AddStateEffectDto {
     #[serde(default, deserialize_with = "some")]
     player: Option<String>,
     state: String,
-    amount: AmountDto,
+    amount: ExpressionDto,
 }
 
 /// The keys an effect may have, for the error of an unknown one.
