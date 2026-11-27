@@ -194,7 +194,7 @@ A declarative Rejection for an internal inconsistency: an Event the Ruleset gene
 A declarative Rejection for an internal inconsistency: a card's definition is missing from the catalog, or a Ref reads a value the card does not have or of another type. It is never expected, and it is only for card data.
 
 **ExpressionTypeMismatch**:
-A declarative Rejection for an internal inconsistency: an Expression evaluated to a value of another type than its operator or slot needs. Validation guarantees the types, so it is never expected.
+A declarative Rejection for an internal inconsistency: an Expression evaluated to a value of another type than its operator or slot needs. Validation guarantees the types, so it is never expected. *(Its load-time counterpart, the Definition Error `ExpressionTypeMismatch { expected, found }`, is reported at the operand or slot of the wrong type: since ADR-0043 also at a non-int operand of `add` or `sub`, and at an `amount` that is not an int.)*
 
 **UnboundParam**:
 A declarative Rejection for an internal inconsistency: a Ref names a parameter that no Argument was bound to. Validation guarantees every Ref names a parameter of its action, so it is never expected.
@@ -292,22 +292,22 @@ A card an Action supplies: a name unique within its action and one or more Param
 One way to fill an Action Parameter: `{ zone, card_type, owner?, where? }`. The card is an instance of that card type in that zone of its owner, who is the acting Player (`owner` absent) or an Opponent (`owner: opponent`), and the Where Condition holds. The first alternative the card fits binds it; an alternative whose Where Condition overflows a derived read does not fit (ADR-0032). A parameter's possible card types are those of its alternatives, in order, each once; a Ref to it must resolve on every one of them.
 
 **Where Condition**:
-The bool Expression `where` of a Param Alternative. It reads its own parameter, typed as that alternative's card type alone, and the parameters declared before it, on the GameState before the costs are paid. If it overflows a derived read, the alternative does not fit when the parameter has several alternatives, and the overflow itself (`DerivedValueOverflow`) is the Rejection when it has one (ADR-0032).
+The bool Expression `where` of a Param Alternative. It reads its own parameter, typed as that alternative's card type alone, and the parameters declared before it, on the GameState before the costs are paid. If it overflows a derived read, the alternative does not fit when the parameter has several alternatives, and the overflow itself (`DerivedValueOverflow`) is the Rejection when it has one (ADR-0032); *(Amended by ADR-0043: the same for an `add` or `sub` that overflows, `ArithmeticOverflow`)*.
 
 **Opponent**:
 Any Player other than the acting Player. With two Players it is the other one; the engine does not assume two.
 
 **Expression**:
-A literal scalar, a Value Ref *(Amended by ADR-0041: or a Player Ref)*, or one operator over Expressions: `eq: [a, b]` (same type), `gte: [a, b]` and `lte: [a, b]` (ints), `and: [e, ...]` (bools; `and: []` holds) and `is_card_type: [<card ref>, <card type id>]` *(Amended by ADR-0042: and `count: { zone, player }`, the Zone Count, an int, and `first_turn: {}`, a bool)*. The types are the Field Types and the operators give bool; a Card Ref is not a value. Checked at load, depth-first and left to right.
+A literal scalar, a Value Ref *(Amended by ADR-0041: or a Player Ref)*, or one operator over Expressions: `eq: [a, b]` (same type), `gte: [a, b]` and `lte: [a, b]` (ints), `and: [e, ...]` (bools; `and: []` holds) and `is_card_type: [<card ref>, <card type id>]` *(Amended by ADR-0042: and `count: { zone, player }`, the Zone Count, an int, and `first_turn: {}`, a bool)* *(Amended by ADR-0043: and `gt: [a, b]` and `lt: [a, b]` (ints, bool), `add: [a, b]` and `sub: [a, b]` (two int Expressions, int, checked: an overflow is Arithmetic Overflow); no `or`, `not` or multiplication)*. The types are the Field Types and the operators give bool, except `count`, `add` and `sub`, which give an int; a Card Ref is not a value. Checked at load, depth-first and left to right.
 
 **Subject**:
 The card type an expression Win Condition is about: the first name of its Refs (`leader` in `leader.current_life`). The expression must read exactly one *(a Player-state condition has none: it reads no card)*.
 
 **Amount**:
-What an `add_state` of an action, a cost or a Card Effect adds (ADR-0041): an int literal, a ref to an int (a card's field, read with its active Field Modifiers, an instance state, or a Player's state through a Player Ref), or `sub: [a, b]` of two of those, checked (`ArithmeticOverflow`). Evaluated when the `add_state` runs; once for all the targets of a Player-state write. `sub` is accepted only as an Amount until ticket [41] widens it. In a setup or an automatic step the Amount is an int literal (`InvalidAmount` otherwise).
+What an `add_state` of an action, a cost or a Card Effect adds: an int Expression (ADR-0043; *Amended by ADR-0043:* ADR-0041's mini-language of a literal, a ref or `sub` of two is gone, and `AmountDraft` and `AmountOperand` with it). Any int Expression is one: a literal, a card's field (read with its active Field Modifiers), an instance state, a Player's state, a `count`, `add` and `sub`. Evaluated when the `add_state` runs; once for all the targets of a Player-state write. A non-int one is `ExpressionTypeMismatch { expected: Int, found }` at the amount. In a setup or an automatic step the Amount is an int literal (`InvalidAmount` otherwise).
 
 **Add State**:
-The Action Effect `add_state: { card, state, amount }`. It adds the integer `amount` *(Amended by ADR-0041: an Amount, a literal, a ref to an int or `sub` of two, evaluated when the effect runs)* to an int instance state with checked arithmetic: an overflow in either direction is a State Overflow Rejection, and a sum equal to the current value emits no Event.
+The Action Effect `add_state: { card, state, amount }`. It adds the integer `amount` *(Amended by ADR-0041: an Amount, a literal, a ref to an int or `sub` of two, evaluated when the effect runs; Amended by ADR-0043: an int Expression)* to an int instance state with checked arithmetic: an overflow in either direction is a State Overflow Rejection, and a sum equal to the current value emits no Event.
 
 **If Effect**:
 The Action Effect `if: <expression>`, `then: [effects]` and an optional `else: [effects]`, siblings of one list element, run by the Expression at the moment the effect runs. When the condition is exactly `is_card_type: [<param>, T]` it narrows the parameter's possible card types: in `then` to those that are also T (an intersection, in the parameter's order; none is a load error, Impossible Card Type, ADR-0032), in `else` to the others (unchanged if removing T would leave none).
@@ -406,7 +406,22 @@ A Stack Item whose Bound Card has left does nothing when it resolves: all or not
 The ruleset of Phase F (`rulesets/response-ruleset/`, id `response`), a copy of the Effects Ruleset with a `holding` zone, a `fast` field on creatures, `attack` tapping its attacker as a cost, `fast_play` and the `attack_response` window, which has `abilities: true` *(added by ADR-0038)*; two fast creatures, `swift_sparrow` and `flash_fox`, and two `skittish_hare`s, an activated ability that pays 1 mana and returns the hare to the hand *(added by ADR-0038)*, are in both sample decks. Rule decisions are made here from Phase F's ticket [34] (ADR-0037). *(Amended by ADR-0041: it is frozen since Phase G, by the digest test `the_response_ruleset_is_frozen_since_phase_g`, and the Duel Ruleset is the current one; its own `.md` says nothing of this, being frozen.)*
 
 **Duel Ruleset**:
-The second, independent ruleset (`rulesets/duel-ruleset/`, `meta.id: duel`), written from scratch with original names (ADR-0041, ticket [39]): two Players with 4000 Life Points (the Player state `life_points`) and a deck of 40 monsters of level 1 to 4, a Turn of Draw (the starting Player skips Turn 1's draw), Main (Normal Summon once per Turn, `to_battle`, End Turn), Battle (Direct Attack once per monster per Turn for its ATK, End Turn) and End, and a loss at 0 Life Points or on a draw from an empty deck *(Amended by ADR-0042: v1, `meta.version: 2`: a Normal Summon only while the Monster Zone holds at most 2 monsters, and a Direct Attack only while the opponent's Monster Zone is empty and not on Turn 1)*. It has no Response Window and no Active Zone. It is the current ruleset, where rule decisions are mirrored from Phase G's ticket [39] (ADR-0041). The v0 rules (`meta.version: 1`) left out what ticket [40] (phases, capacity, no Turn-1 attack) added, which v1 has (ADR-0042); [41] (positions and combat) and [42] (tributes and spells) are still to come, as its `.md` says.
+The second, independent ruleset (`rulesets/duel-ruleset/`, `meta.id: duel`), written from scratch with original names (ADR-0041, ticket [39]): two Players with 4000 Life Points (the Player state `life_points`) and a deck of 40 monsters of level 1 to 4, a Turn of Draw (the starting Player skips Turn 1's draw), Main (Normal Summon once per Turn, `to_battle`, End Turn), Battle (Direct Attack once per monster per Turn for its ATK, End Turn) and End, and a loss at 0 Life Points or on a draw from an empty deck *(Amended by ADR-0042: v1, `meta.version: 2`: a Normal Summon only while the Monster Zone holds at most 2 monsters, and a Direct Attack only while the opponent's Monster Zone is empty and not on Turn 1)*. It has no Response Window and no Active Zone. It is the current ruleset, where rule decisions are mirrored from Phase G's ticket [39] (ADR-0041). The v0 rules (`meta.version: 1`) left out what ticket [40] (phases, capacity, no Turn-1 attack) added, which v1 has (ADR-0042); [41] (positions and combat) and [42] (tributes and spells) are still to come, as its `.md` says. *(Amended by ADR-0043: v2, `meta.version: 3`, has [41]'s rules: Main also lists Set Monster and Change Position, Battle also lists Attack, and a Direct Attack needs an attack-position attacker; [42] is still to come.)*
+
+**Arithmetic Overflow**:
+The Rejection `ArithmeticOverflow`: an `add` or a `sub` Expression whose result does not fit an int (ADR-0041 for `sub` in an Amount, widened by ADR-0043 to `add` and `sub` anywhere). It leaves the GameState untouched and emits no Event; in the `where` of one of several alternatives the alternative does not fit, with one alternative it is the Rejection (ADR-0032, ADR-0043).
+
+**Position**:
+The text instance state `position` of a Duel monster: `"attack"` or `"defence"` (ADR-0043). A monster that has not arrived holds the init, `"attack"`; a Normal Summon puts it in **Attack Position** and a Set in **Defence Position**, and a **Position Change** moves it to the other. Face-up and public this phase (face-down cards are Phase H's), so every Viewer's Observed Card state holds it.
+
+**Set**:
+The Duel Action `set_monster`: a Normal Summon in Defence Position. It shares the once-per-Turn flag `normal_summoned`, the level range and the Monster Zone's room of the Normal Summon (ADR-0043).
+
+**Position Change**:
+The Duel Action `change_position`: a monster of the acting Player's Monster Zone whose `position_fixed` is false is fixed and moves to the other position. A monster arrives with `position_fixed` true, the End phase of its controller's Turn lifts it, so a monster changes position at most once per Turn and never on the Turn it arrived (Main only; ADR-0043).
+
+**Attack Between Monsters**:
+The Duel Action `attack` (Battle): an attack-position monster that has not attacked this Turn, not on Turn 1, hits a monster in the opponent's Monster Zone. Against an attack-position target the lower ATK goes to its owner's Graveyard and its controller loses the difference (a tie sends both, no damage); against a defence-position target ATK above DEF sends it to the Graveyard, ATK below DEF costs the attacker's controller the difference, equal changes nothing (ADR-0043).
 
 **End Turn In Pushed Action**:
 A Definition Error at an `end_turn` in the effects of a pushed action (one a Response Window lists or opens), at its own path, such as `actions[x].effects[1]`: its effects run on a Pass, which does not leave the Action phase (ADR-0037; *Amended by ADR-0042: any action phase*).
@@ -517,10 +532,10 @@ A Rejection of an `advance_phase` with no Action Phase after the current one. Lo
 A Definition Error at `turn.phases` when no phase has `actions`, so the Game would never wait for a Player (ADR-0042). It replaces the removed `InvalidActionPhaseCount`.
 
 **Zone Count**:
-The int Expression `count: { zone, player }`: the number of cards in that Player's zone, derived from the GameState when evaluated and never stored (ADR-0042). `player` is required and takes the selectors of a Player Ref (`active`, `opponent`, and `controller` in a Card Effect). An unknown zone is a Dangling Reference at `count.zone`; a missing selector is Missing Player Selector at `count`. Not allowed in an Amount or a win condition.
+The int Expression `count: { zone, player }`: the number of cards in that Player's zone, derived from the GameState when evaluated and never stored (ADR-0042). `player` is required and takes the selectors of a Player Ref (`active`, `opponent`, and `controller` in a Card Effect). An unknown zone is a Dangling Reference at `count.zone`; a missing selector is Missing Player Selector at `count`. Not allowed in a win condition, at any depth *(Amended by ADR-0043: it is allowed in an Amount, as an operand of `add` and `sub`)*.
 
 **Operator Not In Win Condition**:
-A Definition Error at a `count` or a `first_turn` in the `when` of a win condition, at the operator's own path (ADR-0042); `operator` names which.
+A Definition Error at a `count` or a `first_turn` in the `when` of a win condition, at the operator's own path (ADR-0042); `operator` names which. *(Amended by ADR-0043: also when it nests under `add`, `sub`, `gt` or `lt`, at the nested operator's own path.)*
 
 **Count Overflow**:
 A defensive Rejection: the number of cards in a zone does not fit an int (ADR-0042). Never reached with real zones.

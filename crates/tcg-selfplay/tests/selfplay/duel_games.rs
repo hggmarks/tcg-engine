@@ -1,4 +1,4 @@
-//! The correctness net over the Duel Ruleset (ticket #96, ADR-0041; v1 since ticket #97, ADR-0042): its sample decks are legal
+//! The correctness net over the Duel Ruleset (ticket #96, ADR-0041; v1 since ticket #97, ADR-0042; v2 since ticket #98, ADR-0043): its sample decks are legal
 //! through the engine's Deck List validation, and Games over Seeds 0..100 are played to a Terminal
 //! Outcome with every Invariant checked (`Checks::On`: the twelve Invariants, the leak check
 //! included), deterministically from the same Seed, and replay exactly. The 1,000-Seed net, its pin
