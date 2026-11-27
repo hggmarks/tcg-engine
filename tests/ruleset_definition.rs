@@ -1621,29 +1621,26 @@ fn a_phase_is_automatic_or_waits_for_actions_and_never_both() {
 }
 
 #[test]
-fn a_turn_has_exactly_one_phase_with_actions() {
+fn a_turn_has_at_least_one_phase_with_actions() {
     let turn_path = path().key("turn").key("phases");
-    for (phases, found) in [
-        (vec![], 0),
-        (vec![automatic_phase("start", vec![])], 0),
-        (
-            vec![
-                action_phase("main", &["pass_turn"]),
-                action_phase("second", &["pass_turn"]),
-            ],
-            2,
-        ),
-    ] {
+    for phases in [vec![], vec![automatic_phase("start", vec![])]] {
         assert_eq!(
             error_of(small_ruleset_with_phases(phases)),
             DefinitionError {
                 path: turn_path.clone(),
-                kind: DefinitionErrorKind::InvalidActionPhaseCount { found },
+                kind: DefinitionErrorKind::NoActionPhase,
             }
         );
     }
 
-    // The count is checked after the content of every phase.
+    // Several action phases are a Turn (ADR-0042).
+    assert!(RulesetDefinition::validate(small_ruleset_with_phases(vec![
+        action_phase("main", &["pass_turn"]),
+        action_phase("second", &["pass_turn"]),
+    ]))
+    .is_ok());
+
+    // The presence of an action phase is checked after the content of every phase.
     assert_eq!(
         error_of(small_ruleset_with_phases(vec![
             action_phase("main", &["pass_turn"]),
@@ -2434,7 +2431,7 @@ fn turn_cycle_errors_are_reported_in_validation_order() {
         }
     );
 
-    // The check of an action phase comes before the count of action phases.
+    // The check of an action phase comes before the check that there is one.
     let mut draft = small_ruleset_with_actions(
         vec![action_of("idle", vec![]), pass_turn_action()],
         &["idle"],

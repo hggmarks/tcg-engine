@@ -37,7 +37,7 @@ The 64-bit value from which a Random State is created; the same Seed always yiel
 The intentionally small, game-agnostic proving scenario used to validate the first Runtime increment.
 
 **Turn**:
-A period of play owned by one active Player, ending when the rules accept that Player's `PassTurn` Action.
+A period of play owned by one active Player, ending when the rules accept that Player's `PassTurn` Action. *(Amended by ADR-0042: it has one or more Action Phases, in each of which the Game waits for the Player in turn, and it ends through End Turn from any of them.)*
 
 **Turn Number**:
 The 1-based count of Turns since the Game began. Every accepted `PassTurn` increments it. The declarative GameState holds it as an optional value (absent until the first Turn begins), and the First Turn condition is true when it is 1.
@@ -245,7 +245,7 @@ The typed error `GameState::apply` returns for an Event that does not fit the Ga
 The state Game creation starts from: Players by seat, the Active Player, the Random State of the Seed, every zone empty, no Card Instances and each Player's Player state at the `init` of its Player-State Schemas (ADR-0041): no Event creates the initial values.
 
 **Opening Position**:
-The GameState after Game creation: cards placed, setup run, and, if the ruleset has a turn, the first Turn has begun and waits in its Action Phase. Without a turn, no Turn has begun. Win conditions are evaluated at the end of creation, so it may already hold a Terminal Outcome.
+The GameState after Game creation: cards placed, setup run, and, if the ruleset has a turn, the first Turn has begun and waits in its first Action Phase. Without a turn, no Turn has begun. Win conditions are evaluated at the end of creation, so it may already hold a Terminal Outcome.
 
 **Game Creation**:
 `DeclarativeRuleset::create_game`: from one Deck List per seat and a Seed it returns the Empty GameState and the Opening Position with its setup Event Trace. It is not on the Ruleset seam (ADR-0005).
@@ -253,13 +253,13 @@ The GameState after Game creation: cards placed, setup run, and, if the ruleset 
 ## The Turn Cycle
 
 **Phase**:
-One segment of a Turn, addressed by a Phase Id unique among the phases. It is either an Automatic Phase or the Action Phase.
+One segment of a Turn, addressed by a Phase Id unique among the phases. It is either an Automatic Phase or an Action Phase *(Amended by ADR-0042: a Turn has one or more of the latter)*.
 
 **Automatic Phase**:
 A phase with an `automatic` list of Automatic Steps, run in order when the phase begins.
 
 **Action Phase**:
-The phase with `actions` where the Game waits for the Active Player. A turn has exactly one (ADR-0012). The Game leaves it only through End Turn, so it lists at least one action that ends the Turn, and every declared action is listed by it or by a Response Window (ADR-0027: `NoTurnEndingAction`, `UnlistedAction`; *Amended by ADR-0037: a window's `actions` list an action too, and while a window is open the Game waits in this phase for the Player with Priority*).
+A phase with `actions` where the Game waits for the Active Player. A turn has exactly one (ADR-0012) *(Superseded by ADR-0042: one or more; no action phase is `NoActionPhase`)*. The Game leaves it through End Turn, or through Advance Phase to the next one, so each lists at least one action that ends the Turn, and every declared action is listed by some action phase or by a Response Window (ADR-0027: `NoTurnEndingAction`, `UnlistedAction`; *Amended by ADR-0037: a window's `actions` list an action too, and while a window is open the Game waits in this phase for the Player with Priority*). Each action phase lists its own actions: an action of another one is Action Not In Current Phase.
 
 **Automatic Step**:
 One entry of an Automatic Phase: a single-key map naming a primitive (Untap, Set State, Draw, Move) or an If Step *(Amended by ADR-0041: Set State without `zone` and Add State write Player state)*.
@@ -274,10 +274,10 @@ An Automatic Step that sets an instance state to a value on every card of a zone
 An Automatic Step that moves up to `count` cards, one at a time, from the Top of an ordered `from` zone onto the Top of `to`. It moves the cards there are (that is how the mana deck runs out) and emits no fact for a missing card. `position` is `top`, the Top of the source zone.
 
 **Condition**:
-What an automatic If Step tests when it runs. The only one is First Turn. (The `if` of an Action Effect and the `where` of a param test an Expression instead.)
+What an automatic If Step tests when it runs. The only one is First Turn. (The `if` of an Action Effect and the `where` of a param test an Expression instead, which has a First Turn of its own, ADR-0042.)
 
 **First Turn**:
-The Condition that holds when the Turn Number is 1, the Game's first Turn; the Small Ruleset uses it so that the starting Player skips the Start-phase draw on that Turn only.
+The Condition that holds when the Turn Number is 1, the Game's first Turn; the Small Ruleset uses it so that the starting Player skips the Start-phase draw on that Turn only. *(Amended by ADR-0042: `first_turn: {}` is also a bool Expression with the same meaning, so a `where` can say "not on Turn 1" as `eq: [{ first_turn: {} }, false]`; the Condition is unchanged, and neither is allowed in a win condition.)*
 
 **If Step**:
 An Automatic Step `if: <condition>` with a `then` list and an optional `else` list of Automatic Steps, run according to the Condition at the moment the step runs.
@@ -298,7 +298,7 @@ The bool Expression `where` of a Param Alternative. It reads its own parameter, 
 Any Player other than the acting Player. With two Players it is the other one; the engine does not assume two.
 
 **Expression**:
-A literal scalar, a Value Ref *(Amended by ADR-0041: or a Player Ref)*, or one operator over Expressions: `eq: [a, b]` (same type), `gte: [a, b]` and `lte: [a, b]` (ints), `and: [e, ...]` (bools; `and: []` holds) and `is_card_type: [<card ref>, <card type id>]`. The types are the Field Types and the operators give bool; a Card Ref is not a value. Checked at load, depth-first and left to right.
+A literal scalar, a Value Ref *(Amended by ADR-0041: or a Player Ref)*, or one operator over Expressions: `eq: [a, b]` (same type), `gte: [a, b]` and `lte: [a, b]` (ints), `and: [e, ...]` (bools; `and: []` holds) and `is_card_type: [<card ref>, <card type id>]` *(Amended by ADR-0042: and `count: { zone, player }`, the Zone Count, an int, and `first_turn: {}`, a bool)*. The types are the Field Types and the operators give bool; a Card Ref is not a value. Checked at load, depth-first and left to right.
 
 **Subject**:
 The card type an expression Win Condition is about: the first name of its Refs (`leader` in `leader.current_life`). The expression must read exactly one *(a Player-state condition has none: it reads no card)*.
@@ -325,7 +325,7 @@ What an action pays before its effects run *(Amended by ADR-0041: a cost may als
 The Cost `tap: { zone, count }`. It needs `count` (a Value Ref to an int, so `tap.count` takes a Ref and no literal yet) untapped cards in that zone of the acting Player and taps the first `count` of them in zone list order, bottom first, even in an unordered zone. An untapped card is one whose card type declares `tapped` and whose value is false. A count of 0 taps nothing.
 
 **Action Effect**:
-What an action does once its costs are paid, built from engine primitives: End Turn, `move: { card, to }` (the card goes from the zone it is in onto the Top of `to`, a zone of its owner), `set_state: { card, state, value }` (an Event only if the value changes), Add State *(Amended by ADR-0041: `set_state` and `add_state` take `player: <selector>` in place of `card` to write a Player state, emitting `PlayerStateChanged`)*, **Draw Effect** (only in a Card Effect) and If Effect. Distinct from a **Card Effect**: an ability a Card Definition carries. The `do` of a triggered Card Effect is a list of Action Effects, except End Turn.
+What an action does once its costs are paid, built from engine primitives: End Turn, `move: { card, to }` (the card goes from the zone it is in onto the Top of `to`, a zone of its owner), `set_state: { card, state, value }` (an Event only if the value changes), Advance Phase *(ADR-0042)*, Add State *(Amended by ADR-0041: `set_state` and `add_state` take `player: <selector>` in place of `card` to write a Player state, emitting `PlayerStateChanged`)*, **Draw Effect** (only in a Card Effect) and If Effect. Distinct from a **Card Effect**: an ability a Card Definition carries. The `do` of a triggered Card Effect is a list of Action Effects, except End Turn and Advance Phase.
 
 **Card Effect**:
 An ability carried by a Card Definition, one element of its `effects` list, allowed only on a card type declared `effects: true` (`EffectsNotAllowed` otherwise). It has one of three shapes, the **Card Effect envelope** *(Amended by ADR-0038: three shapes, not two)*: a **Triggered Card Effect** (`on`, optional `if`, `do`), a **Continuous Card Effect** (`while`, `modify`) or an **Activated Card Effect** (`activated`). An element with keys of two shapes is `MixedCardEffectShapes`, one with none of `on`, `while` and `activated` is `MissingCardEffectShape`. The position of an effect in the card's `effects`, counting every shape, is its **Ability Index** when it is activated. The envelope is validated by the engine against the Ruleset Definition. A Triggered Card Effect executes (ADR-0023), a Continuous one is a Derived Read (ADR-0024, ADR-0025) and an Activated one is used with `Action::Activate` (ADR-0038). Distinct from an Action Effect, which an action performs.
@@ -406,10 +406,10 @@ A Stack Item whose Bound Card has left does nothing when it resolves: all or not
 The ruleset of Phase F (`rulesets/response-ruleset/`, id `response`), a copy of the Effects Ruleset with a `holding` zone, a `fast` field on creatures, `attack` tapping its attacker as a cost, `fast_play` and the `attack_response` window, which has `abilities: true` *(added by ADR-0038)*; two fast creatures, `swift_sparrow` and `flash_fox`, and two `skittish_hare`s, an activated ability that pays 1 mana and returns the hare to the hand *(added by ADR-0038)*, are in both sample decks. Rule decisions are made here from Phase F's ticket [34] (ADR-0037). *(Amended by ADR-0041: it is frozen since Phase G, by the digest test `the_response_ruleset_is_frozen_since_phase_g`, and the Duel Ruleset is the current one; its own `.md` says nothing of this, being frozen.)*
 
 **Duel Ruleset**:
-The second, independent ruleset (`rulesets/duel-ruleset/`, `meta.id: duel`), written from scratch with original names (ADR-0041, ticket [39]): two Players with 4000 Life Points (the Player state `life_points`) and a deck of 40 monsters of level 1 to 4, a Turn of Draw (the starting Player skips Turn 1's draw), Main (Normal Summon once per Turn, Direct Attack once per monster per Turn for its ATK, End Turn) and End, and a loss at 0 Life Points or on a draw from an empty deck. It has no Response Window and no Active Zone. It is the current ruleset, where rule decisions are mirrored from Phase G's ticket [39] (ADR-0041). The v0 rules (`meta.version: 1`) leave out what tickets [40] (phases, capacity, no Turn-1 attack), [41] (positions and combat) and [42] (tributes and spells) add, as its `.md` says.
+The second, independent ruleset (`rulesets/duel-ruleset/`, `meta.id: duel`), written from scratch with original names (ADR-0041, ticket [39]): two Players with 4000 Life Points (the Player state `life_points`) and a deck of 40 monsters of level 1 to 4, a Turn of Draw (the starting Player skips Turn 1's draw), Main (Normal Summon once per Turn, `to_battle`, End Turn), Battle (Direct Attack once per monster per Turn for its ATK, End Turn) and End, and a loss at 0 Life Points or on a draw from an empty deck *(Amended by ADR-0042: v1, `meta.version: 2`: a Normal Summon only while the Monster Zone holds at most 2 monsters, and a Direct Attack only while the opponent's Monster Zone is empty and not on Turn 1)*. It has no Response Window and no Active Zone. It is the current ruleset, where rule decisions are mirrored from Phase G's ticket [39] (ADR-0041). The v0 rules (`meta.version: 1`) left out what ticket [40] (phases, capacity, no Turn-1 attack) added, which v1 has (ADR-0042); [41] (positions and combat) and [42] (tributes and spells) are still to come, as its `.md` says.
 
 **End Turn In Pushed Action**:
-A Definition Error at an `end_turn` in the effects of a pushed action (one a Response Window lists or opens), at its own path, such as `actions[x].effects[1]`: its effects run on a Pass, which does not leave the Action phase (ADR-0037).
+A Definition Error at an `end_turn` in the effects of a pushed action (one a Response Window lists or opens), at its own path, such as `actions[x].effects[1]`: its effects run on a Pass, which does not leave the Action phase (ADR-0037; *Amended by ADR-0042: any action phase*).
 
 **Pushed Card Not Public**:
 A Definition Error at a card param of a pushed action, or at its `one_of[i]` alternative, whose card is not in a `public` zone once the costs are paid: the zone is the `to` of the param's last `move` cost if it has one, else the zone of the alternative. `PushedCardNotPublic { param, zone }` with that zone. The Stack is public, so the bound cards must be seen by every Player (ADR-0037). *(Amended by ADR-0038: the same error is reported for the `self` of an activated ability whose last `move: self` cost ends in a zone that is not `public`, at `cards[x].effects[i].activated.cost[k].move.to`, wrapped in `InvalidCardEffect`.)*
@@ -463,7 +463,7 @@ The Action of the Deciding Player that settles the pending decision: `Action::An
 The Action Effect `draw: { player, from, to, count }`, only meaningful in a Card Effect: moves `count` cards one at a time from the Top of `from` (an ordered zone) onto the Top of `to`; an empty `from` emits `DrawFromEmptyZone` and stops, which is how a trigger reaches the `draw_from_empty` win conditions (ADR-0014).
 
 **End Turn**:
-The effect `end_turn: {}`. It runs every phase after the current one, then the next Player in seat order begins Turn n+1 and their phases run until the Action Phase, all in the same transition. In an action it is only the last top-level effect, never inside an If Effect (ADR-0027); an action whose effects end with it is an action that ends the Turn. A Card Effect has no End Turn at all (ADR-0022).
+The effect `end_turn: {}`. It runs every phase after the current one, then the next Player in seat order begins Turn n+1 and their phases run until the Action Phase, all in the same transition *(Amended by ADR-0042: it enters the automatic phases after the current one and passes over the later Action Phases without a `PhaseBegan`; a Turn begins in its first Action Phase)*. In an action it is only the last top-level effect, never inside an If Effect (ADR-0027); an action whose effects end with it is an action that ends the Turn. A Card Effect has no End Turn at all (ADR-0022).
 
 **Action** (declarative):
 A Player, the id of an Action Definition they take and one Argument per Action Parameter, in parameter order (`Action::Declared`). It is one of four engine Actions: a Declared Action, an Answer, a Pass (`Action::Pass { player }`, ADR-0037) and an Activate (`Action::Activate { player, card, ability }`, ADR-0038). It is distinct from the Action Definition it names.
@@ -484,7 +484,7 @@ The Event that a draw found its source zone empty. It changes nothing and is emi
 A Rejection: the Action names an action the ruleset does not declare.
 
 **Action Not In Current Phase**:
-A Rejection: the action is declared but the current phase does not list it, because the current phase is absent, unknown to the ruleset or not an Action Phase (the Action Phase lists every declared action, ADR-0027). *(Amended by ADR-0037: a window's `actions` are listed by no phase, so this is also the Rejection of such an action taken with no window open; with a window open the Rejection is Action Not In Window.)*
+A Rejection: the action is declared but the current phase does not list it, because the current phase is absent, unknown to the ruleset or not an Action Phase (the Action Phase lists every declared action, ADR-0027; *Amended by ADR-0042: with several Action Phases, also an action that only another Action Phase lists*). *(Amended by ADR-0037: a window's `actions` are listed by no phase, so this is also the Rejection of such an action taken with no window open; with a window open the Rejection is Action Not In Window.)*
 
 **End Turn In If Effect**:
 A Definition Error at the `end_turn` of an action that is inside an `if` effect, `then` or `else`, at any depth, even when the `if` is the last effect (ADR-0027). Distinct from End Turn In Card Effect.
@@ -492,8 +492,41 @@ A Definition Error at the `end_turn` of an action that is inside an `if` effect,
 **End Turn Not Last**:
 A Definition Error at a top-level `end_turn` of an action that another effect follows; for `[end_turn, end_turn]` the first one (ADR-0027).
 
+**Advance Phase**:
+The Action Effect `advance_phase: {}` (ADR-0042): moves to the next Action Phase of the Turn, entering each phase after the current one in order, running the automatic ones, and stopping at the first Action Phase. It emits no new kind of Event: the `PhaseBegan` of each phase it enters, followed by the step Events of each automatic one; the Turn, the Turn Number and the Active Player do not change, and there is no going back. Like End Turn it is only the last top-level effect of an action, never in an `if`, a pushed action or a Card Effect.
+
+**Advance Phase Not Last**:
+A Definition Error at a top-level `advance_phase` that another effect follows, at its own path (ADR-0042). Like End Turn Not Last, in the same walk.
+
+**Advance Phase In If Effect**:
+A Definition Error at an `advance_phase` inside an `if` effect, at any depth, at its own path (ADR-0042).
+
+**Advance Phase In Pushed Action**:
+A Definition Error at an `advance_phase` in the effects of a pushed action, at its own path (ADR-0042); the counterpart of End Turn In Pushed Action.
+
+**Advance Phase In Card Effect**:
+A Catalog Error at an `advance_phase` anywhere in a Card Effect's `do` (`CatalogErrorKind::AdvancePhaseInCardEffect`, ADR-0042); the counterpart of End Turn In Card Effect.
+
+**Advance Phase From Last Action Phase**:
+A Definition Error at the last Action Phase, such as `turn.phases[battle]`, when it lists an action that ends with `advance_phase`: no Action Phase follows (ADR-0042). The same case at runtime is the defensive Rejection No Later Action Phase.
+
+**No Later Action Phase**:
+A Rejection of an `advance_phase` with no Action Phase after the current one. Load checking makes it unreachable; it is a typed error rather than a panic, with no Event (ADR-0042).
+
+**No Action Phase**:
+A Definition Error at `turn.phases` when no phase has `actions`, so the Game would never wait for a Player (ADR-0042). It replaces the removed `InvalidActionPhaseCount`.
+
+**Zone Count**:
+The int Expression `count: { zone, player }`: the number of cards in that Player's zone, derived from the GameState when evaluated and never stored (ADR-0042). `player` is required and takes the selectors of a Player Ref (`active`, `opponent`, and `controller` in a Card Effect). An unknown zone is a Dangling Reference at `count.zone`; a missing selector is Missing Player Selector at `count`. Not allowed in an Amount or a win condition.
+
+**Operator Not In Win Condition**:
+A Definition Error at a `count` or a `first_turn` in the `when` of a win condition, at the operator's own path (ADR-0042); `operator` names which.
+
+**Count Overflow**:
+A defensive Rejection: the number of cards in a zone does not fit an int (ADR-0042). Never reached with real zones.
+
 **No Turn Ending Action**:
-A Definition Error at the Action Phase when none of the actions it lists ends the Turn (including an empty list), so the Game could wait there forever (ADR-0027).
+A Definition Error at an Action Phase when none of the actions it lists ends the Turn (including an empty list), so the Game could wait there forever (ADR-0027; per Action Phase since ADR-0042).
 
 **Unlisted Action**:
 A Definition Error at an action that no phase lists and no Response Window lists in its `actions`; without a `turn` or a window every action is one (ADR-0027, ADR-0037). Being in a window's `opened_by` lists nothing. Where the Rejection Action Not In Current Phase is about the Game, this is about the ruleset.

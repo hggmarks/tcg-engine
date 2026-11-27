@@ -197,6 +197,12 @@ pub enum Rejection {
     },
     /// Ending the Turn would take the Turn Number above its maximum.
     TurnNumberOverflow,
+    /// An `advance_phase` with no action phase after the current one. Load checking refuses a
+    /// ruleset where an action phase lists such an action, so this is an internal inconsistency
+    /// that is never expected (ADR-0042).
+    NoLaterActionPhase,
+    /// A `count` of the cards in the `zone` of `player` does not fit an int (ADR-0042).
+    CountOverflow { player: PlayerId, zone: ZoneId },
     /// Resolving triggered Card Effects took more than `cap` trigger resolutions in one Resolution,
     /// which spans the Answers of its pauses (ADR-0023, ADR-0033): the whole transition is refused
     /// and the GameState is untouched.
@@ -374,6 +380,18 @@ impl fmt::Display for Rejection {
                 card.0
             ),
             Self::TurnNumberOverflow => write!(f, "the Turn Number cannot go any higher"),
+            Self::NoLaterActionPhase => {
+                write!(
+                    f,
+                    "there is no action phase after the current one to advance to"
+                )
+            }
+            Self::CountOverflow { player, zone } => write!(
+                f,
+                "the number of cards in the zone `{}` of player {} does not fit an integer",
+                zone.as_str(),
+                player.0
+            ),
             Self::TriggerCapExceeded { cap } => write!(
                 f,
                 "triggered Card Effects took more than {cap} resolutions in one Resolution"

@@ -1,0 +1,19 @@
+# The cards of phases-ruleset.yaml (ticket #97). `watcher` reads `count` in the `if` of its Card
+# Effects: its controller gains 500 Life Points when it is the first card of its field, and the
+# controller's opponent loses 50 when that opponent has exactly one card in the field.
+meta: { ruleset: phases, ruleset_version: 1 }
+
+cards:
+  - { id: plain_unit, type: unit, fields: { name: "Plain Unit", power: 1 } }
+  - id: watcher
+    type: unit
+    fields: { name: "Watcher", power: 2 }
+    effects:
+      - on: { enter: field }
+        if: { eq: [{ count: { zone: field, player: controller } }, 1] }
+        do:
+          - add_state: { player: controller, state: life_points, amount: 500 }
+      - on: { enter: field }
+        if: { eq: [{ count: { zone: field, player: opponent } }, 1] }
+        do:
+          - add_state: { player: opponent, state: life_points, amount: -50 }

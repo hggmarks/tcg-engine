@@ -17,7 +17,8 @@
 //! `opened_by` and its `actions`, then the checks of the pushed actions, ADR-0037), then the turn: per phase,
 //! in declaration order, its id (grammar, duplicate), its kind (exactly one of `automatic` and
 //! `actions`) and its content (an action phase also needs an action that ends the Turn), and after
-//! all the phases that exactly one has actions, then that every action is listed by a phase or by a window. Phases are
+//! all the phases that at least one has actions (ADR-0042), then that no action of the last action phase
+//! is an `advance_phase`, then that every action is listed by a phase or by a window. Phases are
 //! addressed by id (`turn.phases[main].actions[0]`) and steps by position, with
 //! `then` and `else` as the keys of nested steps (`turn.phases[start].automatic[2].else[0]`).
 //! Within a step: `player`, then its zones in key order (a source that cards are taken from is
@@ -67,5 +68,5 @@ pub use model::{
     PhaseKind, PlayerCount, PlayerPosition, PlayerRef, PlayerRefSelector, PlayerSelector,
     PlayerStateId, PlayerStateSchema, PlayerTarget, Position, RulesetDefinition, RulesetId,
     RulesetVersion, SetupStep, StateName, TurnStructure, ValueRef, Visibility, WinCondition,
-    WinConditionId, WinConditionWhen, Window, WindowId, Zone, ZoneId,
+    WinConditionId, WinConditionWhen, Window, WindowId, Zone, ZoneCount, ZoneId,
 };

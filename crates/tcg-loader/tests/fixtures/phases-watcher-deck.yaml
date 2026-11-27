@@ -1,0 +1,5 @@
+# A deck of `watcher` only, for both Players of phases-ruleset.yaml (ticket #97).
+inputs:
+  - input: main_deck
+    cards:
+      - { card: watcher, count: 6 }

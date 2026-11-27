@@ -19,6 +19,7 @@ use crate::ruleset_definition::{
     Amount, AmountOperand, CardValue, Expression, FieldValue, ParamName, PlayerRef,
     PlayerRefSelector, PlayerTarget,
 };
+use crate::turn::TurnNumber;
 
 /// Which value a ref reads.
 #[derive(Debug, Clone, Copy)]
@@ -77,6 +78,30 @@ fn evaluate(
             read_in(ruleset, state, card, reference.value(), mode)
         }
         Expression::PlayerValue(reference) => read_player_state(state, bound, reference),
+        Expression::ZoneCount(count) => {
+            let selected = match count.player() {
+                PlayerRefSelector::Active => Selected::Active,
+                PlayerRefSelector::Controller => Selected::Controller,
+                PlayerRefSelector::Opponent => Selected::Opponent,
+                PlayerRefSelector::Judged => Selected::Judged,
+            };
+            let player = selected_player(state, bound, selected)?;
+            let cards = state
+                .zone(player, count.zone())
+                .ok_or(Rejection::EventRejected(ApplyError::UnknownZone {
+                    player,
+                    zone: count.zone().clone(),
+                }))?;
+            i64::try_from(cards.len())
+                .map(FieldValue::Int)
+                .map_err(|_| Rejection::CountOverflow {
+                    player,
+                    zone: count.zone().clone(),
+                })
+        }
+        Expression::FirstTurn => Ok(FieldValue::Bool(
+            state.turn_number() == Some(TurnNumber::FIRST),
+        )),
         Expression::Eq(left, right) => {
             let left = evaluate(ruleset, state, bound, left, mode)?;
             let right = evaluate(ruleset, state, bound, right, mode)?;

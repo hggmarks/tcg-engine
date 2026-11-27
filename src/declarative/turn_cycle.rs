@@ -1,9 +1,13 @@
-//! The Turn cycle: beginning a Turn, running automatic phases, and ending a Turn (ADR-0012).
+//! The Turn cycle: beginning a Turn, running automatic phases, moving between action phases and
+//! ending a Turn (ADR-0012, ADR-0042).
 //!
 //! A Turn begins with `TurnBegan`; then each phase from the first begins with `PhaseBegan` and, if
 //! it is automatic, runs its steps in order. The first phase with actions is where the Game waits
-//! for the Active Player. `end_turn` runs every phase after it, then begins the next Player's Turn,
-//! all as one transition.
+//! for the Active Player. `advance_phase` enters each phase after the current one up to the next
+//! phase with actions, where the Game waits again. `end_turn` runs every automatic phase after the
+//! current one, passes over the action phases among them (a phase begins only when the Game enters
+//! it, and the Game waits in an action phase it enters), then begins the next Player's Turn, all
+//! as one transition.
 
 use super::action::Rejection;
 use super::event::Event;
@@ -29,13 +33,59 @@ pub(super) fn begin_turn(
         return Ok(());
     };
     for phase in structure.phases() {
-        execution.apply(Event::PhaseBegan {
-            phase: phase.id().clone(),
-        })?;
-        match phase.kind() {
-            PhaseKind::Automatic(steps) => run_steps(execution, steps)?,
-            PhaseKind::Actions(_) => break,
+        enter_phase(execution, phase)?;
+        if matches!(phase.kind(), PhaseKind::Actions(_)) {
+            break;
         }
+    }
+    Ok(())
+}
+
+/// Enters a phase: `PhaseBegan`, and then its steps in order if it is automatic.
+fn enter_phase(execution: &mut Execution, phase: &Phase) -> Result<(), StepError> {
+    execution.apply(Event::PhaseBegan {
+        phase: phase.id().clone(),
+    })?;
+    if let PhaseKind::Automatic(steps) = phase.kind() {
+        run_steps(execution, steps)?;
+    }
+    Ok(())
+}
+
+/// The phases after the current one: where the Game is waiting, which is an action phase of the
+/// Turn. Rejected, like a Game that has no Turn in progress, when it is none.
+fn phases_after_current<'a>(
+    definition: &'a RulesetDefinition,
+    execution: &Execution,
+) -> Result<&'a [Phase], Rejection> {
+    let current = execution.state.phase();
+    let phases: &[Phase] = definition
+        .turn()
+        .map_or(&[], |structure| structure.phases());
+    let position = phases
+        .iter()
+        .position(|phase| Some(phase.id()) == current)
+        .ok_or(Rejection::EventRejected(ApplyError::NoTurnInProgress))?;
+    Ok(phases.get(position.saturating_add(1)..).unwrap_or(&[]))
+}
+
+/// Moves to the next action phase of the Turn: enters each phase after the current one, running
+/// the automatic ones, and stops at the first phase with actions (ADR-0042). A load-checked
+/// Ruleset never takes this from the last action phase; if it happens, the Action is rejected
+/// before any Event.
+pub(super) fn advance_phase(
+    definition: &RulesetDefinition,
+    execution: &mut Execution,
+) -> Result<(), Rejection> {
+    let rest = phases_after_current(definition, execution)?;
+    let Some(target) = rest
+        .iter()
+        .position(|phase| matches!(phase.kind(), PhaseKind::Actions(_)))
+    else {
+        return Err(Rejection::NoLaterActionPhase);
+    };
+    for phase in rest.iter().take(target.saturating_add(1)) {
+        enter_phase(execution, phase)?;
     }
     Ok(())
 }
@@ -58,27 +108,11 @@ pub(super) fn end_turn(
         return Err(Rejection::TurnNumberOverflow);
     };
 
-    let current = execution.state.phase().cloned();
-    let phases: &[Phase] = definition
-        .turn()
-        .map_or(&[], |structure| structure.phases());
-    let Some(position) = phases
-        .iter()
-        .position(|phase| Some(phase.id()) == current.as_ref())
-    else {
-        // The Ruleset only ends a Turn from the phase that waits for actions.
-        return Err(event_rejected(ApplyError::NoTurnInProgress));
-    };
-    // Every phase after the current one; all of them are automatic, because a turn has exactly one
-    // phase with actions and the Game is waiting in it.
-    for phase in phases.iter().skip(position.saturating_add(1)) {
-        execution
-            .apply(Event::PhaseBegan {
-                phase: phase.id().clone(),
-            })
-            .map_err(event_rejected)?;
-        if let PhaseKind::Automatic(steps) = phase.kind() {
-            run_steps(execution, steps)?;
+    // Every phase after the current one: the automatic ones run, and the action phases are passed
+    // over without beginning (ADR-0042).
+    for phase in phases_after_current(definition, execution)? {
+        if matches!(phase.kind(), PhaseKind::Automatic(_)) {
+            enter_phase(execution, phase)?;
         }
     }
     Ok(begin_turn(definition, execution, next_player, next_turn)?)
