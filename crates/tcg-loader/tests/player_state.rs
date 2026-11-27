@@ -1888,3 +1888,162 @@ fn a_negative_overflow_of_add_state_on_player_state_is_rejected() {
     );
     assert_eq!(input, before);
 }
+
+// ---- a Card Effect that reads Player state with a controller who is not the Active Player
+
+/// The ruleset text with the action `grab` listed in Main: the acting Player moves a card of the
+/// opponent's hand to the opponent's field, so an `enter: field` trigger fires for a card whose
+/// controller is not the Active Player.
+fn grab_ruleset_text(base: &str) -> String {
+    let listed = edit(
+        base,
+        "actions: [summon, bully,",
+        "actions: [grab, summon, bully,",
+    );
+    edit(
+        &listed,
+        "actions:\n  # Legal while the acting Player has not summoned",
+        "actions:\n  - id: grab\n    params:\n      - { name: card, zone: hand, card_type: unit, owner: opponent }\n    effects:\n      - move: { card: { ref: card }, to: field }\n\n  # Legal while the acting Player has not summoned",
+    )
+}
+
+/// The fixture with one extra card `id` (given as catalog text) in place of one `plain_unit` of
+/// the deck: the card is the 4th created, so it is card 3 of seat 0 and card 9 of seat 1.
+fn game_with_card(
+    ruleset_yaml: &str,
+    card_yaml: &str,
+    id: &str,
+) -> (DeclarativeRuleset, GameCreation) {
+    let definition = load_ruleset_definition(ruleset_yaml).expect("the ruleset loads");
+    let catalog = load_card_catalog(&definition, &format!("{CATALOG}{card_yaml}"))
+        .expect("the catalog loads");
+    let ruleset = DeclarativeRuleset::new(definition, catalog);
+    let deck = edit(
+        DECK,
+        "{ card: plain_unit, count: 4 }",
+        &format!("{{ card: plain_unit, count: 3 }}\n      - {{ card: {id}, count: 1 }}"),
+    );
+    let decks: Vec<_> = (0..2)
+        .map(|_| load_deck_list(ruleset.definition(), ruleset.catalog(), &deck).expect("legal"))
+        .collect();
+    let creation = ruleset
+        .create_game(&decks, Seed(1))
+        .expect("the decks create a game");
+    let hand = ZoneId::new("hand");
+    assert_eq!(
+        creation.opening.state.zone(p(0), &hand),
+        Some([TITHE_0, OTHER_TITHE_0, CardInstanceId(3)].as_slice())
+    );
+    assert_eq!(
+        creation.opening.state.zone(p(1), &hand),
+        Some([CardInstanceId(11), CardInstanceId(10), CardInstanceId(9)].as_slice())
+    );
+    (ruleset, creation)
+}
+
+#[test]
+fn a_card_effect_reads_the_right_players_when_its_controller_is_not_active() {
+    // Seat 0 is the Active Player and takes seat 1's `probe_unit` into seat 1's field: the card's
+    // controller is seat 1, the Active Player seat 0, and `opponent` (of the controller) seat 0. Its
+    // `if` holds only if each selector reads the right Player, and its effects write them.
+    let probe = "  - id: probe_unit
+    type: unit
+    fields: { name: \"Probe Unit\", power: 1 }
+    effects:
+      - on: { enter: field }
+        if:
+          and:
+            - { eq: [{ ref: player.life_points, player: controller }, 3700] }
+            - { eq: [{ ref: player.life_points, player: active }, 4500] }
+            - { eq: [{ ref: player.life_points, player: opponent }, 4500] }
+        do:
+          - add_state: { player: controller, state: life_points, amount: { ref: player.life_points, player: active } }
+          - add_state: { player: active, state: life_points, amount: { sub: [0, { ref: player.life_points, player: controller }] } }
+          - add_state: { player: controller, state: life_points, amount: { ref: player.life_points, player: opponent } }
+";
+    let (ruleset, creation) = game_with_card(&grab_ruleset_text(RULESET), probe, "probe_unit");
+    let probe_card = CardInstanceId(9);
+
+    // Seat 0: 4500, seat 1: 3700, then seat 0 grabs the probe.
+    let drained = take(&ruleset, &creation.opening.state, &act(0, "drain", &[]));
+    let healed = take(&ruleset, &drained.state, &act(0, "heal", &[]));
+    assert_eq!(healed.state.active_player(), p(0));
+    assert_eq!(
+        healed.state.player_state(p(0)),
+        Some(values(4500, false).as_slice())
+    );
+    assert_eq!(
+        healed.state.player_state(p(1)),
+        Some(values(3700, false).as_slice())
+    );
+    let grabbed = take(&ruleset, &healed.state, &act(0, "grab", &[probe_card]));
+
+    // controller (seat 1) += active's 4500 = 8200; active (seat 0) -= controller's 8200 = -3700;
+    // controller (seat 1) += opponent's -3700 = 4500.
+    assert_eq!(
+        grabbed.trace.events().to_vec(),
+        vec![
+            Event::CardMoved {
+                card: probe_card,
+                player: p(1),
+                from: ZoneId::new("hand"),
+                to: ZoneId::new("field"),
+            },
+            changed(1, "life_points", int(8200)),
+            changed(0, "life_points", int(-3700)),
+            changed(1, "life_points", int(4500)),
+        ]
+    );
+}
+
+#[test]
+fn a_continuous_card_effect_while_reads_player_state() {
+    // `flag_booster` adds 4 power to itself while its controller and its controller's opponent both
+    // have `summoned` set. `hit_on_field` takes the card's power from the opponent's Life Points,
+    // so the power read shows whether the `while` holds.
+    let booster = "  - id: flag_booster
+    type: unit
+    fields: { name: \"Flag Booster\", power: 3 }
+    effects:
+      - while:
+          and:
+            - { eq: [{ ref: player.summoned, player: controller }, true] }
+            - { eq: [{ ref: player.summoned, player: opponent }, true] }
+        modify: { field: power, amount: 4 }
+";
+    let (ruleset, creation) = game_with_card(&amounts_ruleset_text(), booster, "flag_booster");
+    let card = CardInstanceId(3);
+    let hit = act(0, "hit_on_field", &[card]);
+
+    // Summoned: the controller's flag is set, the opponent's is not: the power is its base, 3.
+    let summoned = take(
+        &ruleset,
+        &creation.opening.state,
+        &act(0, "summon", &[card]),
+    );
+    let first = take(&ruleset, &summoned.state, &hit);
+    assert_eq!(
+        first.trace.events().to_vec(),
+        vec![changed(1, "life_points", int(3997))]
+    );
+
+    // Both flags set: the modifier is active, 3 + 4.
+    let marked = take(&ruleset, &first.state, &act(0, "mark_opponent", &[]));
+    let second = take(&ruleset, &marked.state, &hit);
+    assert_eq!(
+        second.trace.events().to_vec(),
+        vec![changed(1, "life_points", int(3990))]
+    );
+
+    // The controller's flag cleared: the `while` no longer holds, and the power is 3 again.
+    let cleared = take(&ruleset, &second.state, &act(0, "keep_flag", &[]));
+    assert_eq!(
+        cleared.trace.events().to_vec(),
+        vec![changed(0, "summoned", flag(false))]
+    );
+    let third = take(&ruleset, &cleared.state, &hit);
+    assert_eq!(
+        third.trace.events().to_vec(),
+        vec![changed(1, "life_points", int(3987))]
+    );
+}
