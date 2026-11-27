@@ -1,0 +1,6 @@
+# The deck of both Players of arithmetic-ruleset.yaml (ticket #98): six `alpha`, not shuffled, so
+# seat 0 opens holding the cards 5, 4 and 3 and seat 1 the cards 11, 10 and 9.
+inputs:
+  - input: main_deck
+    cards:
+      - { card: alpha, count: 6 }

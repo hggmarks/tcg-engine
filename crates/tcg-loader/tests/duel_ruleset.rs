@@ -657,3 +657,668 @@ fn an_attack_on_turn_one_is_rejected() {
     let battle_2 = play(&ruleset, &turn_2, &[summon(1, other), to_battle(1)]);
     assert!(is_legal(&ruleset, &battle_2, &attack(1, other)));
 }
+
+// ---- positions and combat (ticket #98, ADR-0043)
+//
+// A monster is summoned in attack position or set in defence position, face-up this phase. It
+// changes position once per Turn in Main, and not on the Turn it arrived. In Battle an
+// attack-position monster attacks a monster of the opponent: the lower ATK is destroyed and its
+// controller loses the difference; against a defence-position monster ATK above DEF destroys it,
+// ATK below DEF costs the attacker's controller the difference.
+//
+// The six combat cases use the real catalog: seat 0 summons the attacker on Turn 1, seat 1 plays the
+// target on Turn 2 (summoned, or set), and seat 0 goes to Battle on Turn 3. A test finds a Seed
+// whose opening hands hold the two monsters, and asserts that they do.
+
+fn set_monster(player: u32, card: CardInstanceId) -> Action {
+    declared(player, "set_monster", &[card])
+}
+
+fn change_position(player: u32, card: CardInstanceId) -> Action {
+    declared(player, "change_position", &[card])
+}
+
+fn fight(player: u32, attacker: CardInstanceId, target: CardInstanceId) -> Action {
+    declared(player, "attack", &[attacker, target])
+}
+
+/// The text instance state `position` of `card`.
+fn position(state: &GameState, card: CardInstanceId) -> String {
+    match state
+        .card(card)
+        .expect("the card exists")
+        .state_value(&StateName::new("position"))
+    {
+        Some(FieldValue::Text(value)) => value.clone(),
+        other => panic!("position is {other:?}"),
+    }
+}
+
+/// The bool instance state `position_fixed` of `card`.
+fn position_fixed(state: &GameState, card: CardInstanceId) -> bool {
+    match state
+        .card(card)
+        .expect("the card exists")
+        .state_value(&StateName::new("position_fixed"))
+    {
+        Some(FieldValue::Bool(value)) => *value,
+        other => panic!("position_fixed is {other:?}"),
+    }
+}
+
+fn card_state(card: CardInstanceId, state: &str, value: FieldValue) -> Event {
+    Event::CardStateChanged {
+        card,
+        state: StateName::new(state),
+        value,
+    }
+}
+
+fn text(value: &str) -> FieldValue {
+    FieldValue::Text(value.to_string())
+}
+
+fn moved(card: CardInstanceId, seat: u32, from: &str, to: &str) -> Event {
+    Event::CardMoved {
+        card,
+        player: p(seat),
+        from: zone(from),
+        to: zone(to),
+    }
+}
+
+fn life_changed(seat: u32, value: i64) -> Event {
+    Event::PlayerStateChanged {
+        player: p(seat),
+        state: PlayerStateId::new("life_points"),
+        value: FieldValue::Int(value),
+    }
+}
+
+fn normal_summoned(seat: u32, value: bool) -> Event {
+    Event::PlayerStateChanged {
+        player: p(seat),
+        state: PlayerStateId::new("normal_summoned"),
+        value: FieldValue::Bool(value),
+    }
+}
+
+fn monster_zone(state: &GameState, seat: u32) -> Vec<CardInstanceId> {
+    state
+        .zone(p(seat), &zone("monster_zone"))
+        .expect("the Monster Zone exists")
+        .to_vec()
+}
+
+fn graveyard(state: &GameState, seat: u32) -> Vec<CardInstanceId> {
+    state
+        .zone(p(seat), &zone("graveyard"))
+        .expect("the Graveyard exists")
+        .to_vec()
+}
+
+/// A card of the hand of `seat` made from the Card Definition `definition`.
+fn in_hand(state: &GameState, seat: u32, definition: &str) -> Option<CardInstanceId> {
+    hand(state, seat)
+        .into_iter()
+        .find(|&card| definition_id(state, card) == definition)
+}
+
+/// The Opening Position of a Game where seat 0 holds `mine` and seat 1 holds `theirs`, and the two
+/// cards.
+fn matchup(
+    mine: &str,
+    theirs: &str,
+) -> (
+    DeclarativeRuleset,
+    GameState,
+    CardInstanceId,
+    CardInstanceId,
+) {
+    let (ruleset, decks) = real();
+    let creation = find_game(&ruleset, &decks, |state| {
+        in_hand(state, 0, mine).is_some() && in_hand(state, 1, theirs).is_some()
+    });
+    let opening = creation.opening.state;
+    let attacker = in_hand(&opening, 0, mine).expect("seat 0 holds the attacker");
+    let target = in_hand(&opening, 1, theirs).expect("seat 1 holds the target");
+    (ruleset, opening, attacker, target)
+}
+
+/// Turn 1: seat 0 summons `attacker`. Turn 2: seat 1 plays `second`. Turn 3: seat 0 goes to Battle.
+fn at_battle(
+    ruleset: &DeclarativeRuleset,
+    opening: &GameState,
+    attacker: CardInstanceId,
+    second: &Action,
+) -> GameState {
+    let in_battle = play(
+        ruleset,
+        opening,
+        &[
+            summon(0, attacker),
+            end_turn(0),
+            second.clone(),
+            end_turn(1),
+            to_battle(0),
+        ],
+    );
+    assert_eq!(in_battle.turn_number(), TurnNumber::new(3));
+    assert_eq!(in_battle.phase(), Some(&PhaseId::new("battle")));
+    in_battle
+}
+
+/// Whether some Legal Action is the declared action `id`.
+fn offers(ruleset: &DeclarativeRuleset, state: &GameState, id: &str) -> bool {
+    ruleset
+        .legal_actions(state)
+        .iter()
+        .any(|action| matches!(action, Action::Declared { action, .. } if action.as_str() == id))
+}
+
+// ---- the six combat cases
+
+#[test]
+fn a_higher_atk_destroys_the_attack_position_target_and_costs_its_controller_the_difference() {
+    // Gale Hawk (ATK 1400) against Pebble Golem (ATK 700), in attack position.
+    let (ruleset, opening, attacker, target) = matchup("gale_hawk", "pebble_golem");
+    let input = at_battle(&ruleset, &opening, attacker, &summon(1, target));
+    assert_eq!(position(&input, target), "attack");
+    assert!(is_legal(&ruleset, &input, &fight(0, attacker, target)));
+    let before = input.clone();
+
+    let hit = take(&ruleset, &input, &fight(0, attacker, target));
+    assert_eq!(
+        hit.trace.events().to_vec(),
+        vec![
+            attacked(attacker, true),
+            life_changed(1, 4000 - (1400 - 700)),
+            moved(target, 1, "monster_zone", "graveyard"),
+        ]
+    );
+    assert_eq!(graveyard(&hit.state, 1), vec![target]);
+    assert_eq!(monster_zone(&hit.state, 1), Vec::<CardInstanceId>::new());
+    assert_eq!(monster_zone(&hit.state, 0), vec![attacker]);
+    assert_eq!(graveyard(&hit.state, 0), Vec::<CardInstanceId>::new());
+    assert_eq!(life_points(&hit.state, 0), 4000);
+    assert_eq!(life_points(&hit.state, 1), 3300);
+    assert_eq!(input, before);
+}
+
+#[test]
+fn a_lower_atk_destroys_the_attacker_and_costs_its_controller_the_difference() {
+    // Moss Toad (ATK 300) against Ember Fox (ATK 1200), in attack position.
+    let (ruleset, opening, attacker, target) = matchup("moss_toad", "ember_fox");
+    let input = at_battle(&ruleset, &opening, attacker, &summon(1, target));
+    let before = input.clone();
+
+    let hit = take(&ruleset, &input, &fight(0, attacker, target));
+    assert_eq!(
+        hit.trace.events().to_vec(),
+        vec![
+            attacked(attacker, true),
+            life_changed(0, 4000 - (1200 - 300)),
+            moved(attacker, 0, "monster_zone", "graveyard"),
+        ]
+    );
+    assert_eq!(graveyard(&hit.state, 0), vec![attacker]);
+    assert_eq!(monster_zone(&hit.state, 0), Vec::<CardInstanceId>::new());
+    assert_eq!(monster_zone(&hit.state, 1), vec![target]);
+    assert_eq!(graveyard(&hit.state, 1), Vec::<CardInstanceId>::new());
+    assert_eq!(life_points(&hit.state, 0), 3100);
+    assert_eq!(life_points(&hit.state, 1), 4000);
+    assert_eq!(input, before);
+}
+
+#[test]
+fn tied_atk_destroys_both_monsters_without_damage() {
+    // Stone Sentry and Ember Fox both have ATK 1200.
+    let (ruleset, opening, attacker, target) = matchup("stone_sentry", "ember_fox");
+    assert_eq!(stat(&ruleset, &opening, attacker, "atk"), 1200);
+    assert_eq!(stat(&ruleset, &opening, target, "atk"), 1200);
+    let input = at_battle(&ruleset, &opening, attacker, &summon(1, target));
+    let before = input.clone();
+
+    let hit = take(&ruleset, &input, &fight(0, attacker, target));
+    assert_eq!(
+        hit.trace.events().to_vec(),
+        vec![
+            attacked(attacker, true),
+            moved(target, 1, "monster_zone", "graveyard"),
+            moved(attacker, 0, "monster_zone", "graveyard"),
+        ]
+    );
+    assert_eq!(graveyard(&hit.state, 0), vec![attacker]);
+    assert_eq!(graveyard(&hit.state, 1), vec![target]);
+    assert_eq!(monster_zone(&hit.state, 0), Vec::<CardInstanceId>::new());
+    assert_eq!(monster_zone(&hit.state, 1), Vec::<CardInstanceId>::new());
+    assert_eq!(life_points(&hit.state, 0), 4000);
+    assert_eq!(life_points(&hit.state, 1), 4000);
+    assert_eq!(input, before);
+}
+
+#[test]
+fn atk_above_def_destroys_the_defence_position_target_without_damage() {
+    // Iron Beetle (ATK 1300) against Ash Sprite (DEF 200), set.
+    let (ruleset, opening, attacker, target) = matchup("iron_beetle", "ash_sprite");
+    let input = at_battle(&ruleset, &opening, attacker, &set_monster(1, target));
+    assert_eq!(position(&input, target), "defence");
+    let before = input.clone();
+
+    let hit = take(&ruleset, &input, &fight(0, attacker, target));
+    assert_eq!(
+        hit.trace.events().to_vec(),
+        vec![
+            attacked(attacker, true),
+            moved(target, 1, "monster_zone", "graveyard"),
+        ]
+    );
+    assert_eq!(graveyard(&hit.state, 1), vec![target]);
+    assert_eq!(monster_zone(&hit.state, 0), vec![attacker]);
+    assert_eq!(monster_zone(&hit.state, 1), Vec::<CardInstanceId>::new());
+    assert_eq!(graveyard(&hit.state, 0), Vec::<CardInstanceId>::new());
+    assert_eq!(life_points(&hit.state, 0), 4000);
+    assert_eq!(life_points(&hit.state, 1), 4000);
+    assert_eq!(input, before);
+}
+
+#[test]
+fn atk_below_def_costs_the_attackers_controller_the_difference() {
+    // Moss Toad (ATK 300) against Stone Sentry (DEF 1900), set: nothing is destroyed.
+    let (ruleset, opening, attacker, target) = matchup("moss_toad", "stone_sentry");
+    let input = at_battle(&ruleset, &opening, attacker, &set_monster(1, target));
+    let before = input.clone();
+
+    let hit = take(&ruleset, &input, &fight(0, attacker, target));
+    assert_eq!(
+        hit.trace.events().to_vec(),
+        vec![
+            attacked(attacker, true),
+            life_changed(0, 4000 - (1900 - 300)),
+        ]
+    );
+    assert_eq!(monster_zone(&hit.state, 0), vec![attacker]);
+    assert_eq!(monster_zone(&hit.state, 1), vec![target]);
+    assert_eq!(graveyard(&hit.state, 0), Vec::<CardInstanceId>::new());
+    assert_eq!(graveyard(&hit.state, 1), Vec::<CardInstanceId>::new());
+    assert_eq!(life_points(&hit.state, 0), 2400);
+    assert_eq!(life_points(&hit.state, 1), 4000);
+    assert_eq!(input, before);
+}
+
+#[test]
+fn atk_equal_to_def_changes_nothing() {
+    // Tide Scribe (ATK 1000) against Iron Beetle (DEF 1000), set: the attack is spent, and that is
+    // all.
+    let (ruleset, opening, attacker, target) = matchup("tide_scribe", "iron_beetle");
+    assert_eq!(stat(&ruleset, &opening, attacker, "atk"), 1000);
+    assert_eq!(stat(&ruleset, &opening, target, "def"), 1000);
+    let input = at_battle(&ruleset, &opening, attacker, &set_monster(1, target));
+    let before = input.clone();
+
+    let hit = take(&ruleset, &input, &fight(0, attacker, target));
+    assert_eq!(hit.trace.events().to_vec(), vec![attacked(attacker, true)]);
+    assert_eq!(monster_zone(&hit.state, 0), vec![attacker]);
+    assert_eq!(monster_zone(&hit.state, 1), vec![target]);
+    assert_eq!(graveyard(&hit.state, 0), Vec::<CardInstanceId>::new());
+    assert_eq!(graveyard(&hit.state, 1), Vec::<CardInstanceId>::new());
+    assert_eq!(life_points(&hit.state, 0), 4000);
+    assert_eq!(life_points(&hit.state, 1), 4000);
+    assert_eq!(input, before);
+}
+
+#[test]
+fn an_attack_must_target_a_monster_in_the_opponents_monster_zone() {
+    let (ruleset, opening, attacker, target) = matchup("gale_hawk", "pebble_golem");
+    let input = at_battle(&ruleset, &opening, attacker, &summon(1, target));
+    let before = input.clone();
+
+    // The attacker itself is not the opponent's card, and a card of the opponent's hand is not in
+    // its Monster Zone.
+    assert_eq!(
+        ruleset.transition(&input, &fight(0, attacker, attacker)),
+        Err(Rejection::NotOpponentCard {
+            param: ParamName::new("target"),
+            card: attacker,
+        })
+    );
+    let in_their_hand = hand(&input, 1)[0];
+    assert_eq!(
+        ruleset.transition(&input, &fight(0, attacker, in_their_hand)),
+        Err(Rejection::CardNotInZone {
+            param: ParamName::new("target"),
+            card: in_their_hand,
+            zone: zone("monster_zone"),
+        })
+    );
+    assert_eq!(input, before);
+
+    // While the opponent has a monster the attack is legal and the direct attack is not; with no
+    // monster of the opponent's there is no target, so the attack is not legal and the direct one is.
+    assert!(offers(&ruleset, &input, "attack"));
+    assert!(!offers(&ruleset, &input, "direct_attack"));
+    let alone = play(
+        &ruleset,
+        &opening,
+        &[summon(0, attacker), end_turn(0), end_turn(1), to_battle(0)],
+    );
+    assert!(!offers(&ruleset, &alone, "attack"));
+    assert!(offers(&ruleset, &alone, "direct_attack"));
+}
+
+// ---- the rejections
+
+#[test]
+fn a_position_change_on_the_turn_the_monster_arrived_is_rejected() {
+    let (ruleset, decks) = real();
+    let opening = create(&ruleset, &decks, 1).opening.state;
+    let arrived = summonable(&ruleset, &opening, 0);
+
+    // A normal summoned monster, then a set one, on the Turn they arrive.
+    let summoned = take(&ruleset, &opening, &summon(0, arrived)).state;
+    let before = summoned.clone();
+    assert_eq!(
+        ruleset.transition(&summoned, &change_position(0, arrived)),
+        Err(where_not_met("monster", arrived))
+    );
+    assert_eq!(summoned, before);
+    assert!(!is_legal(&ruleset, &summoned, &change_position(0, arrived)));
+    assert!(!offers(&ruleset, &summoned, "change_position"));
+
+    let set = take(&ruleset, &opening, &set_monster(0, arrived)).state;
+    assert_eq!(
+        ruleset.transition(&set, &change_position(0, arrived)),
+        Err(where_not_met("monster", arrived))
+    );
+    assert!(!offers(&ruleset, &set, "change_position"));
+
+    // On the owner's next Turn the older monster may change position and the new one may not.
+    let turn_3 = pass_to_turn(&ruleset, &summoned, 3);
+    let newer = summonable(&ruleset, &turn_3, 0);
+    let with_both = take(&ruleset, &turn_3, &summon(0, newer)).state;
+    assert!(is_legal(&ruleset, &with_both, &change_position(0, arrived)));
+    assert!(!is_legal(&ruleset, &with_both, &change_position(0, newer)));
+    assert_eq!(
+        ruleset.transition(&with_both, &change_position(0, newer)),
+        Err(where_not_met("monster", newer))
+    );
+}
+
+#[test]
+fn a_second_position_change_in_a_turn_is_rejected() {
+    let (ruleset, decks) = real();
+    let opening = create(&ruleset, &decks, 1).opening.state;
+    let monster = summonable(&ruleset, &opening, 0);
+    let turn_3 = pass_to_turn(
+        &ruleset,
+        &take(&ruleset, &opening, &summon(0, monster)).state,
+        3,
+    );
+
+    let changed_once = take(&ruleset, &turn_3, &change_position(0, monster)).state;
+    let before = changed_once.clone();
+    assert_eq!(
+        ruleset.transition(&changed_once, &change_position(0, monster)),
+        Err(where_not_met("monster", monster))
+    );
+    assert_eq!(changed_once, before);
+    assert!(!is_legal(
+        &ruleset,
+        &changed_once,
+        &change_position(0, monster)
+    ));
+}
+
+#[test]
+fn an_attack_by_a_defence_position_monster_is_rejected() {
+    let (ruleset, decks) = real();
+    let opening = create(&ruleset, &decks, 1).opening.state;
+    let monster = summonable(&ruleset, &opening, 0);
+
+    // A direct attack: seat 1 has no monster, the Game is past Turn 1 and the monster has not
+    // attacked. Set, it may not attack; summoned, it may.
+    let set_battle = play(
+        &ruleset,
+        &opening,
+        &[
+            set_monster(0, monster),
+            end_turn(0),
+            end_turn(1),
+            to_battle(0),
+        ],
+    );
+    let before = set_battle.clone();
+    assert_eq!(position(&set_battle, monster), "defence");
+    assert_eq!(
+        ruleset.transition(&set_battle, &attack(0, monster)),
+        Err(where_not_met("attacker", monster))
+    );
+    assert_eq!(set_battle, before);
+    assert!(!is_legal(&ruleset, &set_battle, &attack(0, monster)));
+    let summoned_battle = play(
+        &ruleset,
+        &opening,
+        &[summon(0, monster), end_turn(0), end_turn(1), to_battle(0)],
+    );
+    assert!(is_legal(&ruleset, &summoned_battle, &attack(0, monster)));
+
+    // An attack on a monster: the same monster, set, against a monster of seat 1.
+    let turn_2 = take(&ruleset, &opening, &end_turn(0)).state;
+    let target = summonable(&ruleset, &turn_2, 1);
+    let fight_battle = play(
+        &ruleset,
+        &opening,
+        &[
+            set_monster(0, monster),
+            end_turn(0),
+            summon(1, target),
+            end_turn(1),
+            to_battle(0),
+        ],
+    );
+    let before = fight_battle.clone();
+    assert_eq!(
+        ruleset.transition(&fight_battle, &fight(0, monster, target)),
+        Err(where_not_met("attacker", monster))
+    );
+    assert_eq!(fight_battle, before);
+    assert!(!is_legal(
+        &ruleset,
+        &fight_battle,
+        &fight(0, monster, target)
+    ));
+    assert!(!offers(&ruleset, &fight_battle, "attack"));
+}
+
+#[test]
+fn a_second_attack_by_one_monster_in_a_turn_is_rejected() {
+    // Tide Scribe (ATK 1000) against a set Iron Beetle (DEF 1000): the attacker survives its first
+    // attack, so only the once-per-Turn rule can refuse the second.
+    let (ruleset, opening, attacker, target) = matchup("tide_scribe", "iron_beetle");
+    let input = at_battle(&ruleset, &opening, attacker, &set_monster(1, target));
+    let first = take(&ruleset, &input, &fight(0, attacker, target)).state;
+    assert_eq!(monster_zone(&first, 0), vec![attacker]);
+    assert_eq!(monster_zone(&first, 1), vec![target]);
+    let before = first.clone();
+
+    assert_eq!(
+        ruleset.transition(&first, &fight(0, attacker, target)),
+        Err(where_not_met("attacker", attacker))
+    );
+    assert_eq!(first, before);
+    assert!(!is_legal(&ruleset, &first, &fight(0, attacker, target)));
+    assert!(!offers(&ruleset, &first, "attack"));
+}
+
+// ---- positions
+
+#[test]
+fn a_summoned_monster_is_in_attack_position_and_a_set_one_in_defence_position() {
+    let (ruleset, decks) = real();
+    let opening = create(&ruleset, &decks, 1).opening.state;
+    let monster = summonable(&ruleset, &opening, 0);
+    // In hand it has not arrived: attack position, free to change.
+    assert_eq!(position(&opening, monster), "attack");
+    assert!(!position_fixed(&opening, monster));
+
+    let summoned = take(&ruleset, &opening, &summon(0, monster));
+    assert_eq!(
+        summoned.trace.events().to_vec(),
+        vec![
+            moved(monster, 0, "hand", "monster_zone"),
+            normal_summoned(0, true),
+            card_state(monster, "position_fixed", FieldValue::Bool(true)),
+        ]
+    );
+    assert_eq!(position(&summoned.state, monster), "attack");
+    assert!(position_fixed(&summoned.state, monster));
+
+    // A set: the monster is face-up and public until Phase H, in defence position.
+    let set = take(&ruleset, &opening, &set_monster(0, monster));
+    assert_eq!(
+        set.trace.events().to_vec(),
+        vec![
+            moved(monster, 0, "hand", "monster_zone"),
+            normal_summoned(0, true),
+            card_state(monster, "position", text("defence")),
+            card_state(monster, "position_fixed", FieldValue::Bool(true)),
+        ]
+    );
+    assert_eq!(position(&set.state, monster), "defence");
+    assert!(position_fixed(&set.state, monster));
+    assert_eq!(monster_zone(&set.state, 0), vec![monster]);
+}
+
+#[test]
+fn a_set_and_a_normal_summon_share_the_once_per_turn_flag() {
+    let (ruleset, decks) = real();
+    let opening = create(&ruleset, &decks, 1).opening.state;
+    let cards = hand(&opening, 0);
+    let (first, second) = (cards[0], cards[1]);
+    assert!(stat(&ruleset, &opening, first, "level") <= 4);
+    assert!(stat(&ruleset, &opening, second, "level") <= 4);
+
+    // A summon uses the Turn's one, so a set is refused, and the other way round.
+    let summoned = take(&ruleset, &opening, &summon(0, first)).state;
+    let before = summoned.clone();
+    assert_eq!(
+        ruleset.transition(&summoned, &set_monster(0, second)),
+        Err(where_not_met("card", second))
+    );
+    assert_eq!(summoned, before);
+    assert!(!offers(&ruleset, &summoned, "set_monster"));
+
+    let set = take(&ruleset, &opening, &set_monster(0, first)).state;
+    let before = set.clone();
+    assert_eq!(
+        ruleset.transition(&set, &summon(0, second)),
+        Err(where_not_met("card", second))
+    );
+    assert_eq!(set, before);
+    assert!(!offers(&ruleset, &set, "normal_summon"));
+    assert!(!offers(&ruleset, &set, "set_monster"));
+
+    // A set follows the other rules of a summon: the Monster Zone's room.
+    let (full_ruleset, full) = three_monsters();
+    let card = summonable(&full_ruleset, &full, 0);
+    assert_eq!(
+        full_ruleset.transition(&full, &set_monster(0, card)),
+        Err(where_not_met("card", card))
+    );
+    assert!(!is_legal(&full_ruleset, &full, &set_monster(0, card)));
+}
+
+#[test]
+fn a_position_change_toggles_the_position() {
+    let (ruleset, decks) = real();
+    let opening = create(&ruleset, &decks, 1).opening.state;
+    let monster = summonable(&ruleset, &opening, 0);
+
+    // Attack to defence: the position is fixed and then changes.
+    let turn_3 = pass_to_turn(
+        &ruleset,
+        &take(&ruleset, &opening, &summon(0, monster)).state,
+        3,
+    );
+    assert!(!position_fixed(&turn_3, monster));
+    let to_defence = take(&ruleset, &turn_3, &change_position(0, monster));
+    assert_eq!(
+        to_defence.trace.events().to_vec(),
+        vec![
+            card_state(monster, "position_fixed", FieldValue::Bool(true)),
+            card_state(monster, "position", text("defence")),
+        ]
+    );
+    assert_eq!(position(&to_defence.state, monster), "defence");
+
+    // Defence to attack: a monster that was set on Turn 1 attacks on Turn 3 after the change.
+    let set_turn_3 = pass_to_turn(
+        &ruleset,
+        &take(&ruleset, &opening, &set_monster(0, monster)).state,
+        3,
+    );
+    assert_eq!(position(&set_turn_3, monster), "defence");
+    let to_attack = take(&ruleset, &set_turn_3, &change_position(0, monster));
+    assert_eq!(
+        to_attack.trace.events().to_vec(),
+        vec![
+            card_state(monster, "position_fixed", FieldValue::Bool(true)),
+            card_state(monster, "position", text("attack")),
+        ]
+    );
+    assert_eq!(position(&to_attack.state, monster), "attack");
+    let in_battle = take(&ruleset, &to_attack.state, &to_battle(0)).state;
+    assert!(is_legal(&ruleset, &in_battle, &attack(0, monster)));
+    // A change is a Main action: Battle does not list it.
+    assert!(!offers(&ruleset, &in_battle, "change_position"));
+}
+
+#[test]
+fn position_changes_are_allowed_again_on_a_later_turn() {
+    let (ruleset, decks) = real();
+    let opening = create(&ruleset, &decks, 1).opening.state;
+    let monster = summonable(&ruleset, &opening, 0);
+
+    // Turn 1: summoned, so fixed. The End phase of the Turn lifts it.
+    let summoned = take(&ruleset, &opening, &summon(0, monster)).state;
+    assert!(position_fixed(&summoned, monster));
+    let ended = take(&ruleset, &summoned, &end_turn(0));
+    assert!(ended.trace.events().contains(&card_state(
+        monster,
+        "position_fixed",
+        FieldValue::Bool(false)
+    )));
+    assert!(!position_fixed(&ended.state, monster));
+
+    // Turn 3: one change, then none until the End phase lifts it again; Turn 5: one more.
+    let turn_3 = take(&ruleset, &ended.state, &end_turn(1)).state;
+    let changed = take(&ruleset, &turn_3, &change_position(0, monster)).state;
+    assert_eq!(position(&changed, monster), "defence");
+    assert!(!is_legal(&ruleset, &changed, &change_position(0, monster)));
+    let turn_5 = pass_to_turn(&ruleset, &changed, 5);
+    assert!(!position_fixed(&turn_5, monster));
+    let back = take(&ruleset, &turn_5, &change_position(0, monster));
+    assert_eq!(
+        back.trace.events().to_vec(),
+        vec![
+            card_state(monster, "position_fixed", FieldValue::Bool(true)),
+            card_state(monster, "position", text("attack")),
+        ]
+    );
+}
+
+#[test]
+fn each_players_end_phase_lifts_only_their_own_monsters_position_lock() {
+    // The reset is the Active Player's: the lock of a monster that arrived on Turn 2 is still on
+    // after Turn 1 and lifted at the end of Turn 2.
+    let (ruleset, decks) = real();
+    let opening = create(&ruleset, &decks, 1).opening.state;
+    let mine = summonable(&ruleset, &opening, 0);
+    let turn_2 = play(&ruleset, &opening, &[summon(0, mine), end_turn(0)]);
+    assert!(!position_fixed(&turn_2, mine));
+    let theirs = summonable(&ruleset, &turn_2, 1);
+    let theirs_summoned = take(&ruleset, &turn_2, &summon(1, theirs)).state;
+    assert!(position_fixed(&theirs_summoned, theirs));
+    let turn_3 = take(&ruleset, &theirs_summoned, &end_turn(1)).state;
+    assert!(!position_fixed(&turn_3, theirs));
+}
