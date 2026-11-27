@@ -1,0 +1,5 @@
+# The cards of arithmetic-ruleset.yaml (ticket #98).
+meta: { ruleset: arithmetic, ruleset_version: 1 }
+
+cards:
+  - { id: alpha, type: unit, fields: { name: "Alpha", power: 5 } }

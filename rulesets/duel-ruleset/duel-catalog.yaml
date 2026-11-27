@@ -1,6 +1,6 @@
-# The monsters of the Duel Ruleset v1 (rulesets/duel-ruleset/duel-ruleset.yaml): sixteen of level 1
+# The monsters of the Duel Ruleset v2 (rulesets/duel-ruleset/duel-ruleset.yaml): sixteen of level 1
 # to 4, which can all be normal summoned. Format: rulesets/formats.md.
-meta: { ruleset: duel, ruleset_version: 2 }
+meta: { ruleset: duel, ruleset_version: 3 }
 
 cards:
   # Level 1.

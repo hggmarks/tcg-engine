@@ -9,12 +9,12 @@
 use tcg_engine::declarative::{CardInstanceId, GameCreationError, Rejection};
 use tcg_engine::definition_path::DefinitionPath;
 use tcg_engine::ruleset_definition::{
-    ActionDraft, Amount, AmountDraft, CardTypeDraft, CardTypeId, CardValue, DefinitionError,
-    DefinitionErrorKind, Effect, EffectDraft, Expression, ExpressionDraft, FieldDraft, FieldType,
-    FieldTypeDraft, FieldValue, InitializerDraft, InstanceStateDraft, MetaDraft,
-    ParamAlternativeDraft, ParamCardsDraft, ParamDraft, ParamName, ParametersDraft, PhaseDraft,
-    RefDraft, RefType, ReferenceTarget, RulesetDefinition, RulesetDraft, StateName, TurnDraft,
-    Visibility, WinConditionDraft, WinConditionWhen, WinConditionWhenDraft, ZoneDraft,
+    ActionDraft, CardTypeDraft, CardTypeId, CardValue, DefinitionError, DefinitionErrorKind,
+    Effect, EffectDraft, Expression, ExpressionDraft, FieldDraft, FieldType, FieldTypeDraft,
+    FieldValue, InitializerDraft, InstanceStateDraft, MetaDraft, ParamAlternativeDraft,
+    ParamCardsDraft, ParamDraft, ParamName, ParametersDraft, PhaseDraft, RefDraft, RefType,
+    ReferenceTarget, RulesetDefinition, RulesetDraft, StateName, TurnDraft, Visibility,
+    WinConditionDraft, WinConditionWhen, WinConditionWhenDraft, ZoneDraft,
 };
 
 // ---- builders
@@ -242,7 +242,7 @@ fn add_state(card: &str, name: &str, amount: i64) -> EffectDraft {
     EffectDraft::AddState {
         card: reference(card),
         state: name.to_string(),
-        amount: AmountDraft::Literal(amount),
+        amount: ExpressionDraft::Literal(FieldValue::Int(amount)),
     }
 }
 
@@ -382,8 +382,9 @@ fn a_code_frontend_builds_the_attack_action_with_alternatives_expressions_and_ef
     assert!(
         matches!(
             damage.as_slice(),
-            [Effect::AddState { state, amount: Amount::Literal(-1), .. }]
+            [Effect::AddState { state, amount, .. }]
                 if state == &StateName::new("current_life")
+                    && amount.expression() == &Expression::Literal(FieldValue::Int(-1))
         ),
         "add_state of -1 expected, got {damage:?}"
     );
@@ -1118,9 +1119,10 @@ fn add_state_needs_an_int_state_on_every_possible_card_type() {
     assert!(
         matches!(
             attack.effects(),
-            [Effect::AddState { card, state, amount: Amount::Literal(-3) }]
+            [Effect::AddState { card, state, amount }]
                 if card.param() == &ParamName::new("leader")
                     && state == &StateName::new("current_life")
+                    && amount.expression() == &Expression::Literal(FieldValue::Int(-3))
         ),
         "add_state expected, got {:?}",
         attack.effects()

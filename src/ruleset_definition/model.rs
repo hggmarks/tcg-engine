@@ -580,16 +580,24 @@ pub enum ParamOwner {
 }
 
 /// A validated expression. Its operands have the types their operator needs: `Eq` compares two
-/// values of one type, `Gte` and `Lte` two ints, `And` any number of bools, and all of them are
-/// bool.
+/// values of one type, `Gt`, `Gte`, `Lt` and `Lte` two ints, `And` any number of bools, and all of
+/// them are bool; `Add` and `Sub` take two ints and are int (ADR-0043).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expression {
     Literal(FieldValue),
     /// The value a [`ValueRef`] reads.
     Value(ValueRef),
     Eq(Box<Expression>, Box<Expression>),
+    /// `gt: [a, b]`: holds when `a` is strictly greater than `b` (ADR-0043).
+    Gt(Box<Expression>, Box<Expression>),
     Gte(Box<Expression>, Box<Expression>),
+    /// `lt: [a, b]`: holds when `a` is strictly less than `b` (ADR-0043).
+    Lt(Box<Expression>, Box<Expression>),
     Lte(Box<Expression>, Box<Expression>),
+    /// `add: [a, b]`: `a + b`, checked; an overflow is `ArithmeticOverflow` (ADR-0043). Int.
+    Add(Box<Expression>, Box<Expression>),
+    /// `sub: [a, b]`: `a - b`, checked; an overflow is `ArithmeticOverflow` (ADR-0043). Int.
+    Sub(Box<Expression>, Box<Expression>),
     /// Holds when every operand holds; with no operand it holds.
     And(Vec<Expression>),
     /// Holds when the card is a card instance of `card_type`.
@@ -793,23 +801,16 @@ pub enum Effect {
     },
 }
 
-/// What an `add_state` of an action, a cost or a Card Effect adds: an int literal, an int read, or
-/// the difference of two (ADR-0041).
+/// What an `add_state` of an action, a cost or a Card Effect adds: an int [`Expression`], evaluated
+/// when the `add_state` runs (ADR-0043, which replaces ADR-0041's literal, ref or `sub`).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Amount {
-    Literal(i64),
-    Operand(AmountOperand),
-    /// `sub: [a, b]`: `a - b`, checked.
-    Sub(AmountOperand, AmountOperand),
-}
+pub struct Amount(pub(super) Expression);
 
-/// An int an [`Amount`] reads: a literal, a card's int field or int instance state (a field with its
-/// active Field Modifiers), or a Player's int state.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AmountOperand {
-    Literal(i64),
-    Value(ValueRef),
-    PlayerValue(PlayerRef),
+impl Amount {
+    /// The int Expression the amount evaluates.
+    pub fn expression(&self) -> &Expression {
+        &self.0
+    }
 }
 
 /// The Player a Choice asks.

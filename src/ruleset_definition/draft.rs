@@ -131,7 +131,7 @@ pub enum SetupStepDraft {
     AddPlayerState {
         player: String,
         state: String,
-        amount: AmountDraft,
+        amount: ExpressionDraft,
     },
 }
 
@@ -190,8 +190,14 @@ pub enum ExpressionDraft {
     /// `{ ref: <param>.<name> }`; a ref to a card without a name is not a value.
     Ref(RefDraft),
     Eq(Box<ExpressionDraft>, Box<ExpressionDraft>),
+    Gt(Box<ExpressionDraft>, Box<ExpressionDraft>),
     Gte(Box<ExpressionDraft>, Box<ExpressionDraft>),
+    Lt(Box<ExpressionDraft>, Box<ExpressionDraft>),
     Lte(Box<ExpressionDraft>, Box<ExpressionDraft>),
+    /// `add: [a, b]` (ADR-0043).
+    Add(Box<ExpressionDraft>, Box<ExpressionDraft>),
+    /// `sub: [a, b]` (ADR-0043).
+    Sub(Box<ExpressionDraft>, Box<ExpressionDraft>),
     And(Vec<ExpressionDraft>),
     /// `is_card_type: [<card ref>, <card type id>]`.
     IsCardType {
@@ -212,22 +218,6 @@ pub enum ExpressionDraft {
     },
     /// `first_turn: {}` (ADR-0042).
     FirstTurn,
-}
-
-/// An unvalidated `amount` of an `add_state` (ADR-0041): an int literal, a ref, a Player ref with its
-/// `player:` key, or `sub` of two of those. Any other operator is `Other`, which validation rejects
-/// as an invalid amount, as it does an operator inside `sub` and anything but a literal in a setup
-/// or an automatic step.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AmountDraft {
-    Literal(i64),
-    Ref(RefDraft),
-    PlayerRef {
-        reference: RefDraft,
-        selector: String,
-    },
-    Sub(Box<AmountDraft>, Box<AmountDraft>),
-    Other,
 }
 
 /// The text of a ref, such as `card` or `card.cost`; the engine parses it.
@@ -259,7 +249,7 @@ pub enum CostDraft {
     AddPlayerState {
         player: String,
         state: String,
-        amount: AmountDraft,
+        amount: ExpressionDraft,
     },
 }
 
@@ -281,7 +271,7 @@ pub enum EffectDraft {
     AddState {
         card: RefDraft,
         state: String,
-        amount: AmountDraft,
+        amount: ExpressionDraft,
     },
     /// `set_state: { player, state, value }`: the Player state `state` of the Players `player`
     /// selects (ADR-0041).
@@ -294,7 +284,7 @@ pub enum EffectDraft {
     AddPlayerState {
         player: String,
         state: String,
-        amount: AmountDraft,
+        amount: ExpressionDraft,
     },
     /// A `set_state` or `add_state` (`primitive` is its key) that names both a `card` and a
     /// `player`, or neither: always an `InvalidStateTarget` (ADR-0041).
@@ -383,7 +373,7 @@ pub enum AutomaticStepDraft {
     AddPlayerState {
         player: String,
         state: String,
-        amount: AmountDraft,
+        amount: ExpressionDraft,
     },
     If {
         condition: ConditionDraft,

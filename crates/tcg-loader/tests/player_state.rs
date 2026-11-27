@@ -19,7 +19,7 @@ use tcg_engine::random::Seed;
 use tcg_engine::ruleset::{LegalActions, Ruleset, Transition};
 use tcg_engine::ruleset_definition::{
     ActionId, DefinitionError, DefinitionErrorKind, FieldType, FieldTypeDraft, FieldValue,
-    ParamName, PlayerStateId, RefType, ReferenceTarget, StateName, WinConditionId, ZoneId,
+    ParamName, PlayerStateId, ReferenceTarget, StateName, WinConditionId, ZoneId,
 };
 use tcg_loader::{
     load_card_catalog, load_deck_list, load_ruleset_definition, CatalogLoadError, LoadError,
@@ -1425,13 +1425,14 @@ fn an_amount_ref_to_a_non_int_value_is_a_load_error() {
         "amount: { sub: [0, { ref: card.power }] }",
         "amount: { sub: [0, { ref: card.name }] }",
     );
+    // Since ADR-0043 the amount is an Expression, so this is the Expression's own mismatch.
     assert_eq!(
         definition_error(&yaml),
         DefinitionError {
             path: amount_at("hit").key("sub").index(1),
-            kind: DefinitionErrorKind::ReferenceTypeMismatch {
-                expected: RefType::Value(FieldType::Int),
-                found: RefType::Value(FieldType::Text),
+            kind: DefinitionErrorKind::ExpressionTypeMismatch {
+                expected: FieldType::Int,
+                found: FieldType::Text,
             },
         }
     );
@@ -1446,9 +1447,9 @@ fn an_amount_ref_to_a_non_int_value_is_a_load_error() {
         definition_error(&player),
         DefinitionError {
             path: amount_at("charge_by_power"),
-            kind: DefinitionErrorKind::ReferenceTypeMismatch {
-                expected: RefType::Value(FieldType::Int),
-                found: RefType::Value(FieldType::Bool),
+            kind: DefinitionErrorKind::ExpressionTypeMismatch {
+                expected: FieldType::Int,
+                found: FieldType::Bool,
             },
         }
     );
@@ -1548,22 +1549,16 @@ fn a_ref_amount_in_an_automatic_step_is_a_load_error() {
 }
 
 #[test]
-fn a_nested_operator_in_a_sub_amount_is_a_load_error() {
-    // `sub` takes literals and refs, not another operator.
+fn a_sub_amount_may_nest_an_operator_but_the_amount_must_be_an_int() {
+    // Since ADR-0043 `sub` takes any int Expression, another operator included: this loads.
     let nested = edit(
         &amounts_ruleset_text(),
         "amount: { sub: [0, { ref: card.power }] }",
         "amount: { sub: [0, { sub: [1, 2] }] }",
     );
-    assert_eq!(
-        definition_error(&nested),
-        DefinitionError {
-            path: amount_at("hit").key("sub").index(1),
-            kind: DefinitionErrorKind::InvalidAmount,
-        }
-    );
+    load_ruleset_definition(&nested).expect("a nested `sub` is an int Expression");
 
-    // Any other operator is not an amount either.
+    // An operator that is not an int is a type mismatch at the amount, not an invalid amount.
     let operator = edit(
         &amounts_ruleset_text(),
         "amount: { sub: [0, { ref: card.power }] }",
@@ -1573,7 +1568,10 @@ fn a_nested_operator_in_a_sub_amount_is_a_load_error() {
         definition_error(&operator),
         DefinitionError {
             path: amount_at("hit"),
-            kind: DefinitionErrorKind::InvalidAmount,
+            kind: DefinitionErrorKind::ExpressionTypeMismatch {
+                expected: FieldType::Int,
+                found: FieldType::Bool,
+            },
         }
     );
 }

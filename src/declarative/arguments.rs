@@ -161,10 +161,13 @@ fn bind_param(
             Ok(Some(rejection)) => {
                 failure.get_or_insert(rejection);
             }
-            // With several alternatives, one whose `where` overflows does not fit (ADR-0032); a
-            // lone alternative keeps the overflow as its Rejection. Any other `Err` is an
-            // inconsistency and aborts the binding.
-            Err(rejection @ Rejection::DerivedValueOverflow { .. }) if alternatives.len() > 1 => {
+            // With several alternatives, one whose `where` overflows, a derived read or an `add` or
+            // `sub`, does not fit (ADR-0032, ADR-0043); a lone alternative keeps the overflow as
+            // its Rejection. Any other `Err` is an inconsistency and aborts the binding.
+            Err(
+                rejection
+                @ (Rejection::DerivedValueOverflow { .. } | Rejection::ArithmeticOverflow),
+            ) if alternatives.len() > 1 => {
                 failure.get_or_insert(rejection);
             }
             Err(rejection) => return Err(rejection),

@@ -1,4 +1,4 @@
-//! The correctness net over the Duel Ruleset (ticket #96, ADR-0041; v1 since ticket #97, ADR-0042): its sample decks are legal
+//! The correctness net over the Duel Ruleset (ticket #96, ADR-0041; v1 since ticket #97, ADR-0042; v2 since ticket #98, ADR-0043): its sample decks are legal
 //! through the engine's Deck List validation, and Games over Seeds 0..100 are played to a Terminal
 //! Outcome with every Invariant checked (`Checks::On`: the twelve Invariants, the leak check
 //! included), deterministically from the same Seed, and replay exactly. The 1,000-Seed net, its pin
@@ -6,16 +6,27 @@
 //!
 //! Everything runs on the real Duel Ruleset, catalog and sample decks.
 
-use tcg_engine::declarative::Event;
+use tcg_engine::declarative::{
+    Action, Argument, Event, GameState, ObservedEvent, ObservedGameState, Viewer,
+};
+use tcg_engine::player::PlayerId;
 use tcg_engine::random::Seed;
-use tcg_engine::ruleset_definition::PhaseId;
-use tcg_selfplay::{self_play, Checks, FailureKind};
+use tcg_engine::ruleset::{Observations, Ruleset};
+use tcg_engine::ruleset_definition::{ActionId, FieldValue, PhaseId, StateName, ZoneId};
+use tcg_selfplay::{self_play, Checks, FailureKind, SelfPlayGame};
 
-use crate::common::{duel, duel_decks, edit, DUEL_DECK_A, DUEL_DECK_B, MAX_STEPS};
+use crate::common::{declared, duel, duel_decks, edit, DUEL_DECK_A, DUEL_DECK_B, MAX_STEPS};
 use tcg_loader::load_deck_list;
 
 /// The Seeds played with every Invariant: `0..SEEDS`.
 const SEEDS: u64 = 100;
+
+/// Whether the record of `game` holds the declared action `id`.
+fn holds_action(game: &SelfPlayGame, id: &str) -> bool {
+    game.record.actions().iter().any(|action| {
+        declared(action).is_some_and(|(_, declared_id, _)| declared_id == &ActionId::new(id))
+    })
+}
 
 #[test]
 fn the_duel_sample_decks_are_legal() {
@@ -50,6 +61,8 @@ fn duel_self_play_ends_every_game_over_seeds_0_to_100_with_every_invariant_holdi
     let decks = duel_decks(&ruleset);
     let (mut life_out, mut deck_out, mut drawn) = (0usize, 0usize, 0usize);
     let mut longest = 0usize;
+    // The Games that hold each action of the positions and the combat (ticket #98, ADR-0043).
+    let (mut attacks, mut sets, mut changes) = (0usize, 0usize, 0usize);
     for seed in 0..SEEDS {
         let game = self_play(&ruleset, &decks, Seed(seed), MAX_STEPS, Checks::On).unwrap_or_else(
             |failure| {
@@ -68,6 +81,9 @@ fn duel_self_play_ends_every_game_over_seeds_0_to_100_with_every_invariant_holdi
             .outcome()
             .unwrap_or_else(|| panic!("Seed {seed} has no Terminal Outcome"));
         longest = longest.max(game.record.actions().len());
+        attacks += usize::from(holds_action(&game, "attack"));
+        sets += usize::from(holds_action(&game, "set_monster"));
+        changes += usize::from(holds_action(&game, "change_position"));
         if outcome.is_drawn_game() {
             drawn += 1;
         }
@@ -79,10 +95,16 @@ fn duel_self_play_ends_every_game_over_seeds_0_to_100_with_every_invariant_holdi
             }
         }
     }
+    // The self-play explores the new rules: some Game holds an attack between monsters, a set and
+    // a position change, and all of them passed every Invariant, the Observed Game round-trip and
+    // the Relabelling among them.
+    assert!(attacks > 0, "no Game holds an `attack`");
+    assert!(sets > 0, "no Game holds a `set_monster`");
+    assert!(changes > 0, "no Game holds a `change_position`");
     // Reported, not asserted: the Losses by reason (a drawn Game counts both), the drawn Games and
-    // the longest Game, in Actions.
+    // the longest Game, in Actions, and the Games holding each new action.
     println!(
-        "duel self-play, Seeds 0..{SEEDS}: {life_out} life_out losses, {deck_out} deck_out losses, {drawn} drawn Games, longest {longest} Actions"
+        "duel self-play, Seeds 0..{SEEDS}: {life_out} life_out losses, {deck_out} deck_out losses, {drawn} drawn Games, longest {longest} Actions; Games holding an attack {attacks}, a set {sets}, a position change {changes}"
     );
 }
 
@@ -141,6 +163,144 @@ fn replay_reproduces_a_duel_game() {
                 .iter()
                 .any(|trace| trace.events().contains(&battle)),
             "Seed {seed}: the replayed Game has a PhaseBegan of Battle"
+        );
+    }
+}
+
+#[test]
+fn replay_reproduces_a_duel_game_holding_a_fight_between_monsters() {
+    let ruleset = duel();
+    let decks = duel_decks(&ruleset);
+    // Games that hold an `attack`, a fight between monsters with its destruction or its Life Point
+    // change, replay exactly: the full GameState and the full Event Trace.
+    let mut replayed = 0usize;
+    for seed in 0..SEEDS {
+        let game = self_play(&ruleset, &decks, Seed(seed), MAX_STEPS, Checks::On).expect("played");
+        if !holds_action(&game, "attack") {
+            continue;
+        }
+        let replay = ruleset
+            .replay(&game.record)
+            .expect("the record of a self-played Game replays");
+        assert_eq!(replay.creation, game.creation, "Seed {seed}: the creation");
+        assert_eq!(replay.traces, game.traces, "Seed {seed}: every Event Trace");
+        assert_eq!(replay.state, game.state, "Seed {seed}: the final GameState");
+        replayed += 1;
+        if replayed == 3 {
+            break;
+        }
+    }
+    assert_eq!(replayed, 3, "three Games hold a fight between monsters");
+}
+
+fn viewer(seat: u32) -> Viewer {
+    Viewer::Player(PlayerId(seat))
+}
+
+/// The instance state `name` of each monster in the Monster Zone of `owner`, as the Viewer of
+/// `observed` sees it.
+fn observed_monster_states(
+    observed: &ObservedGameState,
+    owner: u32,
+    name: &str,
+) -> Vec<FieldValue> {
+    let zone = observed
+        .zone(PlayerId(owner), &ZoneId::new("monster_zone"))
+        .expect("the Monster Zone is observed");
+    zone.cards()
+        .expect("the Monster Zone is public")
+        .iter()
+        .map(|&handle| {
+            let card = observed.card(handle).expect("the monster is visible");
+            card.state()
+                .iter()
+                .find(|(state, _)| state == &StateName::new(name))
+                .map(|(_, value)| value.clone())
+                .unwrap_or_else(|| panic!("the monster has no `{name}`"))
+        })
+        .collect()
+}
+
+#[test]
+fn observations_show_each_monsters_position() {
+    let ruleset = duel();
+    let decks = duel_decks(&ruleset);
+    let creation = ruleset.create_game(&decks, Seed(1)).expect("created");
+    let declare = |player: u32, id: &str, arguments: Vec<Argument>| Action::Declared {
+        player: PlayerId(player),
+        action: ActionId::new(id),
+        arguments,
+    };
+    let first_in_hand = |state: &GameState, seat: u32| {
+        state
+            .zone(PlayerId(seat), &ZoneId::new("hand"))
+            .expect("the hand exists")[0]
+    };
+
+    // Both Viewers follow a Game from the Empty GameState: seat 0 summons, then seat 1 sets.
+    let mut observers: Vec<_> = (0..2)
+        .map(|seat| {
+            ruleset
+                .observer(
+                    viewer(seat),
+                    &creation.empty,
+                    creation.opening.trace.events(),
+                )
+                .expect("the Observer is built")
+        })
+        .collect();
+    let mut observed_events: Vec<Vec<ObservedEvent>> = vec![Vec::new(), Vec::new()];
+    let mut state = creation.opening.state.clone();
+    for step in 0..3 {
+        let action = match step {
+            0 => declare(
+                0,
+                "normal_summon",
+                vec![Argument::Card(first_in_hand(&state, 0))],
+            ),
+            1 => declare(0, "end_turn", vec![]),
+            _ => declare(
+                1,
+                "set_monster",
+                vec![Argument::Card(first_in_hand(&state, 1))],
+            ),
+        };
+        let transition = ruleset
+            .transition(&state, &action)
+            .expect("the script's Action is accepted");
+        for (seat, observer) in observers.iter_mut().enumerate() {
+            let followed = ruleset
+                .follow_transition(observer, &state, &action, &transition)
+                .expect("the transition is followed");
+            observed_events[seat].extend(followed.events);
+        }
+        state = transition.state;
+    }
+
+    let defence = FieldValue::Text("defence".to_string());
+    for (seat, observer) in observers.iter().enumerate() {
+        let observed = ruleset
+            .observe(observer, &state)
+            .expect("the GameState is observed");
+        // Every Viewer sees both monsters' position, the set one included (face-up this phase).
+        assert_eq!(
+            observed_monster_states(&observed, 0, "position"),
+            vec![FieldValue::Text("attack".to_string())],
+            "Viewer {seat}: the summoned monster"
+        );
+        assert_eq!(
+            observed_monster_states(&observed, 1, "position"),
+            vec![defence.clone()],
+            "Viewer {seat}: the set monster"
+        );
+        // The set reached the Viewer as an Observed Event.
+        assert!(
+            observed_events[seat].iter().any(|event| matches!(
+                event,
+                ObservedEvent::CardStateChanged { state, value, .. }
+                    if state == &StateName::new("position") && value == &defence
+            )),
+            "Viewer {seat}: the position change is observed"
         );
     }
 }

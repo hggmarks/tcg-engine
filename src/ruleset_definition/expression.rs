@@ -5,10 +5,10 @@
 //! right: all the operands of an expression are checked (each with its own errors) before the type
 //! rule of their operator.
 
-use super::draft::{AmountDraft, ExpressionDraft, RefDraft};
+use super::draft::{ExpressionDraft, RefDraft};
 use super::error::{DefinitionError, DefinitionErrorKind, RefType, ReferenceTarget};
 use super::model::{
-    Amount, AmountOperand, CardRef, CardType, CardTypeId, CardValue, Expression, FieldType,
+    Amount, CardRef, CardType, CardTypeId, CardValue, Expression, FieldType, FieldValue,
     ParamAlternative, ParamName, PlayerRef, PlayerRefSelector, PlayerStateSchema, PlayerTarget,
     ValueRef, Zone, ZoneCount, ZoneId,
 };
@@ -417,6 +417,34 @@ fn check_expression(
                 FieldType::Bool,
             ))
         }
+        ExpressionDraft::Gt(left, right) => {
+            let (left, right) = check_ints("gt", left, right, refs, at)?;
+            Ok((
+                Expression::Gt(Box::new(left), Box::new(right)),
+                FieldType::Bool,
+            ))
+        }
+        ExpressionDraft::Lt(left, right) => {
+            let (left, right) = check_ints("lt", left, right, refs, at)?;
+            Ok((
+                Expression::Lt(Box::new(left), Box::new(right)),
+                FieldType::Bool,
+            ))
+        }
+        ExpressionDraft::Add(left, right) => {
+            let (left, right) = check_ints("add", left, right, refs, at)?;
+            Ok((
+                Expression::Add(Box::new(left), Box::new(right)),
+                FieldType::Int,
+            ))
+        }
+        ExpressionDraft::Sub(left, right) => {
+            let (left, right) = check_ints("sub", left, right, refs, at)?;
+            Ok((
+                Expression::Sub(Box::new(left), Box::new(right)),
+                FieldType::Int,
+            ))
+        }
         ExpressionDraft::Gte(left, right) => {
             let (left, right) = check_ints("gte", left, right, refs, at)?;
             Ok((
@@ -478,107 +506,34 @@ fn check_expression(
     }
 }
 
-/// An `amount` of an `add_state` of an action, a cost or a Card Effect (ADR-0041): an int literal,
-/// an int read or `sub` of two of them, whose operands are literals and reads, never an operator.
-/// `at` is the path of the amount, and an operand of `sub` is at `sub[i]`.
+/// An `amount` of an `add_state` of an action, a cost or a Card Effect (ADR-0043): any Expression
+/// that is an int. `at` is its path; an operand of `add` or `sub` is at `add[i]` or `sub[i]`.
 pub(super) fn check_amount(
-    draft: &AmountDraft,
+    draft: &ExpressionDraft,
     refs: &Refs<'_>,
     at: DefinitionPath,
 ) -> Result<Amount, DefinitionError> {
-    match draft {
-        AmountDraft::Literal(value) => Ok(Amount::Literal(*value)),
-        AmountDraft::Sub(left, right) => {
-            let at = at.key("sub");
-            let left = check_operand(left, refs, at.clone().index(0))?;
-            let right = check_operand(right, refs, at.index(1))?;
-            Ok(Amount::Sub(left, right))
-        }
-        AmountDraft::Other => fail(at, DefinitionErrorKind::InvalidAmount),
-        read @ (AmountDraft::Ref(_) | AmountDraft::PlayerRef { .. }) => {
-            check_operand(read, refs, at).map(Amount::Operand)
-        }
-    }
-}
-
-/// One operand of an amount: a literal, or a ref to an int (the card's field or state, or a
-/// Player's state). An operator is an invalid amount.
-fn check_operand(
-    draft: &AmountDraft,
-    refs: &Refs<'_>,
-    at: DefinitionPath,
-) -> Result<AmountOperand, DefinitionError> {
-    match draft {
-        AmountDraft::Literal(value) => Ok(AmountOperand::Literal(*value)),
-        AmountDraft::Sub(..) | AmountDraft::Other => fail(at, DefinitionErrorKind::InvalidAmount),
-        AmountDraft::Ref(reference) => {
-            let parsed = parse_ref(reference, &at)?;
-            if parsed.param == PLAYER {
-                // A Player Ref without its `player:` key.
-                return player_operand(&parsed, None, reference, refs, at);
-            }
-            if parsed.name.is_none() {
-                find_param(refs, parsed.param, &at)?;
-                return fail(
-                    at,
-                    DefinitionErrorKind::CardRefNotAValue {
-                        reference: reference.0.clone(),
-                    },
-                );
-            }
-            validate_value_ref(reference, FieldType::Int, refs, at).map(AmountOperand::Value)
-        }
-        AmountDraft::PlayerRef {
-            reference,
-            selector,
-        } => {
-            let parsed = parse_ref(reference, &at)?;
-            if parsed.param != PLAYER {
-                return fail(
-                    at,
-                    DefinitionErrorKind::InvalidReference {
-                        reference: reference.0.clone(),
-                    },
-                );
-            }
-            player_operand(&parsed, Some(selector), reference, refs, at)
-        }
-    }
-}
-
-/// A Player Ref as an operand: it must be an int.
-fn player_operand(
-    parsed: &ParsedRef<'_>,
-    selector: Option<&String>,
-    reference: &RefDraft,
-    refs: &Refs<'_>,
-    at: DefinitionPath,
-) -> Result<AmountOperand, DefinitionError> {
-    let (expression, found) = check_player_ref(parsed, selector, reference, refs, at.clone())?;
+    let (expression, found) = check_expression(draft, refs, at.clone())?;
     if found != FieldType::Int {
         return fail(
             at,
-            DefinitionErrorKind::ReferenceTypeMismatch {
-                expected: RefType::Value(FieldType::Int),
-                found: RefType::Value(found),
+            DefinitionErrorKind::ExpressionTypeMismatch {
+                expected: FieldType::Int,
+                found,
             },
         );
     }
-    match expression {
-        Expression::PlayerValue(read) => Ok(AmountOperand::PlayerValue(read)),
-        // `check_player_ref` gives nothing else.
-        _ => fail(at, DefinitionErrorKind::InvalidAmount),
-    }
+    Ok(Amount(expression))
 }
 
 /// The amount of an `add_state` in a setup or an automatic step: an int literal, nothing binds a
-/// card or names a Player to read there (ADR-0041).
+/// card or names a Player to read there (ADR-0041, ADR-0043).
 pub(super) fn check_literal_amount(
-    draft: &AmountDraft,
+    draft: &ExpressionDraft,
     at: DefinitionPath,
 ) -> Result<i64, DefinitionError> {
     match draft {
-        AmountDraft::Literal(value) => Ok(*value),
+        ExpressionDraft::Literal(FieldValue::Int(value)) => Ok(*value),
         _ => fail(at, DefinitionErrorKind::InvalidAmount),
     }
 }
@@ -711,7 +666,8 @@ pub(super) fn validate_target(
     }
 }
 
-/// The two operands of `gte` or `lte`: both int, the first that is not reported.
+/// The two operands of `gt`, `gte`, `lt`, `lte`, `add` or `sub`: both int, the first that is not
+/// reported.
 fn check_ints(
     operator: &'static str,
     left: &ExpressionDraft,
@@ -746,8 +702,12 @@ pub(super) fn reads_player_state(expression: &Expression) -> bool {
         | Expression::ZoneCount(_)
         | Expression::FirstTurn => false,
         Expression::Eq(left, right)
+        | Expression::Gt(left, right)
         | Expression::Gte(left, right)
-        | Expression::Lte(left, right) => reads_player_state(left) || reads_player_state(right),
+        | Expression::Lt(left, right)
+        | Expression::Lte(left, right)
+        | Expression::Add(left, right)
+        | Expression::Sub(left, right) => reads_player_state(left) || reads_player_state(right),
         Expression::And(operands) => operands.iter().any(reads_player_state),
     }
 }
@@ -769,8 +729,12 @@ pub(super) fn params_read(expression: &Expression) -> Vec<&ParamName> {
             Expression::Value(value) => note(found, &value.param),
             Expression::IsCardType { card, .. } => note(found, &card.param),
             Expression::Eq(left, right)
+            | Expression::Gt(left, right)
             | Expression::Gte(left, right)
-            | Expression::Lte(left, right) => {
+            | Expression::Lt(left, right)
+            | Expression::Lte(left, right)
+            | Expression::Add(left, right)
+            | Expression::Sub(left, right) => {
                 walk(left, found);
                 walk(right, found);
             }

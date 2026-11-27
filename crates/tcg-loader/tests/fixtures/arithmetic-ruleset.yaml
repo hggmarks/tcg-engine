@@ -1,0 +1,91 @@
+# A small ruleset for the arithmetic and comparison tests (ticket #98, ADR-0043): two Players, one
+# card type `unit` with an int field `power` (5 on every card) and an int instance state `charge`
+# (init 7), and a Turn with Main and an automatic End. The tests edit single lines of this text:
+# `probe` adds an amount to the opponent's Life Points (the line marked `# PROBE`), and `gate` has a
+# `where` (the line marked `# GATE`) whose truth the test reads from the Action's acceptance.
+# Format: rulesets/formats.md.
+meta: { id: arithmetic, version: 1 }
+
+parameters:
+  players: 2
+  starting_player: 0
+
+zones:
+  - { id: deck,  visibility: hidden, ordered: true }
+  - { id: hand,  visibility: owner,  ordered: false }
+  - { id: field, visibility: public, ordered: false }
+
+card_types:
+  - id: unit
+    fields:
+      - { name: name,  type: text }
+      - { name: power, type: int }
+    instance_state:
+      - { name: charge, type: int, init: 7 }
+    effects: false
+
+inputs:
+  - { id: main_deck, card_types: [unit], size: 6, max_copies: 6, zone: deck }
+
+player_state:
+  - { id: life_points, type: int,  init: 4000 }
+  - { id: mana,        type: int,  init: 10 }
+  - { id: marked,      type: bool, init: false }
+
+setup:
+  - draw: { player: each, from: deck, to: hand, count: 3 }
+
+turn:
+  phases:
+    - id: main
+      actions: [summon, probe, gate, either, neither, end_turn]
+    - id: end
+      automatic: []
+
+actions:
+  - id: summon
+    params:
+      - { name: card, zone: hand, card_type: unit }
+    effects:
+      - move: { card: { ref: card }, to: field }
+
+  # Adds an amount to the opponent's Life Points: the test puts an expression in place of the 0.
+  - id: probe
+    params:
+      - { name: card, zone: hand, card_type: unit }
+    effects:
+      - add_state: { player: opponent, state: life_points, amount: 0 }   # PROBE
+
+  # Marks the acting Player when the `where` holds: the test puts an expression in place of the
+  # always true one.
+  - id: gate
+    params:
+      - name: card
+        zone: hand
+        card_type: unit
+        where: { eq: [true, true] }   # GATE
+    effects:
+      - set_state: { player: active, state: marked, value: true }
+
+  # Two alternatives: the first one's `where` always overflows, the second's holds for any unit.
+  - id: either
+    params:
+      - name: card
+        one_of:
+          - { zone: hand, card_type: unit, where: { gt: [{ add: [9223372036854775807, { ref: card.power }] }, 0] } }
+          - { zone: hand, card_type: unit, where: { gt: [{ ref: card.power }, 0] } }
+    effects:
+      - set_state: { player: active, state: marked, value: true }
+
+  # Two alternatives: the first one's `where` always overflows, the second's never holds.
+  - id: neither
+    params:
+      - name: card
+        one_of:
+          - { zone: hand, card_type: unit, where: { gt: [{ add: [9223372036854775807, { ref: card.power }] }, 0] } }
+          - { zone: hand, card_type: unit, where: { lt: [{ ref: card.power }, 0] } }
+    effects:
+      - set_state: { player: active, state: marked, value: true }
+
+  - id: end_turn
+    effects: [ { end_turn: {} } ]

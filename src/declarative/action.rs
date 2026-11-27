@@ -181,7 +181,7 @@ pub enum Rejection {
         card: CardInstanceId,
         state: StateName,
     },
-    /// A `sub` amount `a - b` that does not fit an int (ADR-0041).
+    /// An `add` or a `sub` of an Expression that does not fit an int (ADR-0041, ADR-0043).
     ArithmeticOverflow,
     /// Adding to the int Player state `state` of `player` would go beyond what an int can hold, in
     /// either direction (ADR-0041).
@@ -366,7 +366,7 @@ impl fmt::Display for Rejection {
                 state.as_str(),
                 card.0
             ),
-            Self::ArithmeticOverflow => write!(f, "a `sub` amount overflows"),
+            Self::ArithmeticOverflow => write!(f, "an `add` or `sub` does not fit an int"),
             Self::PlayerStateOverflow { player, state } => write!(
                 f,
                 "adding to the state `{}` of Player {} overflows",
