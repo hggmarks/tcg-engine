@@ -402,6 +402,9 @@ fn run_at(
 ) -> Result<Flow, Rejection> {
     match effect {
         Effect::EndTurn => turn_cycle::end_turn(ruleset.definition(), execution).map(done),
+        Effect::AdvancePhase => {
+            turn_cycle::advance_phase(ruleset.definition(), execution).map(done)
+        }
         Effect::Move { card, to } => {
             move_card(execution, bound, card.param(), to)?;
             Ok(Flow::Done)

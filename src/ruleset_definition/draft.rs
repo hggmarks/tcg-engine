@@ -204,6 +204,14 @@ pub enum ExpressionDraft {
         reference: RefDraft,
         selector: String,
     },
+    /// `count: { zone, player }` (ADR-0042); a missing `player` is `None`, which validation
+    /// rejects.
+    Count {
+        zone: String,
+        player: Option<String>,
+    },
+    /// `first_turn: {}` (ADR-0042).
+    FirstTurn,
 }
 
 /// An unvalidated `amount` of an `add_state` (ADR-0041): an int literal, a ref, a Player ref with its
@@ -258,6 +266,8 @@ pub enum CostDraft {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EffectDraft {
     EndTurn,
+    /// `advance_phase: {}` (ADR-0042).
+    AdvancePhase,
     Move {
         card: RefDraft,
         to: String,

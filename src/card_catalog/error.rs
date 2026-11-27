@@ -68,6 +68,9 @@ pub enum CatalogErrorKind {
     /// The `end_turn` itself, such as `cards[goblin].effects[0].do[1]` or `...do[0].then[0]`: a
     /// Card Effect does not end the Turn.
     EndTurnInCardEffect,
+    /// The `advance_phase` itself, such as `cards[goblin].effects[0].do[1]` or `...do[0].then[0]`: a
+    /// Card Effect does not move the Turn to another phase (ADR-0042).
+    AdvancePhaseInCardEffect,
     /// An expression, ref or Action Effect of a Card Effect that Ruleset Definition checking
     /// rejects; the error keeps its own path, such as `cards[goblin].effects[0].if.and[0].eq[1]`.
     InvalidCardEffect { error: Box<DefinitionErrorKind> },
@@ -144,6 +147,9 @@ impl fmt::Display for CatalogErrorKind {
             }
             Self::EndTurnInCardEffect => {
                 write!(f, "a Card Effect cannot end the Turn")
+            }
+            Self::AdvancePhaseInCardEffect => {
+                write!(f, "a Card Effect cannot advance the phase")
             }
             Self::InvalidCardEffect { error } => write!(f, "{error}"),
         }

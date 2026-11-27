@@ -463,7 +463,7 @@ fn validate_action(
     let effects_path = at.key("effects");
     let effects = validate_effects(&action.effects, &refs, effects_path.clone())?;
     // After all the effects were checked, as for a Card Effect (ADR-0022).
-    check_end_turn_placement(&effects, &effects_path)?;
+    check_phase_leaving_placement(&effects, &effects_path)?;
 
     Ok(ActionDefinition {
         id: ActionId::new(&action.id),
@@ -473,10 +473,11 @@ fn validate_action(
     })
 }
 
-/// `end_turn` is only the last top-level effect of an action (ADR-0027): the first one, in document
+/// `end_turn` and `advance_phase` are only the last top-level effect of an action (ADR-0027,
+/// ADR-0042), so an action has at most one effect that leaves its phase: the first one, in document
 /// order (depth first, `then` before `else`), that is inside an `if` or followed by another effect
 /// is the error, at its own path. `list` is the path of `effects`.
-fn check_end_turn_placement(
+fn check_phase_leaving_placement(
     effects: &[Effect],
     list: &DefinitionPath,
 ) -> Result<(), DefinitionError> {
@@ -486,11 +487,14 @@ fn check_end_turn_placement(
             Effect::EndTurn if index + 1 != effects.len() => {
                 return fail(at, DefinitionErrorKind::EndTurnNotLast)
             }
+            Effect::AdvancePhase if index + 1 != effects.len() => {
+                return fail(at, DefinitionErrorKind::AdvancePhaseNotLast)
+            }
             Effect::If {
                 then, otherwise, ..
             } => {
-                forbid_end_turn_in_if(then, &at.clone().key("then"))?;
-                forbid_end_turn_in_if(otherwise, &at.key("else"))?;
+                forbid_phase_leaving_in_if(then, &at.clone().key("then"))?;
+                forbid_phase_leaving_in_if(otherwise, &at.key("else"))?;
             }
             _ => {}
         }
@@ -498,17 +502,22 @@ fn check_end_turn_placement(
     Ok(())
 }
 
-/// Rejects an `end_turn` anywhere in the effects of a branch of an `if`, at any depth.
-fn forbid_end_turn_in_if(effects: &[Effect], list: &DefinitionPath) -> Result<(), DefinitionError> {
+/// Rejects an `end_turn` or an `advance_phase` anywhere in the effects of a branch of an `if`, at
+/// any depth.
+fn forbid_phase_leaving_in_if(
+    effects: &[Effect],
+    list: &DefinitionPath,
+) -> Result<(), DefinitionError> {
     for (index, effect) in effects.iter().enumerate() {
         let at = list.clone().index(index);
         match effect {
             Effect::EndTurn => return fail(at, DefinitionErrorKind::EndTurnInIfEffect),
+            Effect::AdvancePhase => return fail(at, DefinitionErrorKind::AdvancePhaseInIfEffect),
             Effect::If {
                 then, otherwise, ..
             } => {
-                forbid_end_turn_in_if(then, &at.clone().key("then"))?;
-                forbid_end_turn_in_if(otherwise, &at.key("else"))?;
+                forbid_phase_leaving_in_if(then, &at.clone().key("then"))?;
+                forbid_phase_leaving_in_if(otherwise, &at.key("else"))?;
             }
             _ => {}
         }
@@ -517,9 +526,15 @@ fn forbid_end_turn_in_if(effects: &[Effect], list: &DefinitionPath) -> Result<()
 }
 
 /// Whether the action ends the Turn: its effects end with a top-level `end_turn`. Only meaningful
-/// once `check_end_turn_placement` passed, when that is the only place an `end_turn` can be.
+/// once `check_phase_leaving_placement` passed, when that is the only place an `end_turn` can be.
 fn ends_the_turn(action: &ActionDefinition) -> bool {
     action.effects.last() == Some(&Effect::EndTurn)
+}
+
+/// Whether the action advances the phase: its effects end with a top-level `advance_phase`. Only
+/// meaningful once `check_phase_leaving_placement` passed.
+fn advances_the_phase(action: &ActionDefinition) -> bool {
+    action.effects.last() == Some(&Effect::AdvancePhase)
 }
 
 /// The scope of a Card Effect (ADR-0022): the one name `self`, the carrying card, typed as the
@@ -670,6 +685,7 @@ fn first_opponent_decider(effects: &[Effect], list: &DefinitionPath) -> Option<D
                 }
             }
             Effect::EndTurn
+            | Effect::AdvancePhase
             | Effect::Move { .. }
             | Effect::SetState { .. }
             | Effect::AddState { .. }
@@ -940,18 +956,22 @@ fn validate_windows(
             continue;
         }
         check_pushed_params(action, draft, zones)?;
-        if let Some(position) = action
+        let leaving = action
             .effects
             .iter()
-            .position(|effect| *effect == Effect::EndTurn)
-        {
+            .position(|effect| matches!(effect, Effect::EndTurn | Effect::AdvancePhase));
+        if let Some(position) = leaving {
+            let kind = match action.effects.get(position) {
+                Some(Effect::AdvancePhase) => DefinitionErrorKind::AdvancePhaseInPushedAction,
+                _ => DefinitionErrorKind::EndTurnInPushedAction,
+            };
             return fail(
                 DefinitionPath::root()
                     .key("actions")
                     .id(action.id.as_str())
                     .key("effects")
                     .index(position),
-                DefinitionErrorKind::EndTurnInPushedAction,
+                kind,
             );
         }
     }
@@ -1058,6 +1078,7 @@ fn validate_effect(
 ) -> Result<Effect, DefinitionError> {
     match effect {
         EffectDraft::EndTurn => Ok(Effect::EndTurn),
+        EffectDraft::AdvancePhase => Ok(Effect::AdvancePhase),
         EffectDraft::Move { card, to } => {
             let at = at.key("move");
             let card = validate_card_ref(card, refs, at.clone().key("card"))?;
@@ -1374,27 +1395,39 @@ fn validate_turn(
     let phases_path = DefinitionPath::root().key("turn").key("phases");
     let mut seen = Seen::new(phases_path.clone());
     let mut phases = Vec::with_capacity(turn.phases.len());
-    let mut action_phases = 0usize;
+    let mut action_phases = Vec::new();
     for (index, phase) in turn.phases.iter().enumerate() {
         check_id(&phases_path, index, "id", &phase.id)?;
         seen.insert(&phase.id, index)?;
         let at = phases_path.clone().id(&phase.id);
         let kind = validate_phase_kind(phase, context, at)?;
-        if matches!(kind, PhaseKind::Actions(_)) {
-            action_phases += 1;
+        if let PhaseKind::Actions(listed) = &kind {
+            action_phases.push((phase.id.as_str(), listed.clone()));
         }
         phases.push(Phase {
             id: PhaseId::new(&phase.id),
             kind,
         });
     }
-    if action_phases != 1 {
-        return fail(
-            phases_path,
-            DefinitionErrorKind::InvalidActionPhaseCount {
-                found: action_phases,
-            },
-        );
+    // At least one, or the Game would never wait for a Player (ADR-0042).
+    let Some((last_phase, last_listed)) = action_phases.last() else {
+        return fail(phases_path, DefinitionErrorKind::NoActionPhase);
+    };
+    // No later action phase to go to from the last one (ADR-0042); the phases in order, the
+    // actions in list order.
+    for action in last_listed {
+        let advances = context
+            .actions
+            .iter()
+            .any(|declared| &declared.id == action && advances_the_phase(declared));
+        if advances {
+            return fail(
+                phases_path.id(*last_phase),
+                DefinitionErrorKind::AdvancePhaseFromLastActionPhase {
+                    action: action.as_str().to_string(),
+                },
+            );
+        }
     }
     Ok(TurnStructure { phases })
 }

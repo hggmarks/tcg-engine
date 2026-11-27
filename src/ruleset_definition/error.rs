@@ -96,8 +96,9 @@ pub enum DefinitionErrorKind {
     UnknownPosition { position: String },
     /// `turn.phases[end]`: a phase has exactly one of `automatic` and `actions`.
     InvalidPhaseKind,
-    /// `turn.phases`: a turn has exactly one phase with `actions`.
-    InvalidActionPhaseCount { found: usize },
+    /// `turn.phases`: a turn has at least one phase with `actions`, or the Game would never wait
+    /// for a Player (ADR-0042).
+    NoActionPhase,
     /// `turn.phases[start].automatic[1].set_state.value`, or the step itself for an `untap`: the
     /// value is not the type some card type declares for the state.
     StateValueTypeMismatch {
@@ -160,6 +161,26 @@ pub enum DefinitionErrorKind {
     /// A top-level `end_turn` of an action that is followed by another effect, at its own path,
     /// such as `actions[x].effects[0]`; for `[end_turn, end_turn]` it is the first one (ADR-0027).
     EndTurnNotLast,
+    /// An `advance_phase` inside an `if` of an action, at its own path, such as
+    /// `actions[x].effects[1].then[0]`: like `end_turn`, it is only ever a top-level effect
+    /// (ADR-0042).
+    AdvancePhaseInIfEffect,
+    /// A top-level `advance_phase` of an action that is followed by another effect, at its own
+    /// path, such as `actions[x].effects[0]`: an action has at most one effect that leaves its
+    /// phase, and it is the last (ADR-0042).
+    AdvancePhaseNotLast,
+    /// An `advance_phase` in the effects of a pushed action (one a window lists or opens), at its
+    /// own path, such as `actions[x].effects[0]`: a Stack Item's effects run on a Pass, which does
+    /// not leave the action phase (ADR-0042).
+    AdvancePhaseInPushedAction,
+    /// The last action phase, such as `turn.phases[battle]`: it lists the action `action`, which
+    /// ends with an `advance_phase`, and no action phase follows (ADR-0042).
+    AdvancePhaseFromLastActionPhase { action: String },
+    /// A `count` or a `first_turn` in the `when` of a win condition, at the operator's own path,
+    /// such as `win_conditions[lost].when.eq[0]`: a win condition judges the GameState a transition
+    /// produced, for the Player or the card it is about, and reads neither (ADR-0042). `operator`
+    /// is `count` or `first_turn`.
+    OperatorNotInWinCondition { operator: String },
     /// The action phase, such as `turn.phases[main]`: none of the actions it lists ends the Turn
     /// (its effects end with a top-level `end_turn`), so the Game could wait there forever.
     NoTurnEndingAction,
@@ -323,9 +344,9 @@ impl fmt::Display for DefinitionErrorKind {
                 f,
                 "a phase must have exactly one of `automatic` and `actions`"
             ),
-            Self::InvalidActionPhaseCount { found } => write!(
+            Self::NoActionPhase => write!(
                 f,
-                "a turn must have exactly one phase with actions, found {found}"
+                "a turn must have at least one phase with actions, or the Game would never wait for a Player"
             ),
             Self::StateValueTypeMismatch {
                 state,
@@ -376,6 +397,26 @@ impl fmt::Display for DefinitionErrorKind {
             Self::EndTurnNotLast => write!(
                 f,
                 "`end_turn` must be the last effect of an action: no effect may follow it"
+            ),
+            Self::AdvancePhaseInIfEffect => write!(
+                f,
+                "`advance_phase` cannot be inside an `if`: it is only the last top-level effect of an action"
+            ),
+            Self::AdvancePhaseNotLast => write!(
+                f,
+                "`advance_phase` must be the last effect of an action: no effect may follow it"
+            ),
+            Self::AdvancePhaseInPushedAction => write!(
+                f,
+                "a pushed action cannot advance the phase: its effects run on a Pass"
+            ),
+            Self::AdvancePhaseFromLastActionPhase { action } => write!(
+                f,
+                "the last action phase lists `{action}`, which advances the phase, and no action phase follows"
+            ),
+            Self::OperatorNotInWinCondition { operator } => write!(
+                f,
+                "`{operator}` is not allowed in a win condition"
             ),
             Self::NoTurnEndingAction => write!(
                 f,

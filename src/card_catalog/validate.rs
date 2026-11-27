@@ -252,8 +252,8 @@ fn validate_activated(
     let checked = scope
         .check_effects(body, do_path.clone())
         .map_err(invalid)?;
-    if let Some(end_turn) = find_end_turn(body, &do_path) {
-        return fail(end_turn, CatalogErrorKind::EndTurnInCardEffect);
+    if let Some((leaving, kind)) = find_phase_leaving(body, &do_path) {
+        return fail(leaving, kind);
     }
     Ok(ActivatedCardEffect {
         costs,
@@ -311,8 +311,8 @@ fn validate_triggered(
     let checked = scope
         .check_effects(body, do_path.clone())
         .map_err(invalid)?;
-    if let Some(end_turn) = find_end_turn(body, &do_path) {
-        return fail(end_turn, CatalogErrorKind::EndTurnInCardEffect);
+    if let Some((leaving, kind)) = find_phase_leaving(body, &do_path) {
+        return fail(leaving, kind);
     }
 
     Ok(TriggeredCardEffect {
@@ -427,26 +427,33 @@ fn validate_scope<'a>(
     Ok((modifier_scope, scope_type))
 }
 
-/// The path of the first `end_turn` in `effects`, in order, `then` before `else`.
-fn find_end_turn(effects: &[EffectDraft], list: &DefinitionPath) -> Option<DefinitionPath> {
+/// The path of the first `end_turn` or `advance_phase` in `effects`, in order, `then` before
+/// `else`, with the error it is: a Card Effect leaves no phase and ends no Turn.
+fn find_phase_leaving(
+    effects: &[EffectDraft],
+    list: &DefinitionPath,
+) -> Option<(DefinitionPath, CatalogErrorKind)> {
     for (index, effect) in effects.iter().enumerate() {
         let at = list.clone().index(index);
         match effect {
-            EffectDraft::EndTurn => return Some(at),
+            EffectDraft::EndTurn => return Some((at, CatalogErrorKind::EndTurnInCardEffect)),
+            EffectDraft::AdvancePhase => {
+                return Some((at, CatalogErrorKind::AdvancePhaseInCardEffect))
+            }
             EffectDraft::If {
                 then, otherwise, ..
             } => {
-                if let Some(found) = find_end_turn(then, &at.clone().key("then")) {
+                if let Some(found) = find_phase_leaving(then, &at.clone().key("then")) {
                     return Some(found);
                 }
-                if let Some(found) = find_end_turn(otherwise, &at.key("else")) {
+                if let Some(found) = find_phase_leaving(otherwise, &at.key("else")) {
                     return Some(found);
                 }
             }
             EffectDraft::ChooseOne { options, .. } => {
                 let list = at.key("choose_one").key("options");
                 for (position, option) in options.iter().enumerate() {
-                    if let Some(found) = find_end_turn(option, &list.clone().index(position)) {
+                    if let Some(found) = find_phase_leaving(option, &list.clone().index(position)) {
                         return Some(found);
                     }
                 }

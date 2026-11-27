@@ -599,6 +599,29 @@ pub enum Expression {
     },
     /// The value of a Player state of one Player (ADR-0041).
     PlayerValue(PlayerRef),
+    /// The number of cards in one Player's zone, derived from the GameState (ADR-0042). Int.
+    ZoneCount(ZoneCount),
+    /// Holds on the Game's first Turn only: the Turn Number is 1 (ADR-0042). Bool.
+    FirstTurn,
+}
+
+/// `{ count: { zone, player } }`: the number of cards in the zone of one Player, derived from the
+/// GameState and never stored (ADR-0042). The zone exists and the selector is one its scope allows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ZoneCount {
+    pub(super) zone: ZoneId,
+    pub(super) player: PlayerRefSelector,
+}
+
+impl ZoneCount {
+    pub fn zone(&self) -> &ZoneId {
+        &self.zone
+    }
+
+    /// Whose zone it counts; never `Judged`.
+    pub fn player(&self) -> PlayerRefSelector {
+        self.player
+    }
 }
 
 /// The Player a Player Ref reads (ADR-0041).
@@ -712,6 +735,8 @@ pub enum Cost {
 pub enum Effect {
     /// Ends the Turn: the phases after the current one run, then the next Player's Turn begins.
     EndTurn,
+    /// Moves to the next action phase of the Turn, running the automatic phases between (ADR-0042).
+    AdvancePhase,
     /// Moves `card` from the zone it is in onto the Top of `to`, a zone of its owner.
     Move { card: CardRef, to: ZoneId },
     /// Sets the instance state `state` of `card` to `value`, if it changes.
@@ -803,8 +828,8 @@ pub enum EffectPlayer {
     Controller,
 }
 
-/// The phases of every Turn, in order. Exactly one has actions: the Game waits there for the
-/// Active Player.
+/// The phases of every Turn, in order. At least one has actions: the Game waits in each of them, in
+/// turn, for the Active Player (ADR-0042).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TurnStructure {
     pub(super) phases: Vec<Phase>,

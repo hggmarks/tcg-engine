@@ -10,7 +10,7 @@ use super::error::{DefinitionError, DefinitionErrorKind, RefType, ReferenceTarge
 use super::model::{
     Amount, AmountOperand, CardRef, CardType, CardTypeId, CardValue, Expression, FieldType,
     ParamAlternative, ParamName, PlayerRef, PlayerRefSelector, PlayerStateSchema, PlayerTarget,
-    ValueRef, Zone,
+    ValueRef, Zone, ZoneCount, ZoneId,
 };
 use crate::definition_path::DefinitionPath;
 use crate::id::is_valid_id;
@@ -356,6 +356,52 @@ fn check_expression(
             }
             check_player_ref(&parsed, Some(selector), reference, refs, at)
         }
+        ExpressionDraft::Count { zone, player } => {
+            if refs.scope == Scope::WinCondition {
+                return fail(
+                    at,
+                    DefinitionErrorKind::OperatorNotInWinCondition {
+                        operator: "count".to_string(),
+                    },
+                );
+            }
+            let at = at.key("count");
+            if !refs
+                .zones
+                .iter()
+                .any(|declared| declared.id.as_str() == zone)
+            {
+                return fail(
+                    at.key("zone"),
+                    DefinitionErrorKind::DanglingReference {
+                        target: ReferenceTarget::Zone,
+                        id: zone.clone(),
+                    },
+                );
+            }
+            let Some(player) = player else {
+                return fail(at, DefinitionErrorKind::MissingPlayerSelector);
+            };
+            let player = check_selector(player, refs, at.key("player"))?;
+            Ok((
+                Expression::ZoneCount(ZoneCount {
+                    zone: ZoneId::new(zone),
+                    player,
+                }),
+                FieldType::Int,
+            ))
+        }
+        ExpressionDraft::FirstTurn => {
+            if refs.scope == Scope::WinCondition {
+                return fail(
+                    at,
+                    DefinitionErrorKind::OperatorNotInWinCondition {
+                        operator: "first_turn".to_string(),
+                    },
+                );
+            }
+            Ok((Expression::FirstTurn, FieldType::Bool))
+        }
         ExpressionDraft::Eq(left, right) => {
             let at = at.key("eq");
             let (left, expected) = check_expression(left, refs, at.clone().index(0))?;
@@ -606,23 +652,7 @@ fn check_player_ref(
     let Some(selector) = selector else {
         return fail(at, DefinitionErrorKind::MissingPlayerSelector);
     };
-    let selected = match selector.as_str() {
-        "active" => PlayerRefSelector::Active,
-        "opponent" => {
-            check_two_players(refs.players, at.clone())?;
-            PlayerRefSelector::Opponent
-        }
-        "controller" if refs.scope == Scope::CardEffect => PlayerRefSelector::Controller,
-        "controller" => return fail(at, DefinitionErrorKind::ControllerOutsideCardEffect),
-        other => {
-            return fail(
-                at,
-                DefinitionErrorKind::UnknownPlayerSelector {
-                    selector: other.to_string(),
-                },
-            )
-        }
-    };
+    let selected = check_selector(selector, refs, at.clone())?;
     Ok((
         Expression::PlayerValue(PlayerRef {
             selector: selected,
@@ -630,6 +660,30 @@ fn check_player_ref(
         }),
         schema.state_type,
     ))
+}
+
+/// The Player a selector names in a Player ref or a `count`, which the scope limits to the Players it
+/// can name (ADR-0041, ADR-0042).
+fn check_selector(
+    selector: &str,
+    refs: &Refs<'_>,
+    at: DefinitionPath,
+) -> Result<PlayerRefSelector, DefinitionError> {
+    match selector {
+        "active" => Ok(PlayerRefSelector::Active),
+        "opponent" => {
+            check_two_players(refs.players, at)?;
+            Ok(PlayerRefSelector::Opponent)
+        }
+        "controller" if refs.scope == Scope::CardEffect => Ok(PlayerRefSelector::Controller),
+        "controller" => fail(at, DefinitionErrorKind::ControllerOutsideCardEffect),
+        other => fail(
+            at,
+            DefinitionErrorKind::UnknownPlayerSelector {
+                selector: other.to_string(),
+            },
+        ),
+    }
 }
 
 /// The Players a write of Player state targets, checked for its scope (ADR-0041): `each`, `active`
@@ -686,7 +740,11 @@ fn check_ints(
 pub(super) fn reads_player_state(expression: &Expression) -> bool {
     match expression {
         Expression::PlayerValue(_) => true,
-        Expression::Literal(_) | Expression::Value(_) | Expression::IsCardType { .. } => false,
+        Expression::Literal(_)
+        | Expression::Value(_)
+        | Expression::IsCardType { .. }
+        | Expression::ZoneCount(_)
+        | Expression::FirstTurn => false,
         Expression::Eq(left, right)
         | Expression::Gte(left, right)
         | Expression::Lte(left, right) => reads_player_state(left) || reads_player_state(right),
@@ -704,7 +762,10 @@ pub(super) fn params_read(expression: &Expression) -> Vec<&ParamName> {
             }
         }
         match expression {
-            Expression::Literal(_) | Expression::PlayerValue(_) => {}
+            Expression::Literal(_)
+            | Expression::PlayerValue(_)
+            | Expression::ZoneCount(_)
+            | Expression::FirstTurn => {}
             Expression::Value(value) => note(found, &value.param),
             Expression::IsCardType { card, .. } => note(found, &card.param),
             Expression::Eq(left, right)

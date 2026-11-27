@@ -163,10 +163,33 @@ pub(crate) enum ExpressionDto {
     Lte(Box<ExpressionDto>, Box<ExpressionDto>),
     And(Vec<ExpressionDto>),
     IsCardType(String, String),
+    /// `count: { zone, player }` (ADR-0042).
+    Count(CountDto),
+    /// `first_turn: {}` (ADR-0042).
+    FirstTurn,
+}
+
+/// The map of `count`: the zone and, which validation requires, the `player` whose zone it is.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct CountDto {
+    zone: String,
+    #[serde(default, deserialize_with = "some")]
+    player: Option<String>,
 }
 
 /// `ref`, `player` and the operators, for the error of an unknown one.
-const EXPRESSION_KEYS: &[&str] = &["ref", "player", "eq", "gte", "lte", "and", "is_card_type"];
+const EXPRESSION_KEYS: &[&str] = &[
+    "ref",
+    "player",
+    "eq",
+    "gte",
+    "lte",
+    "and",
+    "is_card_type",
+    "count",
+    "first_turn",
+];
 
 /// Reads the value of the operator `key`, whose key was just read from `map`, and checks that it
 /// was the only key.
@@ -210,6 +233,11 @@ fn read_operator<'de, A: MapAccess<'de>>(
         "is_card_type" => {
             let CardTypeTest(card, card_type) = map.next_value()?;
             ExpressionDto::IsCardType(card, card_type)
+        }
+        "count" => ExpressionDto::Count(map.next_value()?),
+        "first_turn" => {
+            let EmptyDto {} = map.next_value()?;
+            ExpressionDto::FirstTurn
         }
         other => return Err(de::Error::unknown_variant(other, EXPRESSION_KEYS)),
     };
@@ -343,6 +371,11 @@ impl ExpressionDto {
                 card: RefDraft(card),
                 card_type,
             },
+            Self::Count(count) => ExpressionDraft::Count {
+                zone: count.zone,
+                player: count.player,
+            },
+            Self::FirstTurn => ExpressionDraft::FirstTurn,
         }
     }
 }
@@ -729,6 +762,7 @@ impl<'de> Deserialize<'de> for TapDto {
 /// optional, like an `if` step.
 pub(crate) enum EffectDto {
     EndTurn,
+    AdvancePhase,
     Move(MoveEffectDto),
     SetState(SetStateEffectDto),
     AddState(AddStateEffectDto),
@@ -788,6 +822,7 @@ pub(crate) struct AddStateEffectDto {
 /// The keys an effect may have, for the error of an unknown one.
 const EFFECT_KEYS: &[&str] = &[
     "end_turn",
+    "advance_phase",
     "move",
     "set_state",
     "add_state",
@@ -823,6 +858,10 @@ impl<'de> Deserialize<'de> for EffectDto {
                         "end_turn" => {
                             let EmptyDto {} = map.next_value()?;
                             Some(EffectDto::EndTurn)
+                        }
+                        "advance_phase" => {
+                            let EmptyDto {} = map.next_value()?;
+                            Some(EffectDto::AdvancePhase)
                         }
                         "move" => Some(EffectDto::Move(map.next_value()?)),
                         "set_state" => Some(EffectDto::SetState(map.next_value()?)),
@@ -1303,6 +1342,7 @@ impl EffectDto {
     fn into_draft(self) -> EffectDraft {
         match self {
             Self::EndTurn => EffectDraft::EndTurn,
+            Self::AdvancePhase => EffectDraft::AdvancePhase,
             Self::Move(step) => EffectDraft::Move {
                 card: RefDraft(step.card.reference),
                 to: step.to,
