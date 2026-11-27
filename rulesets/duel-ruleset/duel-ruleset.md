@@ -67,7 +67,7 @@ The Active Player draws 1 card into their Hand. **The starting Player does not d
 
 ### 2. Main
 
-The first phase where the Active Player acts. They may take any of these Actions, in any order and any number of times each, as the rules allow:
+The first phase where the Active Player acts. They may take any of these Actions, in any order, as the rules allow (To Battle once, since it leaves Main):
 
 - **Normal Summon**
 - **To Battle**
@@ -117,7 +117,7 @@ The first condition that holds for a Player is their reason. If both Players los
 
 The v1 rules (`meta.version: 2`) are the second step of a face-up game of the Duel family. What it leaves out, and the ticket of the Phase G roadmap (#94) that adds it:
 
-- **[41] Combat**: **positions** (attack and defence) as explicit state, changing position, **combat between monsters** (ATK against ATK, ATK against DEF) and the damage it does; `def` is read there. Until [41] a summoned monster is simply in the Monster Zone, face-up in attack position by rule, and only direct attacks exist.
+- **[41] Combat**: **positions** (attack and defence) as explicit state, changing position, **combat between monsters** (ATK against ATK, ATK against DEF) and the damage it does; `def` is read there. Until [41] a monster never leaves the Monster Zone, so once a Player has one no direct attack on them is legal, and Player 0, who can always summon on Turn 1, can never be attacked directly; v1 is therefore a forced win for Player 0 by deck out (Player 1 draws from an empty Deck first, on Turn 72). Until [41] a summoned monster is simply in the Monster Zone, face-up in attack position by rule, and only direct attacks exist.
 - **[42] Tributes and spells**: monsters of level 5 and more, summoned with 1 or 2 tributes sent to the Graveyard; spells and the Spell/Trap Zone; and the first real catalog. Until [42] a monster of level 5 or more cannot be summoned, the Graveyard stays empty and the catalog holds only level 1 to 4.
 
 Face-down cards, flipping and traps are the successor roadmap's (Phase H).

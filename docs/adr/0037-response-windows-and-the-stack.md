@@ -39,3 +39,5 @@ A ruleset can declare **Response Windows**. An Action that opens one pays its co
 **Status**: accepted
 
 Amended by ADR-0041: the Response Ruleset is frozen since Phase G, and the current ruleset is `rulesets/duel-ruleset/` (marked above).
+
+Amended by ADR-0042: "the Action phase" is any one of the Turn's action phases, and a window closes back into the one it was opened in (marked above).

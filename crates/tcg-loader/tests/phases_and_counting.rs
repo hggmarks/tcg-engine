@@ -70,7 +70,12 @@ fn act(player: u32, id: &str, cards: &[CardInstanceId]) -> Action {
 }
 
 fn game_with(deck: &str) -> (DeclarativeRuleset, GameCreation) {
-    let definition = load_ruleset_definition(RULESET).expect("the ruleset loads");
+    game_of(RULESET, deck)
+}
+
+/// A Game of the ruleset text `ruleset_yaml` (the fixture, edited) with `deck` for both Players.
+fn game_of(ruleset_yaml: &str, deck: &str) -> (DeclarativeRuleset, GameCreation) {
+    let definition = load_ruleset_definition(ruleset_yaml).expect("the ruleset loads");
     let catalog = load_card_catalog(&definition, CATALOG).expect("the catalog loads");
     let ruleset = DeclarativeRuleset::new(definition, catalog);
     let decks: Vec<_> = (0..2)
@@ -766,4 +771,120 @@ fn an_observation_shows_the_phase_advance_phase_moved_to() {
             "viewer {seat}"
         );
     }
+}
+
+// ---- review round 1
+
+#[test]
+fn a_response_window_opened_in_the_second_action_phase_closes_back_into_it() {
+    // `raid` opens a window: seat 1 has Priority and passes, and the Stack resolves.
+    let yaml =
+        format!("{RULESET}\nwindows:\n  - {{ id: reply, opened_by: [raid], actions: [] }}\n");
+    let (ruleset, creation) = game_of(&yaml, DECK);
+    let in_battle = play(
+        &ruleset,
+        &creation.opening.state,
+        &[act(0, "summon", &[CARD_A]), act(0, "to_battle", &[])],
+    );
+    let opened = take(&ruleset, &in_battle, &act(0, "raid", &[CARD_A]));
+    assert_eq!(opened.state.phase(), Some(&phase("battle")));
+    assert_eq!(life(&opened.state, 1), 4000, "the effects are on the Stack");
+
+    let pass = Action::Pass { player: p(1) };
+    let resolved = take(&ruleset, &opened.state, &pass);
+    // No phase begins: the window closes back into Battle, where the Active Player acts again.
+    assert!(!resolved
+        .trace
+        .events()
+        .iter()
+        .any(|event| matches!(event, Event::PhaseBegan { .. })));
+    assert_eq!(life(&resolved.state, 1), 3950);
+    assert_eq!(resolved.state.phase(), Some(&phase("battle")));
+    assert_eq!(resolved.state.active_player(), p(0));
+    assert!(is_legal(
+        &ruleset,
+        &resolved.state,
+        &act(0, "end_turn", &[])
+    ));
+    assert!(!offers(&ruleset, &resolved.state, "to_battle"));
+    assert!(!offers(&ruleset, &resolved.state, "summon"));
+}
+
+#[test]
+fn the_first_phase_leaving_effect_of_an_action_gives_its_own_error() {
+    let to_battle = "effects: [ { advance_phase: {} } ]";
+    let end_then_advance = edit(
+        RULESET,
+        to_battle,
+        "effects: [ { end_turn: {} }, { advance_phase: {} } ]",
+    );
+    assert_eq!(
+        definition_error(&end_then_advance),
+        DefinitionError {
+            path: at_action("to_battle").key("effects").index(0),
+            kind: DefinitionErrorKind::EndTurnNotLast,
+        }
+    );
+    let advance_then_end = edit(
+        RULESET,
+        to_battle,
+        "effects: [ { advance_phase: {} }, { end_turn: {} } ]",
+    );
+    assert_eq!(
+        definition_error(&advance_then_end),
+        DefinitionError {
+            path: at_action("to_battle").key("effects").index(0),
+            kind: DefinitionErrorKind::AdvancePhaseNotLast,
+        }
+    );
+}
+
+#[test]
+fn count_goes_down_when_a_card_leaves_the_zone() {
+    // A `retreat` action in Main sends a card of the field back to the hand.
+    let with_retreat = edit(
+        &edit(
+            RULESET,
+            "actions: [summon, to_battle, end_turn]",
+            "actions: [summon, retreat, to_battle, end_turn]",
+        ),
+        "  - id: to_battle\n",
+        "  - id: retreat\n    params:\n      - { name: card, zone: field, card_type: unit }\n    effects:\n      - move: { card: { ref: card }, to: hand }\n\n  - id: to_battle\n",
+    );
+    let (ruleset, creation) = game_of(&with_retreat, DECK);
+
+    // The acting Player's own zone: at 2 cards `summon` is not legal, at 1 it is again.
+    let two = play(
+        &ruleset,
+        &creation.opening.state,
+        &[act(0, "summon", &[CARD_A]), act(0, "summon", &[CARD_B])],
+    );
+    assert!(!is_legal(&ruleset, &two, &act(0, "summon", &[CARD_C])));
+    let one = take(&ruleset, &two, &act(0, "retreat", &[CARD_B])).state;
+    assert!(is_legal(&ruleset, &one, &act(0, "summon", &[CARD_C])));
+
+    // The opponent's zone: seat 1's `raid` is not legal while seat 0 has a card, and is once it
+    // has none.
+    let t2_battle = play(
+        &ruleset,
+        &creation.opening.state,
+        &[
+            act(0, "summon", &[CARD_A]),
+            act(0, "end_turn", &[]),
+            act(1, "summon", &[OTHER_A]),
+            act(1, "to_battle", &[]),
+        ],
+    );
+    assert!(!is_legal(&ruleset, &t2_battle, &act(1, "raid", &[OTHER_A])));
+    let t4_battle = play(
+        &ruleset,
+        &t2_battle,
+        &[
+            act(1, "end_turn", &[]),
+            act(0, "retreat", &[CARD_A]),
+            act(0, "end_turn", &[]),
+            act(1, "to_battle", &[]),
+        ],
+    );
+    assert!(is_legal(&ruleset, &t4_battle, &act(1, "raid", &[OTHER_A])));
 }

@@ -25,3 +25,5 @@ A card can carry an **activated ability**, a third Card Effect shape that its co
 **Status**: accepted
 
 Amended by ADR-0041: the action cost steps of an ability include the Player-state `set_state` and `add_state` (marked above).
+
+Amended by ADR-0042: abilities are never usable in any action phase, not only in the one (marked above).

@@ -17,3 +17,5 @@ Amended by ADR-0037: while a Response Window is open the listing is `Pass` and t
 **Amended by ADR-0034:** a pending Card Choice lists `Answer::Card(c)`, one per candidate, marked above.
 
 **Status**: accepted
+
+Amended by ADR-0042: the Listing Order is that of the current one of several action phases (marked above).

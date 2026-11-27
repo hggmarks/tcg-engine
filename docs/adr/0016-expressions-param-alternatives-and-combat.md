@@ -23,3 +23,5 @@ Amended by ADR-0034: a param is also the spec of a Card Choice, with the control
 Amended by ADR-0041: an expression may read Player state through a Player Ref, and `add_state` may add to it (marked above).
 
 Amended by ADR-0041: a win condition may read Player state and no card type (marked in *Expression win conditions*).
+
+Amended by ADR-0042: the expression operators gain `count: { zone, player }` (int) and `first_turn: {}` (bool), and neither may stand in a win condition (marked above).
