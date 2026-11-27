@@ -2431,7 +2431,7 @@ fn turn_cycle_errors_are_reported_in_validation_order() {
         }
     );
 
-    // The check of an action phase comes before the count of action phases.
+    // The check of an action phase comes before the check that there is one.
     let mut draft = small_ruleset_with_actions(
         vec![action_of("idle", vec![]), pass_turn_action()],
         &["idle"],

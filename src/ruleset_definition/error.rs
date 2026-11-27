@@ -233,7 +233,7 @@ pub enum DefinitionErrorKind {
     },
     /// An `end_turn` in the effects of a pushed action (one a window lists or opens), at its own
     /// path, such as `actions[x].effects[1]`: a Stack Item's effects run on a Pass, which does not
-    /// leave the Action phase (ADR-0037).
+    /// leave its action phase (ADR-0037, ADR-0042).
     EndTurnInPushedAction,
     /// A card param of a pushed action that is not in a `public` zone once the costs are paid,
     /// at the param (when a `move` cost moves it: `zone` is the `to` of its last one) or at its
