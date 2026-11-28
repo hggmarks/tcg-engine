@@ -1,0 +1,224 @@
+# duel-direct-kill observed by player 1 | seed 226 | seat 0 deck-a, seat 1 deck-b
+== creation
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(0), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardCreated { owner: PlayerId(1), zone: ZoneId("deck") }
+UnseenZoneShuffled { player: PlayerId(0), zone: ZoneId("deck") }
+UnseenZoneShuffled { player: PlayerId(1), zone: ZoneId("deck") }
+UnseenCardMoved { player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+UnseenCardMoved { player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+UnseenCardMoved { player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+UnseenCardMoved { player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+UnseenCardMoved { player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMovedIntoSight { card: ObservedCard(0), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand"), definition: CardId("cinder_ogre"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardMovedIntoSight { card: ObservedCard(1), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand"), definition: CardId("ash_sprite"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardMovedIntoSight { card: ObservedCard(2), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand"), definition: CardId("mending_light"), state: [] }
+CardMovedIntoSight { card: ObservedCard(3), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand"), definition: CardId("reed_stalker"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardMovedIntoSight { card: ObservedCard(4), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand"), definition: CardId("cinder_ogre"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(1) }
+PhaseBegan { phase: PhaseId("draw") }
+PhaseBegan { phase: PhaseId("main") }
+== action 1
+TakenAction { player: PlayerId(0), action: ActionId("set_monster"), arguments: [Card(ObservedCard(5))] }
+CardMovedIntoSight { card: ObservedCard(5), player: PlayerId(0), from: ZoneId("hand"), to: ZoneId("monster_zone"), definition: CardId("quarry_bear"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+PlayerStateChanged { player: PlayerId(0), state: PlayerStateId("normal_summoned"), value: Bool(true) }
+CardStateChanged { card: ObservedCard(5), state: StateName("position"), value: Text("defence") }
+CardStateChanged { card: ObservedCard(5), state: StateName("position_fixed"), value: Bool(true) }
+== action 2
+TakenAction { player: PlayerId(0), action: ActionId("to_battle"), arguments: [] }
+PhaseBegan { phase: PhaseId("battle") }
+== action 3
+TakenAction { player: PlayerId(0), action: ActionId("end_turn"), arguments: [] }
+PhaseBegan { phase: PhaseId("end") }
+PlayerStateChanged { player: PlayerId(0), state: PlayerStateId("normal_summoned"), value: Bool(false) }
+CardStateChanged { card: ObservedCard(5), state: StateName("position_fixed"), value: Bool(false) }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(2) }
+PhaseBegan { phase: PhaseId("draw") }
+CardMovedIntoSight { card: ObservedCard(6), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand"), definition: CardId("ember_fox"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+PhaseBegan { phase: PhaseId("main") }
+== action 4
+TakenAction { player: PlayerId(1), action: ActionId("to_battle"), arguments: [] }
+PhaseBegan { phase: PhaseId("battle") }
+== action 5
+TakenAction { player: PlayerId(1), action: ActionId("end_turn"), arguments: [] }
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(3) }
+PhaseBegan { phase: PhaseId("draw") }
+UnseenCardMoved { player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 6
+TakenAction { player: PlayerId(0), action: ActionId("set_monster"), arguments: [Card(ObservedCard(7))] }
+CardMovedIntoSight { card: ObservedCard(7), player: PlayerId(0), from: ZoneId("hand"), to: ZoneId("monster_zone"), definition: CardId("pebble_golem"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+PlayerStateChanged { player: PlayerId(0), state: PlayerStateId("normal_summoned"), value: Bool(true) }
+CardStateChanged { card: ObservedCard(7), state: StateName("position"), value: Text("defence") }
+CardStateChanged { card: ObservedCard(7), state: StateName("position_fixed"), value: Bool(true) }
+== action 7
+TakenAction { player: PlayerId(0), action: ActionId("to_battle"), arguments: [] }
+PhaseBegan { phase: PhaseId("battle") }
+== action 8
+TakenAction { player: PlayerId(0), action: ActionId("end_turn"), arguments: [] }
+PhaseBegan { phase: PhaseId("end") }
+PlayerStateChanged { player: PlayerId(0), state: PlayerStateId("normal_summoned"), value: Bool(false) }
+CardStateChanged { card: ObservedCard(7), state: StateName("position_fixed"), value: Bool(false) }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(4) }
+PhaseBegan { phase: PhaseId("draw") }
+CardMovedIntoSight { card: ObservedCard(8), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand"), definition: CardId("ashen_minotaur"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+PhaseBegan { phase: PhaseId("main") }
+== action 9
+TakenAction { player: PlayerId(1), action: ActionId("normal_summon"), arguments: [Card(ObservedCard(3))] }
+CardMoved { card: ObservedCard(3), player: PlayerId(1), from: ZoneId("hand"), to: ZoneId("monster_zone") }
+PlayerStateChanged { player: PlayerId(1), state: PlayerStateId("normal_summoned"), value: Bool(true) }
+CardStateChanged { card: ObservedCard(3), state: StateName("position_fixed"), value: Bool(true) }
+== action 10
+TakenAction { player: PlayerId(1), action: ActionId("to_battle"), arguments: [] }
+PhaseBegan { phase: PhaseId("battle") }
+== action 11
+TakenAction { player: PlayerId(1), action: ActionId("attack"), arguments: [Card(ObservedCard(3)), Card(ObservedCard(5))] }
+CardStateChanged { card: ObservedCard(3), state: StateName("attacked"), value: Bool(true) }
+PlayerStateChanged { player: PlayerId(1), state: PlayerStateId("life_points"), value: Int(3800) }
+== action 12
+TakenAction { player: PlayerId(1), action: ActionId("end_turn"), arguments: [] }
+PhaseBegan { phase: PhaseId("end") }
+PlayerStateChanged { player: PlayerId(1), state: PlayerStateId("normal_summoned"), value: Bool(false) }
+CardStateChanged { card: ObservedCard(3), state: StateName("attacked"), value: Bool(false) }
+CardStateChanged { card: ObservedCard(3), state: StateName("position_fixed"), value: Bool(false) }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(5) }
+PhaseBegan { phase: PhaseId("draw") }
+UnseenCardMoved { player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 13
+TakenAction { player: PlayerId(0), action: ActionId("tribute_summon_two"), arguments: [Card(ObservedCard(9)), Card(ObservedCard(7)), Card(ObservedCard(5))] }
+CardMoved { card: ObservedCard(7), player: PlayerId(0), from: ZoneId("monster_zone"), to: ZoneId("graveyard") }
+CardMoved { card: ObservedCard(5), player: PlayerId(0), from: ZoneId("monster_zone"), to: ZoneId("graveyard") }
+CardMovedIntoSight { card: ObservedCard(9), player: PlayerId(0), from: ZoneId("hand"), to: ZoneId("monster_zone"), definition: CardId("abyss_leviathan"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+PlayerStateChanged { player: PlayerId(0), state: PlayerStateId("normal_summoned"), value: Bool(true) }
+CardStateChanged { card: ObservedCard(9), state: StateName("position_fixed"), value: Bool(true) }
+== action 14
+TakenAction { player: PlayerId(0), action: ActionId("to_battle"), arguments: [] }
+PhaseBegan { phase: PhaseId("battle") }
+== action 15
+TakenAction { player: PlayerId(0), action: ActionId("attack"), arguments: [Card(ObservedCard(9)), Card(ObservedCard(3))] }
+CardStateChanged { card: ObservedCard(9), state: StateName("attacked"), value: Bool(true) }
+PlayerStateChanged { player: PlayerId(1), state: PlayerStateId("life_points"), value: Int(2100) }
+CardMoved { card: ObservedCard(3), player: PlayerId(1), from: ZoneId("monster_zone"), to: ZoneId("graveyard") }
+== action 16
+TakenAction { player: PlayerId(0), action: ActionId("end_turn"), arguments: [] }
+PhaseBegan { phase: PhaseId("end") }
+PlayerStateChanged { player: PlayerId(0), state: PlayerStateId("normal_summoned"), value: Bool(false) }
+CardStateChanged { card: ObservedCard(9), state: StateName("attacked"), value: Bool(false) }
+CardStateChanged { card: ObservedCard(9), state: StateName("position_fixed"), value: Bool(false) }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(6) }
+PhaseBegan { phase: PhaseId("draw") }
+CardMovedIntoSight { card: ObservedCard(10), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand"), definition: CardId("tempest_roc"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+PhaseBegan { phase: PhaseId("main") }
+== action 17
+TakenAction { player: PlayerId(1), action: ActionId("normal_summon"), arguments: [Card(ObservedCard(4))] }
+CardMoved { card: ObservedCard(4), player: PlayerId(1), from: ZoneId("hand"), to: ZoneId("monster_zone") }
+PlayerStateChanged { player: PlayerId(1), state: PlayerStateId("normal_summoned"), value: Bool(true) }
+CardStateChanged { card: ObservedCard(4), state: StateName("position_fixed"), value: Bool(true) }
+== action 18
+TakenAction { player: PlayerId(1), action: ActionId("end_turn"), arguments: [] }
+PhaseBegan { phase: PhaseId("end") }
+PlayerStateChanged { player: PlayerId(1), state: PlayerStateId("normal_summoned"), value: Bool(false) }
+CardStateChanged { card: ObservedCard(4), state: StateName("position_fixed"), value: Bool(false) }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(7) }
+PhaseBegan { phase: PhaseId("draw") }
+UnseenCardMoved { player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 19
+TakenAction { player: PlayerId(0), action: ActionId("normal_summon"), arguments: [Card(ObservedCard(11))] }
+CardMovedIntoSight { card: ObservedCard(11), player: PlayerId(0), from: ZoneId("hand"), to: ZoneId("monster_zone"), definition: CardId("cinder_ogre"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+PlayerStateChanged { player: PlayerId(0), state: PlayerStateId("normal_summoned"), value: Bool(true) }
+CardStateChanged { card: ObservedCard(11), state: StateName("position_fixed"), value: Bool(true) }
+== action 20
+TakenAction { player: PlayerId(0), action: ActionId("to_battle"), arguments: [] }
+PhaseBegan { phase: PhaseId("battle") }
+== action 21
+TakenAction { player: PlayerId(0), action: ActionId("attack"), arguments: [Card(ObservedCard(11)), Card(ObservedCard(4))] }
+CardStateChanged { card: ObservedCard(11), state: StateName("attacked"), value: Bool(true) }
+CardMoved { card: ObservedCard(4), player: PlayerId(1), from: ZoneId("monster_zone"), to: ZoneId("graveyard") }
+CardMoved { card: ObservedCard(11), player: PlayerId(0), from: ZoneId("monster_zone"), to: ZoneId("graveyard") }
+== action 22
+TakenAction { player: PlayerId(0), action: ActionId("direct_attack"), arguments: [Card(ObservedCard(9))] }
+CardStateChanged { card: ObservedCard(9), state: StateName("attacked"), value: Bool(true) }
+PlayerStateChanged { player: PlayerId(1), state: PlayerStateId("life_points"), value: Int(-500) }
+GameEnded { losses: [Loss { player: PlayerId(1), reason: WinConditionId("life_out") }] }
+== outcome
+TerminalOutcome { winners: [PlayerId(0)], losses: [Loss { player: PlayerId(1), reason: WinConditionId("life_out") }] }

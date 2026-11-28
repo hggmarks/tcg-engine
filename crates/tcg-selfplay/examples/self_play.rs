@@ -1,5 +1,5 @@
-//! Plays one seeded Game of the Small Ruleset and one of the Effects Ruleset, prints a readable
-//! Game log of each, then reports the throughput of self-play in Games per second on both
+//! Plays one seeded Game of the Small, Effects, Response and Duel Rulesets, prints a readable
+//! Game log of each, then reports the throughput of self-play in Games per second on all four
 //! rulesets, with the checks off, with the nine engine Invariants only, and with all twelve (the
 //! three over Observations too): the difference is the cost of observing (ADR-0031).
 //!
@@ -40,6 +40,11 @@ const RESPONSE_CATALOG: &str =
     include_str!("../../../rulesets/response-ruleset/response-catalog.yaml");
 const RESPONSE_DECK_A: &str = include_str!("../../../rulesets/response-ruleset/decks/deck-a.yaml");
 const RESPONSE_DECK_B: &str = include_str!("../../../rulesets/response-ruleset/decks/deck-b.yaml");
+
+const DUEL_RULESET: &str = include_str!("../../../rulesets/duel-ruleset/duel-ruleset.yaml");
+const DUEL_CATALOG: &str = include_str!("../../../rulesets/duel-ruleset/duel-catalog.yaml");
+const DUEL_DECK_A: &str = include_str!("../../../rulesets/duel-ruleset/decks/deck-a.yaml");
+const DUEL_DECK_B: &str = include_str!("../../../rulesets/duel-ruleset/decks/deck-b.yaml");
 
 /// The Seed of the Games that are printed.
 const LOG_SEED: u64 = 2026;
@@ -92,6 +97,12 @@ fn main() {
             RESPONSE_RULESET,
             RESPONSE_CATALOG,
             [RESPONSE_DECK_A, RESPONSE_DECK_B],
+        ),
+        load(
+            "Duel Ruleset",
+            DUEL_RULESET,
+            DUEL_CATALOG,
+            [DUEL_DECK_A, DUEL_DECK_B],
         ),
     ];
 
