@@ -1,7 +1,8 @@
-# The Duel Ruleset v2 (tickets [39], [40] and [41] of the Phase G roadmap): a face-up duel between
-# two Players, each with Life Points and a deck of monsters, with a Main and a Battle phase, monster
-# positions and combat between monsters. Spec: duel-ruleset.md. Format: ../formats.md.
-meta: { id: duel, version: 3 }
+# The Duel Ruleset v3 (tickets [39] to [42] of the Phase G roadmap): a face-up duel between two
+# Players, each with Life Points and a deck of monsters and spells, with a Main and a Battle phase,
+# monster positions, combat between monsters, tribute summons and normal spells. Spec:
+# duel-ruleset.md. Format: ../formats.md.
+meta: { id: duel, version: 4 }
 
 parameters:
   players: 2
@@ -12,6 +13,7 @@ zones:
   - { id: hand,         visibility: owner,  ordered: false }
   - { id: graveyard,    visibility: public, ordered: true }   # the top is the last card
   - { id: monster_zone, visibility: public, ordered: false }
+  - { id: spell_trap_zone, visibility: public, ordered: false }   # holds a spell while it resolves (ADR-0044)
 
 card_types:
   - id: monster
@@ -28,14 +30,25 @@ card_types:
       # Whether the monster arrived or changed position this Turn: it may not change position then.
       - { name: position_fixed, type: bool, init: false }
     effects: false
+  # A normal spell (ADR-0044): its Card Effect acts while it is in the Spell/Trap Zone.
+  - id: spell
+    fields:
+      - { name: name, type: text }
+    instance_state: []
+    effects: true
+
+# Where Card Effects act: a spell's `enter` trigger fires on arrival in the Spell/Trap Zone
+# (ADR-0044). Monsters carry no Card Effect until Phase H, which may revisit this.
+effects:
+  active_zone: spell_trap_zone
 
 # Values every Player holds (ADR-0041). The engine names none: Life Points are this ruleset's.
 player_state:
   - { id: life_points,     type: int,  init: 4000 }
-  - { id: normal_summoned, type: bool, init: false }   # whether the Player made their Normal Summon or Set this Turn
+  - { id: normal_summoned, type: bool, init: false }   # whether the Player made their Normal Summon, Set, Tribute Summon or Tribute Set this Turn
 
 inputs:
-  - { id: main_deck, card_types: [monster], size: 40, max_copies: 3, zone: deck }
+  - { id: main_deck, card_types: [monster, spell], size: 40, max_copies: 3, zone: deck }
 
 setup:
   - shuffle: { player: each, zone: deck }
@@ -54,7 +67,17 @@ turn:
           else:
             - draw: { player: active, from: deck, to: hand, count: 1 }
     - id: main
-      actions: [normal_summon, set_monster, change_position, to_battle, end_turn]
+      actions:
+        - normal_summon
+        - set_monster
+        - tribute_summon_one
+        - tribute_summon_two
+        - tribute_set_one
+        - tribute_set_two
+        - play_spell
+        - change_position
+        - to_battle
+        - end_turn
     - id: battle
       actions: [attack, direct_attack, end_turn]
     - id: end
@@ -103,6 +126,108 @@ actions:
       - set_state: { player: active, state: normal_summoned, value: true }
       - set_state: { card: { ref: card }, state: position, value: "defence" }
       - set_state: { card: { ref: card }, state: position_fixed, value: true }
+
+  # Tribute summons (ADR-0044): a monster of level 5 or 6 needs 1 tribute, one of level 7 or more
+  # needs 2, written as separate actions whose `where` reads the level. A tribute is a monster of the
+  # acting Player's Monster Zone and goes to the Graveyard as the cost, in param order. A param
+  # `where` runs before the costs (ADR-0016), so "the capacity after the tributes leave" is the
+  # arithmetic `count - N <= 2`: a summon with 2 tributes from a full Monster Zone is legal. The
+  # tribute params are distinct cards (ADR-0044), and the once-per-Turn flag is the Normal Summon's.
+  - id: tribute_summon_one
+    params:
+      - name: card
+        zone: hand
+        card_type: monster
+        where:
+          and:
+            - { gte: [{ ref: card.level }, 5] }
+            - { lte: [{ ref: card.level }, 6] }
+            - { eq: [{ ref: player.normal_summoned, player: active }, false] }
+            - { lte: [{ sub: [{ count: { zone: monster_zone, player: active } }, 1] }, 2] }
+      - { name: tribute, zone: monster_zone, card_type: monster }
+    cost:
+      - move: { card: { ref: tribute }, to: graveyard }
+    effects:
+      - move: { card: { ref: card }, to: monster_zone }
+      - set_state: { player: active, state: normal_summoned, value: true }
+      - set_state: { card: { ref: card }, state: position, value: "attack" }
+      - set_state: { card: { ref: card }, state: position_fixed, value: true }
+
+  - id: tribute_summon_two
+    params:
+      - name: card
+        zone: hand
+        card_type: monster
+        where:
+          and:
+            - { gte: [{ ref: card.level }, 7] }
+            - { eq: [{ ref: player.normal_summoned, player: active }, false] }
+            - { lte: [{ sub: [{ count: { zone: monster_zone, player: active } }, 2] }, 2] }
+      - { name: tribute_1, zone: monster_zone, card_type: monster }
+      - { name: tribute_2, zone: monster_zone, card_type: monster }
+    cost:
+      - move: { card: { ref: tribute_1 }, to: graveyard }
+      - move: { card: { ref: tribute_2 }, to: graveyard }
+    effects:
+      - move: { card: { ref: card }, to: monster_zone }
+      - set_state: { player: active, state: normal_summoned, value: true }
+      - set_state: { card: { ref: card }, state: position, value: "attack" }
+      - set_state: { card: { ref: card }, state: position_fixed, value: true }
+
+  # The same two, in defence position: the monster is set (face-up and public until Phase H).
+  - id: tribute_set_one
+    params:
+      - name: card
+        zone: hand
+        card_type: monster
+        where:
+          and:
+            - { gte: [{ ref: card.level }, 5] }
+            - { lte: [{ ref: card.level }, 6] }
+            - { eq: [{ ref: player.normal_summoned, player: active }, false] }
+            - { lte: [{ sub: [{ count: { zone: monster_zone, player: active } }, 1] }, 2] }
+      - { name: tribute, zone: monster_zone, card_type: monster }
+    cost:
+      - move: { card: { ref: tribute }, to: graveyard }
+    effects:
+      - move: { card: { ref: card }, to: monster_zone }
+      - set_state: { player: active, state: normal_summoned, value: true }
+      - set_state: { card: { ref: card }, state: position, value: "defence" }
+      - set_state: { card: { ref: card }, state: position_fixed, value: true }
+
+  - id: tribute_set_two
+    params:
+      - name: card
+        zone: hand
+        card_type: monster
+        where:
+          and:
+            - { gte: [{ ref: card.level }, 7] }
+            - { eq: [{ ref: player.normal_summoned, player: active }, false] }
+            - { lte: [{ sub: [{ count: { zone: monster_zone, player: active } }, 2] }, 2] }
+      - { name: tribute_1, zone: monster_zone, card_type: monster }
+      - { name: tribute_2, zone: monster_zone, card_type: monster }
+    cost:
+      - move: { card: { ref: tribute_1 }, to: graveyard }
+      - move: { card: { ref: tribute_2 }, to: graveyard }
+    effects:
+      - move: { card: { ref: card }, to: monster_zone }
+      - set_state: { player: active, state: normal_summoned, value: true }
+      - set_state: { card: { ref: card }, state: position, value: "defence" }
+      - set_state: { card: { ref: card }, state: position_fixed, value: true }
+
+  # A normal spell from the hand, while the Spell/Trap Zone holds at most 2 (so it holds 3 at most).
+  # The cost moves it to the Spell/Trap Zone; its own `enter` trigger sends it to the Graveyard and
+  # does its effect (ADR-0044). It is listed in Main only.
+  - id: play_spell
+    params:
+      - name: card
+        zone: hand
+        card_type: spell
+        where: { lte: [{ count: { zone: spell_trap_zone, player: active } }, 2] }
+    cost:
+      - move: { card: { ref: card }, to: spell_trap_zone }
+    effects: []
 
   # A monster of the acting Player's Monster Zone that did not arrive or change position this Turn
   # goes to the other position.

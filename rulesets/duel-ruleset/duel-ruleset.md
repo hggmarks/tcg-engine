@@ -1,6 +1,6 @@
 # Ruleset: Duel
 
-A face-up duel between two Players: each holds Life Points, draws from a deck of monsters, summons or sets them, and attacks the other Player's monsters, or the Player directly when they have none, until one has no Life Points left or no card to draw. It is the second, independent ruleset of the engine (ticket [39] of the Phase G roadmap, #94): written from scratch, with names of its own, and the test that the engine's primitives are not shaped around one game. The first version of the rules (**v0**; `meta.version` of the files is 1) was the smallest game that plays. **v1** (`meta.version` 2, ticket [40], #97, ADR-0042) added a Battle phase, a Monster Zone of at most 3 monsters, a direct attack only on an empty Monster Zone and no attack on Turn 1. **v2** (`meta.version` 3, ticket [41], #98, ADR-0043) adds monster positions, changing position and combat between monsters; the *Not yet* section says what the next ticket adds. The encoding is `duel-ruleset.yaml`, the monsters are in `duel-catalog.yaml` and two sample decks are in `decks/`.
+A face-up duel between two Players: each holds Life Points, draws from a deck of monsters and spells, summons or sets the monsters, casts the spells, and attacks the other Player's monsters, or the Player directly when they have none, until one has no Life Points left or no card to draw. It is the second, independent ruleset of the engine (ticket [39] of the Phase G roadmap, #94): written from scratch, with names of its own, and the test that the engine's primitives are not shaped around one game. The first version of the rules (**v0**; `meta.version` of the files is 1) was the smallest game that plays. **v1** (`meta.version` 2, ticket [40], #97, ADR-0042) added a Battle phase, a Monster Zone of at most 3 monsters, a direct attack only on an empty Monster Zone and no attack on Turn 1. **v2** (`meta.version` 3, ticket [41], #98, ADR-0043) added monster positions, changing position and combat between monsters. **v3** (`meta.version` 4, ticket [42], #99, ADR-0044) adds tribute summons, normal spells, the Spell/Trap Zone and the first real catalog; the *Not yet* section says what is left. The encoding is `duel-ruleset.yaml`, the cards are in `duel-catalog.yaml` and two sample decks are in `decks/`.
 
 ## Parameters
 
@@ -19,7 +19,7 @@ Each Player holds two values (ADR-0041), both public:
 | Name | Type | Starts at | Meaning |
 |---|---|---|---|
 | `life_points` | int | 4000 | The Player's Life Points. They may go below 0 (the Game ends then). |
-| `normal_summoned` | bool | false | Whether the Player has made their Normal Summon or Set this Turn. |
+| `normal_summoned` | bool | false | Whether the Player has made their Normal Summon, Set, Tribute Summon or Tribute Set this Turn. |
 
 ## Zones
 
@@ -31,26 +31,28 @@ Per Player:
 | Hand | Visible to its owner only | No |
 | Graveyard | Public | Yes (the top card is the last card put there) |
 | Monster Zone | Public | No |
+| Spell/Trap Zone | Public | No |
 
-A monster destroyed in combat goes to its owner's Graveyard.
+A monster destroyed in combat goes to its owner's Graveyard. The Spell/Trap Zone holds **at most 3 cards** (a spell is in it only while its Play Spell resolves, see *Normal Spells*).
 
 ## Cards
 
 | Type | Fields | Instance state | Effects |
 |---|---|---|---|
 | **Monster** | `name` (text), `level` (int), `atk` (int), `def` (int) | `attacked` (bool, starts false), `position` (text, starts `"attack"`: the value of a card that has not arrived, since every monster arrives by a summon or a set that gives its own), `position_fixed` (bool, starts false) | No |
+| **Spell** | `name` (text) | None | Yes: a triggered Card Effect, see *Normal Spells* |
 
-`def` is the monster's defence, read when a monster attacks a monster in defence position. `position` is `"attack"` or `"defence"`; `position_fixed` is true while the monster has arrived or changed position this Turn (see *Position Change*). The catalog lists sixteen monsters of level 1 to 4, with ATK from 300 to 1800. A catalog must keep to these constraints: **level at least 1, ATK and DEF at least 0**. The rules rely on them (a monster of level 0 or below is not summonable, and an ATK below 0 would heal the opponent).
+`def` is the monster's defence, read when a monster attacks a monster in defence position. `position` is `"attack"` or `"defence"`; `position_fixed` is true while the monster has arrived or changed position this Turn (see *Position Change*). The catalog lists twenty-three monsters: sixteen of level 1 to 4 (ATK from 300 to 1800), four of level 5 to 6 (ATK 2000 to 2400) and three of level 7 to 8 (ATK 2600 to 3000), and three spells. A catalog must keep to these constraints: **level at least 1, ATK and DEF at least 0**. The rules rely on them (a monster of level 0 or below is not summonable, and an ATK below 0 would heal the opponent).
 
 ## Decks
 
-A deck is a Player's **main deck**: 40 monsters, at most 3 copies of each, placed in the Deck. There is no other deck: no extra deck, no side deck, no leader.
+A deck is a Player's **main deck**: 40 cards, monsters and spells, at most 3 copies of each, placed in the Deck. There is no other deck: no extra deck, no side deck, no leader.
 
 ## Game Inputs
 
 | Input | Card types | Size | Copies | Zone |
 |---|---|---|---|---|
-| Main deck | Monster | 40 | at most 3 | Deck |
+| Main deck | Monster, Spell | 40 | at most 3 | Deck |
 
 ## Setup
 
@@ -71,6 +73,8 @@ The first phase where the Active Player acts. They may take any of these Actions
 
 - **Normal Summon**
 - **Set**
+- **Tribute Summon** and **Tribute Set**, with 1 or 2 tributes
+- **Play Spell**
 - **Change Position**
 - **To Battle**
 - **End Turn**
@@ -99,6 +103,14 @@ The acting Player chooses a monster in their Hand whose **level is from 1 to 4**
 
 The same as a Normal Summon, with the same level, once-per-Turn and Monster Zone rules, and it uses the same `normal_summoned` flag: a Player makes one Normal Summon **or** one Set a Turn. The monster is put in **defence position** (`position` is `"defence"`) and has arrived this Turn. **The set monster is face-up and public until Phase H**, which adds face-down cards.
 
+### Tribute Summon and Tribute Set
+
+A monster of **level 5 or 6** is summoned with **1 tribute**, one of **level 7 or more** with **2 tributes** (four Actions: Tribute Summon with one or two tributes, and Tribute Set with one or two, which is the same in defence position). The acting Player chooses the monster in their Hand and the tributes, which are **monsters of their own Monster Zone**, and **different cards**. The tributes are sent to the Graveyard first, as the cost, in the order they were named; then the monster moves to the Monster Zone, in attack position (Summon) or defence position (Set), and has arrived this Turn. The Monster Zone's room is checked **after the tributes have left**: the Monster Zone must hold at most 2 monsters once they are gone, so a summon with 2 tributes from a full Monster Zone is legal, and so is one with 1. All of them share the Normal Summon's once-per-Turn flag: a Player makes **one Normal Summon, Set, Tribute Summon or Tribute Set a Turn**. A monster of level 1 to 4 is never tribute summoned, a level 7 monster cannot be summoned with 1 tribute, and a level 5 or 6 monster not with 2. Naming the same monster twice as tributes is not legal; the two orders of two tributes are two Actions, which differ in the order of the two cards in the Graveyard.
+
+### Play Spell
+
+The acting Player chooses a spell in their Hand, only in Main, while their Spell/Trap Zone holds **at most 2 cards**. The spell moves to the Spell/Trap Zone as the cost, which wakes its Card Effect (see *Normal Spells*). A spell has no once-per-Turn limit.
+
 ### Change Position
 
 The acting Player chooses a monster in their Monster Zone whose `position_fixed` is false: it becomes true and the monster moves to the other position (attack to defence, defence to attack). A monster therefore changes position **at most once per Turn** and **never on the Turn it arrived** (summoned or set); the End phase lifts the lock. Only in Main.
@@ -106,6 +118,16 @@ The acting Player chooses a monster in their Monster Zone whose `position_fixed`
 ### To Battle
 
 Moves the Turn from Main to Battle. The Turn, its number and the Active Player do not change.
+
+### Normal Spells
+
+A spell's Card Effect fires when it arrives in the Spell/Trap Zone (the zone is the ruleset's Active Zone, where Card Effects act), and does these in order: **the spell goes to its owner's Graveyard**, then the effect below. The spell leaves first, so that it ends in the Graveyard whether or not its effect finds a target. A spell is therefore in the Spell/Trap Zone only while its Play Spell resolves.
+
+| Spell | Effect |
+|---|---|
+| **Breaking Bolt** | Its controller chooses a monster in the opponent's Monster Zone, which goes to its owner's Graveyard. With no monster there, nothing is asked and nothing more happens. |
+| **Lucky Find** | Its controller draws 2 cards (a draw from an empty Deck still loses, see *Win Conditions*). |
+| **Mending Light** | Its controller gains 1000 Life Points. |
 
 ### Attack
 
@@ -135,11 +157,9 @@ The first condition that holds for a Player is their reason. If both Players los
 
 ## Not yet
 
-The v2 rules (`meta.version: 3`) are the third step of a face-up game of the Duel family. What they leave out, and the ticket of the Phase G roadmap (#94) that adds it:
+The v3 rules (`meta.version: 4`) are the fourth step of a face-up game of the Duel family. What they leave out: choosing several cards at once as a Choice, special summons, traps, quick-play and other kinds of spell, and the coverage counts, the 1,000-Seed net, the Duel pin and the Golden Game (ticket [43] of the Phase G roadmap, #94).
 
-- **[42] Tributes and spells**: monsters of level 5 and more, summoned with 1 or 2 tributes sent to the Graveyard; spells and the Spell/Trap Zone; and the first real catalog. Until [42] a monster of level 5 or more cannot be summoned, and the catalog holds only level 1 to 4.
-
-Face-down cards, flipping and traps are the successor roadmap's (Phase H).
+Face-down cards, flipping and traps are the successor roadmap's (Phase H), which may also revisit the Active Zone chosen here.
 
 ## Glossary: Duel Ruleset
 
@@ -155,3 +175,6 @@ Face-down cards, flipping and traps are the successor roadmap's (Phase H).
 - **Monster Zone**: the public zone where a Player's summoned monsters stand.
 - **Graveyard**: the public, ordered zone for cards that leave play; a monster destroyed in combat goes there.
 - **Deck out**: drawing from an empty Deck, which makes the Player lose.
+- **Tribute Summon**: moving a monster of level 5 or more from the Hand to the Monster Zone, with 1 tribute (level 5 or 6) or 2 (level 7 or more): monsters of the summoner's Monster Zone, sent to the Graveyard as the cost. Shares the Normal Summon's once-per-Turn flag; the Monster Zone's room is checked after the tributes leave. A **Tribute Set** is the same in defence position.
+- **Spell/Trap Zone**: the public, unordered zone, at most 3 cards, where a spell stands while its Play Spell resolves. It is the ruleset's Active Zone.
+- **Normal Spell**: a spell played from the Hand in Main: the cost moves it to the Spell/Trap Zone, and its `enter` trigger sends it to the Graveyard and does its effect (Breaking Bolt, Lucky Find, Mending Light).

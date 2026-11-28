@@ -12,7 +12,7 @@ use tcg_engine::declarative::{
 use tcg_engine::player::PlayerId;
 use tcg_engine::random::Seed;
 use tcg_engine::ruleset::{Observations, Ruleset};
-use tcg_engine::ruleset_definition::{ActionId, FieldValue, PhaseId, StateName, ZoneId};
+use tcg_engine::ruleset_definition::{ActionId, FieldName, FieldValue, PhaseId, StateName, ZoneId};
 use tcg_selfplay::{self_play, Checks, FailureKind, SelfPlayGame};
 
 use crate::common::{declared, duel, duel_decks, edit, DUEL_DECK_A, DUEL_DECK_B, MAX_STEPS};
@@ -300,10 +300,25 @@ fn observations_show_each_monsters_position() {
         action: ActionId::new(id),
         arguments,
     };
+    // The first card of the hand that can be normal summoned or set: a monster of level 4 or less
+    // (the hand may hold spells and monsters that need tributes since ticket #99).
     let first_in_hand = |state: &GameState, seat: u32| {
         state
             .zone(PlayerId(seat), &ZoneId::new("hand"))
-            .expect("the hand exists")[0]
+            .expect("the hand exists")
+            .iter()
+            .copied()
+            .find(|&card| {
+                let definition = state.card(card).expect("the card exists").definition();
+                matches!(
+                    ruleset
+                        .catalog()
+                        .card(definition)
+                        .and_then(|definition| definition.field(&FieldName::new("level"))),
+                    Some(FieldValue::Int(1..=4))
+                )
+            })
+            .expect("the hand holds a monster of level 4 or less")
     };
 
     // Both Viewers follow a Game from the Empty GameState: seat 0 summons, then seat 1 sets.

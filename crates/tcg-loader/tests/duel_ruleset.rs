@@ -82,11 +82,27 @@ fn pass_to_turn(ruleset: &DeclarativeRuleset, state: &GameState, turn: u32) -> G
     state
 }
 
-/// A card of the hand of `seat` that can be normal summoned (level 4 or less).
-fn summonable(ruleset: &DeclarativeRuleset, state: &GameState, seat: u32) -> CardInstanceId {
+/// The cards of the hand of `seat` that can be normal summoned: monsters of level 4 or less (the
+/// hand may hold spells and monsters that need tributes since ticket #99).
+fn summonables(ruleset: &DeclarativeRuleset, state: &GameState, seat: u32) -> Vec<CardInstanceId> {
     hand(state, seat)
         .into_iter()
-        .find(|&card| stat(ruleset, state, card, "level") <= 4)
+        .filter(|&card| {
+            let definition = state.card(card).expect("the card exists").definition();
+            ruleset
+                .catalog()
+                .card(definition)
+                .is_some_and(|definition| definition.card_type().as_str() == "monster")
+        })
+        .filter(|&card| stat(ruleset, state, card, "level") <= 4)
+        .collect()
+}
+
+/// A card of the hand of `seat` that can be normal summoned (level 4 or less).
+fn summonable(ruleset: &DeclarativeRuleset, state: &GameState, seat: u32) -> CardInstanceId {
+    summonables(ruleset, state, seat)
+        .into_iter()
+        .next()
         .expect("the hand holds a monster of level 4 or less")
 }
 
@@ -250,7 +266,7 @@ fn the_duel_ruleset_and_its_sample_decks_load() {
 fn a_direct_attack_costs_the_opponent_the_attackers_atk() {
     let (ruleset, decks) = real();
     let creation = create(&ruleset, &decks, 1);
-    let monster = hand(&creation.opening.state, 0)[0];
+    let monster = summonable(&ruleset, &creation.opening.state, 0);
     let atk = stat(&ruleset, &creation.opening.state, monster, "atk");
 
     // Summoned on Turn 1; on Turn 3 the monster attacks from Battle, and the opponent has none.
@@ -279,7 +295,7 @@ fn a_direct_attack_costs_the_opponent_the_attackers_atk() {
 fn a_second_normal_summon_in_a_turn_is_rejected() {
     let (ruleset, decks) = real();
     let creation = create(&ruleset, &decks, 1);
-    let cards = hand(&creation.opening.state, 0);
+    let cards = summonables(&ruleset, &creation.opening.state, 0);
     let (first, second) = (cards[0], cards[1]);
     assert!(is_legal(
         &ruleset,
@@ -338,7 +354,7 @@ fn a_second_attack_by_the_same_monster_in_a_turn_is_rejected() {
     let (ruleset, decks) = real();
     let creation = create(&ruleset, &decks, 1);
     let opening = creation.opening.state;
-    let first = hand(&opening, 0)[0];
+    let first = summonable(&ruleset, &opening, 0);
 
     // Turn 1: seat 0 summons its first monster. Turn 2: seat 1 passes.
     let turn_3 = play(
@@ -347,7 +363,7 @@ fn a_second_attack_by_the_same_monster_in_a_turn_is_rejected() {
         &[summon(0, first), end_turn(0), end_turn(1)],
     );
     assert_eq!(turn_3.turn_number(), TurnNumber::new(3));
-    let second = hand(&turn_3, 0)
+    let second = summonables(&ruleset, &turn_3, 0)
         .into_iter()
         .find(|&card| card != first)
         .expect("another monster in the hand");
@@ -377,17 +393,17 @@ fn the_summon_flag_and_the_attacks_reset_at_the_end_of_the_turn() {
     let (ruleset, decks) = real();
     let creation = create(&ruleset, &decks, 1);
     let opening = creation.opening.state;
-    let first = hand(&opening, 0)[0];
+    let first = summonable(&ruleset, &opening, 0);
 
     // Turn 1: the summon is used up for the rest of the Turn.
     let summoned = take(&ruleset, &opening, &summon(0, first)).state;
-    let other = hand(&summoned, 0)[0];
+    let other = summonable(&ruleset, &summoned, 0);
     assert!(!is_legal(&ruleset, &summoned, &summon(0, other)));
 
     // Turn 3, the same Player's next Turn: the End phase of Turn 1 reset the summon flag. The
     // monster attacks in Battle, and has used its attack for the rest of the Turn.
     let turn_3 = pass_to_turn(&ruleset, &summoned, 3);
-    let card = hand(&turn_3, 0)[0];
+    let card = summonable(&ruleset, &turn_3, 0);
     assert!(is_legal(&ruleset, &turn_3, &summon(0, card)));
     let attacked_once = play(&ruleset, &turn_3, &[to_battle(0), attack(0, first)]);
     assert!(!is_legal(&ruleset, &attacked_once, &attack(0, first)));
@@ -564,7 +580,7 @@ fn a_summon_into_a_full_monster_zone_is_rejected() {
 fn an_attack_in_the_main_phase_is_rejected() {
     let (ruleset, decks) = real();
     let creation = create(&ruleset, &decks, 1);
-    let monster = hand(&creation.opening.state, 0)[0];
+    let monster = summonable(&ruleset, &creation.opening.state, 0);
     let summoned = take(&ruleset, &creation.opening.state, &summon(0, monster)).state;
     // Turn 3: the monster could attack, and nothing but the phase forbids it.
     let input = pass_to_turn(&ruleset, &summoned, 3);
@@ -973,13 +989,24 @@ fn an_attack_must_target_a_monster_in_the_opponents_monster_zone() {
     let input = at_battle(&ruleset, &opening, attacker, &summon(1, target));
     let before = input.clone();
 
-    // The attacker itself is not the opponent's card, and a card of the opponent's hand is not in
-    // its Monster Zone.
+    // The attacker itself is not a target: since ticket 99 the card params of an Action are
+    // distinct (ADR-0044), so naming it twice is `CardBoundTwice`, checked before the owner. A
+    // card of the summoner's own hand is not the opponent's card, and a card of the opponent's hand
+    // is not in its Monster Zone.
     assert_eq!(
         ruleset.transition(&input, &fight(0, attacker, attacker)),
-        Err(Rejection::NotOpponentCard {
+        Err(Rejection::CardBoundTwice {
             param: ParamName::new("target"),
             card: attacker,
+            first: ParamName::new("attacker"),
+        })
+    );
+    let own_in_hand = hand(&input, 0)[0];
+    assert_eq!(
+        ruleset.transition(&input, &fight(0, attacker, own_in_hand)),
+        Err(Rejection::NotOpponentCard {
+            param: ParamName::new("target"),
+            card: own_in_hand,
         })
     );
     let in_their_hand = hand(&input, 1)[0];
@@ -1193,7 +1220,7 @@ fn a_summoned_monster_is_in_attack_position_and_a_set_one_in_defence_position() 
 fn a_set_and_a_normal_summon_share_the_once_per_turn_flag() {
     let (ruleset, decks) = real();
     let opening = create(&ruleset, &decks, 1).opening.state;
-    let cards = hand(&opening, 0);
+    let cards = summonables(&ruleset, &opening, 0);
     let (first, second) = (cards[0], cards[1]);
     assert!(stat(&ruleset, &opening, first, "level") <= 4);
     assert!(stat(&ruleset, &opening, second, "level") <= 4);
