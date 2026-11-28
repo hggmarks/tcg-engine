@@ -15,7 +15,9 @@
 //! card (the one name in scope is `self`), and a Leader carries no Card Effect. The win-check test
 //! therefore uses `deck_out`, the outcome a trigger can cause.
 
-use tcg_engine::card_catalog::CardCatalog;
+use std::num::NonZeroU32;
+
+use tcg_engine::card_catalog::{CardCatalog, CardEffect, TriggerMatcher};
 use tcg_engine::deck_list::DeckList;
 use tcg_engine::declarative::{
     Action, Argument, CardInstanceId, DeclarativeRuleset, Event, GameRecord, GameState, Loss,
@@ -26,7 +28,8 @@ use tcg_engine::player::PlayerId;
 use tcg_engine::random::Seed;
 use tcg_engine::ruleset::Ruleset;
 use tcg_engine::ruleset_definition::{
-    ActionId, FieldValue, RulesetDefinition, StateName, WinConditionId, ZoneId,
+    ActionId, Effect, EffectPlayer, FieldValue, RulesetDefinition, StateName, WinConditionId,
+    ZoneId,
 };
 use tcg_loader::{
     load_card_catalog, load_deck_list, load_ruleset_definition, parse_ruleset_draft,
@@ -750,6 +753,41 @@ fn draw_effect_count_is_an_unquoted_positive_integer() {
         );
     }
     assert!(matches!(with_count("0"), Err(CatalogLoadError::Catalog(_))));
+}
+
+/// The shipped catalogs write `on:` unquoted, in block style (`- on: { enter: field }`). Under YAML
+/// 1.1 a bare `on` is the boolean `true`; the loader reads YAML 1.2 (`serde-saphyr`), where it is the
+/// string `on` and so the trigger key (ADR-0046, ADR-0004). This pins the block form the catalogs
+/// use, which the flow-style `{ on: ... }` of `triggered` above does not.
+#[test]
+fn an_unquoted_on_key_loads_as_the_trigger_key() {
+    let yaml = "meta: { ruleset: effects, ruleset_version: 1 }
+cards:
+  - id: sage
+    type: creature
+    fields: { name: Sage, cost: 1, power: 1 }
+    effects:
+      - on: { enter: field }
+        do: [ { draw: { player: controller, from: deck, to: hand, count: 2 } } ]
+";
+    let catalog = load_card_catalog(&definition(), yaml).expect("an unquoted `on` key loads");
+    let [sage] = catalog.cards() else {
+        panic!("the catalog holds one card");
+    };
+    let [CardEffect::Triggered(effect)] = sage.effects() else {
+        panic!("the card carries one triggered effect");
+    };
+    assert_eq!(effect.matcher(), &TriggerMatcher::Enter(zone("field")));
+    assert_eq!(effect.condition(), None);
+    assert_eq!(
+        effect.body(),
+        [Effect::Draw {
+            player: EffectPlayer::Controller,
+            from: zone("deck"),
+            to: zone("hand"),
+            count: NonZeroU32::new(2).expect("2 is not zero"),
+        }]
+    );
 }
 
 /// The test catalog is a valid catalog of the Effects Ruleset, and the triggered Card Effects are
