@@ -263,3 +263,17 @@ fn the_new_rejections_name_what_went_wrong() {
     });
     assert!(shown.contains("target"), "{shown}");
 }
+
+#[test]
+fn card_bound_twice_names_the_param_the_card_and_the_param_that_came_first() {
+    let shown = Rejection::CardBoundTwice {
+        param: ParamName::new("tribute_2"),
+        card: CardInstanceId(7),
+        first: ParamName::new("tribute_1"),
+    }
+    .to_string();
+    assert!(
+        shown.contains("tribute_2") && shown.contains('7') && shown.contains("tribute_1"),
+        "{shown}"
+    );
+}
