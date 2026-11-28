@@ -7,7 +7,7 @@
 mod common;
 
 use common::golden::{
-    action, assert_matches_snapshot, assert_replaying_the_record_reproduces, attack, decks, pass,
+    action, assert_matches_snapshot, assert_replaying_the_record_reproduces, attack, decks,
     play_game, render, render_observed, GoldenGame, Played,
 };
 use tcg_engine::declarative::{
@@ -77,6 +77,11 @@ fn response() -> DeclarativeRuleset {
     let definition = load_ruleset_definition(RESPONSE_RULESET).expect("the Response Ruleset loads");
     let catalog = load_card_catalog(&definition, RESPONSE_CATALOG).expect("the catalog loads");
     DeclarativeRuleset::new(definition, catalog)
+}
+
+/// Ends the Turn of `player`.
+fn pass(player: u32) -> Action {
+    action(player, "pass_turn", &[])
 }
 
 fn play(player: u32, card: CardInstanceId) -> Action {

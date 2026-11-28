@@ -1,0 +1,202 @@
+# duel-direct-kill | seed 226 | seat 0 deck-a, seat 1 deck-b
+== creation
+CardCreated { card: CardInstanceId(0), owner: PlayerId(0), definition: CardId("lantern_moth"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(1), owner: PlayerId(0), definition: CardId("lantern_moth"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(2), owner: PlayerId(0), definition: CardId("lantern_moth"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(3), owner: PlayerId(0), definition: CardId("moss_toad"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(4), owner: PlayerId(0), definition: CardId("moss_toad"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(5), owner: PlayerId(0), definition: CardId("ash_sprite"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(6), owner: PlayerId(0), definition: CardId("ash_sprite"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(7), owner: PlayerId(0), definition: CardId("dusk_raven"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(8), owner: PlayerId(0), definition: CardId("dusk_raven"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(9), owner: PlayerId(0), definition: CardId("pebble_golem"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(10), owner: PlayerId(0), definition: CardId("pebble_golem"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(11), owner: PlayerId(0), definition: CardId("reed_stalker"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(12), owner: PlayerId(0), definition: CardId("reed_stalker"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(13), owner: PlayerId(0), definition: CardId("tide_scribe"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(14), owner: PlayerId(0), definition: CardId("tide_scribe"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(15), owner: PlayerId(0), definition: CardId("bramble_wolf"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(16), owner: PlayerId(0), definition: CardId("bramble_wolf"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(17), owner: PlayerId(0), definition: CardId("ember_fox"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(18), owner: PlayerId(0), definition: CardId("ember_fox"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(19), owner: PlayerId(0), definition: CardId("iron_beetle"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(20), owner: PlayerId(0), definition: CardId("gale_hawk"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(21), owner: PlayerId(0), definition: CardId("stone_sentry"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(22), owner: PlayerId(0), definition: CardId("frost_warden"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(23), owner: PlayerId(0), definition: CardId("quarry_bear"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(24), owner: PlayerId(0), definition: CardId("cinder_ogre"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(25), owner: PlayerId(0), definition: CardId("thorn_knight"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(26), owner: PlayerId(0), definition: CardId("ashen_minotaur"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(27), owner: PlayerId(0), definition: CardId("ashen_minotaur"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(28), owner: PlayerId(0), definition: CardId("tempest_roc"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(29), owner: PlayerId(0), definition: CardId("tempest_roc"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(30), owner: PlayerId(0), definition: CardId("obsidian_golem"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(31), owner: PlayerId(0), definition: CardId("dune_wyrm"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(32), owner: PlayerId(0), definition: CardId("abyss_leviathan"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(33), owner: PlayerId(0), definition: CardId("sun_colossus"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(34), owner: PlayerId(0), definition: CardId("breaking_bolt"), zone: ZoneId("deck"), state: [] }
+CardCreated { card: CardInstanceId(35), owner: PlayerId(0), definition: CardId("breaking_bolt"), zone: ZoneId("deck"), state: [] }
+CardCreated { card: CardInstanceId(36), owner: PlayerId(0), definition: CardId("lucky_find"), zone: ZoneId("deck"), state: [] }
+CardCreated { card: CardInstanceId(37), owner: PlayerId(0), definition: CardId("lucky_find"), zone: ZoneId("deck"), state: [] }
+CardCreated { card: CardInstanceId(38), owner: PlayerId(0), definition: CardId("mending_light"), zone: ZoneId("deck"), state: [] }
+CardCreated { card: CardInstanceId(39), owner: PlayerId(0), definition: CardId("mending_light"), zone: ZoneId("deck"), state: [] }
+CardCreated { card: CardInstanceId(40), owner: PlayerId(1), definition: CardId("lantern_moth"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(41), owner: PlayerId(1), definition: CardId("moss_toad"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(42), owner: PlayerId(1), definition: CardId("ash_sprite"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(43), owner: PlayerId(1), definition: CardId("dusk_raven"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(44), owner: PlayerId(1), definition: CardId("pebble_golem"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(45), owner: PlayerId(1), definition: CardId("reed_stalker"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(46), owner: PlayerId(1), definition: CardId("tide_scribe"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(47), owner: PlayerId(1), definition: CardId("bramble_wolf"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(48), owner: PlayerId(1), definition: CardId("bramble_wolf"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(49), owner: PlayerId(1), definition: CardId("ember_fox"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(50), owner: PlayerId(1), definition: CardId("ember_fox"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(51), owner: PlayerId(1), definition: CardId("iron_beetle"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(52), owner: PlayerId(1), definition: CardId("iron_beetle"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(53), owner: PlayerId(1), definition: CardId("gale_hawk"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(54), owner: PlayerId(1), definition: CardId("gale_hawk"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(55), owner: PlayerId(1), definition: CardId("stone_sentry"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(56), owner: PlayerId(1), definition: CardId("stone_sentry"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(57), owner: PlayerId(1), definition: CardId("frost_warden"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(58), owner: PlayerId(1), definition: CardId("frost_warden"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(59), owner: PlayerId(1), definition: CardId("quarry_bear"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(60), owner: PlayerId(1), definition: CardId("quarry_bear"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(61), owner: PlayerId(1), definition: CardId("cinder_ogre"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(62), owner: PlayerId(1), definition: CardId("cinder_ogre"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(63), owner: PlayerId(1), definition: CardId("cinder_ogre"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(64), owner: PlayerId(1), definition: CardId("thorn_knight"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(65), owner: PlayerId(1), definition: CardId("thorn_knight"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(66), owner: PlayerId(1), definition: CardId("obsidian_golem"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(67), owner: PlayerId(1), definition: CardId("obsidian_golem"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(68), owner: PlayerId(1), definition: CardId("dune_wyrm"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(69), owner: PlayerId(1), definition: CardId("dune_wyrm"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(70), owner: PlayerId(1), definition: CardId("ashen_minotaur"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(71), owner: PlayerId(1), definition: CardId("tempest_roc"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(72), owner: PlayerId(1), definition: CardId("storm_titan"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(73), owner: PlayerId(1), definition: CardId("sun_colossus"), zone: ZoneId("deck"), state: [(StateName("attacked"), Bool(false)), (StateName("position"), Text("attack")), (StateName("position_fixed"), Bool(false))] }
+CardCreated { card: CardInstanceId(74), owner: PlayerId(1), definition: CardId("breaking_bolt"), zone: ZoneId("deck"), state: [] }
+CardCreated { card: CardInstanceId(75), owner: PlayerId(1), definition: CardId("breaking_bolt"), zone: ZoneId("deck"), state: [] }
+CardCreated { card: CardInstanceId(76), owner: PlayerId(1), definition: CardId("lucky_find"), zone: ZoneId("deck"), state: [] }
+CardCreated { card: CardInstanceId(77), owner: PlayerId(1), definition: CardId("lucky_find"), zone: ZoneId("deck"), state: [] }
+CardCreated { card: CardInstanceId(78), owner: PlayerId(1), definition: CardId("mending_light"), zone: ZoneId("deck"), state: [] }
+CardCreated { card: CardInstanceId(79), owner: PlayerId(1), definition: CardId("mending_light"), zone: ZoneId("deck"), state: [] }
+ZoneShuffled { player: PlayerId(0), zone: ZoneId("deck"), order: [CardInstanceId(7), CardInstanceId(27), CardInstanceId(5), CardInstanceId(4), CardInstanceId(11), CardInstanceId(14), CardInstanceId(20), CardInstanceId(21), CardInstanceId(29), CardInstanceId(0), CardInstanceId(30), CardInstanceId(17), CardInstanceId(36), CardInstanceId(12), CardInstanceId(18), CardInstanceId(13), CardInstanceId(16), CardInstanceId(34), CardInstanceId(10), CardInstanceId(15), CardInstanceId(35), CardInstanceId(6), CardInstanceId(31), CardInstanceId(3), CardInstanceId(8), CardInstanceId(38), CardInstanceId(26), CardInstanceId(22), CardInstanceId(2), CardInstanceId(28), CardInstanceId(33), CardInstanceId(37), CardInstanceId(1), CardInstanceId(32), CardInstanceId(24), CardInstanceId(39), CardInstanceId(19), CardInstanceId(9), CardInstanceId(23), CardInstanceId(25)], random_state: RandomState { state: [6828672374249662185, 14541363103117513184, 15240267099259819237, 13218869642222640516] } }
+ZoneShuffled { player: PlayerId(1), zone: ZoneId("deck"), order: [CardInstanceId(58), CardInstanceId(44), CardInstanceId(73), CardInstanceId(47), CardInstanceId(60), CardInstanceId(77), CardInstanceId(62), CardInstanceId(48), CardInstanceId(74), CardInstanceId(51), CardInstanceId(72), CardInstanceId(49), CardInstanceId(52), CardInstanceId(67), CardInstanceId(57), CardInstanceId(78), CardInstanceId(69), CardInstanceId(55), CardInstanceId(65), CardInstanceId(43), CardInstanceId(76), CardInstanceId(41), CardInstanceId(68), CardInstanceId(40), CardInstanceId(59), CardInstanceId(75), CardInstanceId(66), CardInstanceId(64), CardInstanceId(53), CardInstanceId(54), CardInstanceId(46), CardInstanceId(56), CardInstanceId(71), CardInstanceId(70), CardInstanceId(50), CardInstanceId(63), CardInstanceId(45), CardInstanceId(79), CardInstanceId(42), CardInstanceId(61)], random_state: RandomState { state: [10381992785531300719, 3427968867588149724, 17699128645596237995, 17520387593711599996] } }
+CardMoved { card: CardInstanceId(25), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(23), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(9), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(19), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(39), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(61), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(42), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(79), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(45), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+CardMoved { card: CardInstanceId(63), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(1) }
+PhaseBegan { phase: PhaseId("draw") }
+PhaseBegan { phase: PhaseId("main") }
+== action 1: player 0 set_monster [23]
+CardMoved { card: CardInstanceId(23), player: PlayerId(0), from: ZoneId("hand"), to: ZoneId("monster_zone") }
+PlayerStateChanged { player: PlayerId(0), state: PlayerStateId("normal_summoned"), value: Bool(true) }
+CardStateChanged { card: CardInstanceId(23), state: StateName("position"), value: Text("defence") }
+CardStateChanged { card: CardInstanceId(23), state: StateName("position_fixed"), value: Bool(true) }
+== action 2: player 0 to_battle []
+PhaseBegan { phase: PhaseId("battle") }
+== action 3: player 0 end_turn []
+PhaseBegan { phase: PhaseId("end") }
+PlayerStateChanged { player: PlayerId(0), state: PlayerStateId("normal_summoned"), value: Bool(false) }
+CardStateChanged { card: CardInstanceId(23), state: StateName("position_fixed"), value: Bool(false) }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(2) }
+PhaseBegan { phase: PhaseId("draw") }
+CardMoved { card: CardInstanceId(50), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 4: player 1 to_battle []
+PhaseBegan { phase: PhaseId("battle") }
+== action 5: player 1 end_turn []
+PhaseBegan { phase: PhaseId("end") }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(3) }
+PhaseBegan { phase: PhaseId("draw") }
+CardMoved { card: CardInstanceId(24), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 6: player 0 set_monster [9]
+CardMoved { card: CardInstanceId(9), player: PlayerId(0), from: ZoneId("hand"), to: ZoneId("monster_zone") }
+PlayerStateChanged { player: PlayerId(0), state: PlayerStateId("normal_summoned"), value: Bool(true) }
+CardStateChanged { card: CardInstanceId(9), state: StateName("position"), value: Text("defence") }
+CardStateChanged { card: CardInstanceId(9), state: StateName("position_fixed"), value: Bool(true) }
+== action 7: player 0 to_battle []
+PhaseBegan { phase: PhaseId("battle") }
+== action 8: player 0 end_turn []
+PhaseBegan { phase: PhaseId("end") }
+PlayerStateChanged { player: PlayerId(0), state: PlayerStateId("normal_summoned"), value: Bool(false) }
+CardStateChanged { card: CardInstanceId(9), state: StateName("position_fixed"), value: Bool(false) }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(4) }
+PhaseBegan { phase: PhaseId("draw") }
+CardMoved { card: CardInstanceId(70), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 9: player 1 normal_summon [45]
+CardMoved { card: CardInstanceId(45), player: PlayerId(1), from: ZoneId("hand"), to: ZoneId("monster_zone") }
+PlayerStateChanged { player: PlayerId(1), state: PlayerStateId("normal_summoned"), value: Bool(true) }
+CardStateChanged { card: CardInstanceId(45), state: StateName("position_fixed"), value: Bool(true) }
+== action 10: player 1 to_battle []
+PhaseBegan { phase: PhaseId("battle") }
+== action 11: player 1 attack [45, 23]
+CardStateChanged { card: CardInstanceId(45), state: StateName("attacked"), value: Bool(true) }
+PlayerStateChanged { player: PlayerId(1), state: PlayerStateId("life_points"), value: Int(3800) }
+== action 12: player 1 end_turn []
+PhaseBegan { phase: PhaseId("end") }
+PlayerStateChanged { player: PlayerId(1), state: PlayerStateId("normal_summoned"), value: Bool(false) }
+CardStateChanged { card: CardInstanceId(45), state: StateName("attacked"), value: Bool(false) }
+CardStateChanged { card: CardInstanceId(45), state: StateName("position_fixed"), value: Bool(false) }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(5) }
+PhaseBegan { phase: PhaseId("draw") }
+CardMoved { card: CardInstanceId(32), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 13: player 0 tribute_summon_two [32, 9, 23]
+CardMoved { card: CardInstanceId(9), player: PlayerId(0), from: ZoneId("monster_zone"), to: ZoneId("graveyard") }
+CardMoved { card: CardInstanceId(23), player: PlayerId(0), from: ZoneId("monster_zone"), to: ZoneId("graveyard") }
+CardMoved { card: CardInstanceId(32), player: PlayerId(0), from: ZoneId("hand"), to: ZoneId("monster_zone") }
+PlayerStateChanged { player: PlayerId(0), state: PlayerStateId("normal_summoned"), value: Bool(true) }
+CardStateChanged { card: CardInstanceId(32), state: StateName("position_fixed"), value: Bool(true) }
+== action 14: player 0 to_battle []
+PhaseBegan { phase: PhaseId("battle") }
+== action 15: player 0 attack [32, 45]
+CardStateChanged { card: CardInstanceId(32), state: StateName("attacked"), value: Bool(true) }
+PlayerStateChanged { player: PlayerId(1), state: PlayerStateId("life_points"), value: Int(2100) }
+CardMoved { card: CardInstanceId(45), player: PlayerId(1), from: ZoneId("monster_zone"), to: ZoneId("graveyard") }
+== action 16: player 0 end_turn []
+PhaseBegan { phase: PhaseId("end") }
+PlayerStateChanged { player: PlayerId(0), state: PlayerStateId("normal_summoned"), value: Bool(false) }
+CardStateChanged { card: CardInstanceId(32), state: StateName("attacked"), value: Bool(false) }
+CardStateChanged { card: CardInstanceId(32), state: StateName("position_fixed"), value: Bool(false) }
+TurnBegan { player: PlayerId(1), turn: TurnNumber(6) }
+PhaseBegan { phase: PhaseId("draw") }
+CardMoved { card: CardInstanceId(71), player: PlayerId(1), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 17: player 1 normal_summon [63]
+CardMoved { card: CardInstanceId(63), player: PlayerId(1), from: ZoneId("hand"), to: ZoneId("monster_zone") }
+PlayerStateChanged { player: PlayerId(1), state: PlayerStateId("normal_summoned"), value: Bool(true) }
+CardStateChanged { card: CardInstanceId(63), state: StateName("position_fixed"), value: Bool(true) }
+== action 18: player 1 end_turn []
+PhaseBegan { phase: PhaseId("end") }
+PlayerStateChanged { player: PlayerId(1), state: PlayerStateId("normal_summoned"), value: Bool(false) }
+CardStateChanged { card: CardInstanceId(63), state: StateName("position_fixed"), value: Bool(false) }
+TurnBegan { player: PlayerId(0), turn: TurnNumber(7) }
+PhaseBegan { phase: PhaseId("draw") }
+CardMoved { card: CardInstanceId(1), player: PlayerId(0), from: ZoneId("deck"), to: ZoneId("hand") }
+PhaseBegan { phase: PhaseId("main") }
+== action 19: player 0 normal_summon [24]
+CardMoved { card: CardInstanceId(24), player: PlayerId(0), from: ZoneId("hand"), to: ZoneId("monster_zone") }
+PlayerStateChanged { player: PlayerId(0), state: PlayerStateId("normal_summoned"), value: Bool(true) }
+CardStateChanged { card: CardInstanceId(24), state: StateName("position_fixed"), value: Bool(true) }
+== action 20: player 0 to_battle []
+PhaseBegan { phase: PhaseId("battle") }
+== action 21: player 0 attack [24, 63]
+CardStateChanged { card: CardInstanceId(24), state: StateName("attacked"), value: Bool(true) }
+CardMoved { card: CardInstanceId(63), player: PlayerId(1), from: ZoneId("monster_zone"), to: ZoneId("graveyard") }
+CardMoved { card: CardInstanceId(24), player: PlayerId(0), from: ZoneId("monster_zone"), to: ZoneId("graveyard") }
+== action 22: player 0 direct_attack [32]
+CardStateChanged { card: CardInstanceId(32), state: StateName("attacked"), value: Bool(true) }
+PlayerStateChanged { player: PlayerId(1), state: PlayerStateId("life_points"), value: Int(-500) }
+GameEnded { losses: [Loss { player: PlayerId(1), reason: WinConditionId("life_out") }] }
+== outcome
+TerminalOutcome { winners: [PlayerId(0)], losses: [Loss { player: PlayerId(1), reason: WinConditionId("life_out") }] }

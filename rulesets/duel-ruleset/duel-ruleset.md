@@ -157,7 +157,7 @@ The first condition that holds for a Player is their reason. If both Players los
 
 ## Not yet
 
-The v3 rules (`meta.version: 4`) are the fourth step of a face-up game of the Duel family. What they leave out: choosing several cards at once as a Choice, special summons, traps, quick-play and other kinds of spell, and, in ticket [43] of the Phase G roadmap (#94), the coverage counts, the 1,000-Seed net, the Duel pin and the Golden Game.
+The v3 rules (`meta.version: 4`) are the fourth step of a face-up game of the Duel family. What they leave out: choosing several cards at once as a Choice, special summons, traps, quick-play and other kinds of spell. Nothing else of the Phase G roadmap (#94) is left out: the correctness net over these rules (the coverage counts, the 1,000-Seed net, the Duel pin and the Golden Game) is a test matter, recorded in ADR-0045, and changes no rule.
 
 Face-down cards, flipping and traps are the successor roadmap's (Phase H), which may also revisit the Active Zone chosen here.
 
@@ -171,6 +171,8 @@ Face-down cards, flipping and traps are the successor roadmap's (Phase H), which
 - **Attack**: an attack-position monster hitting a monster of the opponent's Monster Zone: ATK against ATK, or ATK against DEF, once per Turn per monster, in Battle.
 - **Battle**: the second phase where a Player acts, entered by To Battle from Main; attacks are taken there.
 - **To Battle**: the Action that moves the Turn from Main to Battle.
+- **Tie**: an Attack between two attack-position monsters of equal ATK: both are destroyed, the target first, and nobody loses Life Points.
+- **Damage from a higher DEF**: an Attack whose attacker's ATK is below its defence-position target's DEF: nothing is destroyed and the attacker's owner loses Life Points equal to the difference.
 - **Direct Attack**: an attack-position monster hitting the opponent for its ATK, once per Turn per monster, in Battle, when the opponent has no monster, and not on the Game's first Turn.
 - **Monster Zone**: the public zone where a Player's summoned monsters stand.
 - **Graveyard**: the public, ordered zone for cards that leave play: monsters destroyed in combat or by Breaking Bolt, tributes, and spells once played. A card keeps its instance state when it leaves the Monster Zone.

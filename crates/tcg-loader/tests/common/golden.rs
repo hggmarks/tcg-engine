@@ -1,8 +1,8 @@
 //! The machinery the Golden Game tests share: a Golden Game before and after it is played, the
 //! text of its Event Trace snapshot (ADR-0017) and of the snapshot as each Player observed it
 //! (ADR-0031), the byte-for-byte comparison with the committed file, and the replay of its record
-//! (ADR-0019). `effects_ruleset.rs` (the Small and Effects Golden Games) and `response_ruleset.rs`
-//! (the Response Golden Game) use it.
+//! (ADR-0019). `effects_ruleset.rs` (the Small and Effects Golden Games), `response_ruleset.rs`
+//! (the Response Golden Game) and `duel_golden_game.rs` (the Duel Golden Game) use it.
 
 use tcg_engine::deck_list::DeckList;
 use tcg_engine::declarative::{
@@ -32,10 +32,6 @@ pub fn action(player: u32, id: &str, cards: &[CardInstanceId]) -> Action {
         action: ActionId::new(id),
         arguments: cards.iter().copied().map(Argument::Card).collect(),
     }
-}
-
-pub fn pass(player: u32) -> Action {
-    action(player, "pass_turn", &[])
 }
 
 pub fn attack(player: u32, attacker: CardInstanceId, target: CardInstanceId) -> Action {
