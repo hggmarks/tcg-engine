@@ -6,6 +6,7 @@
 //! where a test says that it edits one on purpose.
 
 use std::collections::BTreeSet;
+use std::sync::OnceLock;
 
 use tcg_engine::card_catalog::{CardEffect, CardId};
 use tcg_engine::deck_list::DeckList;
@@ -497,31 +498,83 @@ fn answers_of_each_kind(game: &SelfPlayGame) -> (usize, usize) {
     )
 }
 
-/// The least number of the 1,000 pinned Games in which each kind of effect card was used. A drop
-/// under a minimum means the sample decks stopped exercising that family. Measured when the
-/// minimums were set: 988 Games played a triggered card, 759 had an aura in the field and 795 had a
-/// self-continuous card in the field.
-const MIN_GAMES_PLAYING_A_TRIGGERED_CARD: usize = 900;
-const MIN_GAMES_WITH_AN_AURA_IN_THE_FIELD: usize = 650;
-const MIN_GAMES_WITH_A_SELF_CONTINUOUS_CARD_IN_THE_FIELD: usize = 700;
+/// The Effects coverage counts (ADR-0026, ADR-0035, ADR-0046): in how many Games each kind of effect
+/// card was used, then how many Choices of each kind were answered or skipped. A Seed Range gives
+/// its own counts, and the joining test sums them over all 1,000 Seeds. A count of 0 means the sample
+/// decks stopped exercising that family; change the decks, not the policy.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct EffectsCoverage {
+    /// Games in which a card that carries a triggered effect was played.
+    games_playing_a_triggered_card: usize,
+    /// Games in which a card that carries an aura was in the field after some Action.
+    games_with_an_aura_in_the_field: usize,
+    /// Games in which a card that carries a self-continuous effect was in the field after some
+    /// Action.
+    games_with_a_self_continuous_card_in_the_field: usize,
+    /// The Choices answered or skipped, summed over the Games (the five counts of ADR-0035).
+    choices: ChoiceUse,
+}
 
-#[test]
-fn effects_self_play_ends_every_game_over_1000_seeds_with_every_invariant_holding() {
+impl EffectsCoverage {
+    fn add_game(&mut self, ruleset: &DeclarativeRuleset, game: &SelfPlayGame) {
+        let used = effect_use(ruleset, game);
+        self.games_playing_a_triggered_card += usize::from(used.triggered_card_played);
+        self.games_with_an_aura_in_the_field += usize::from(used.aura_in_field);
+        self.games_with_a_self_continuous_card_in_the_field +=
+            usize::from(used.self_continuous_in_field);
+        self.choices.add(choice_use(ruleset, game));
+    }
+
+    fn add(&mut self, other: EffectsCoverage) {
+        self.games_playing_a_triggered_card += other.games_playing_a_triggered_card;
+        self.games_with_an_aura_in_the_field += other.games_with_an_aura_in_the_field;
+        self.games_with_a_self_continuous_card_in_the_field +=
+            other.games_with_a_self_continuous_card_in_the_field;
+        self.choices.add(other.choices);
+    }
+}
+
+/// The number of Seed Ranges the pinned Seeds are split into (ADR-0040, ADR-0046): one test each,
+/// run on parallel threads by the test harness. Chosen by measurement.
+const PARTS: usize = 4;
+
+const _: () = assert!(
+    PINNED_SEEDS.is_multiple_of(PARTS as u64),
+    "the Seed Ranges partition the pinned Seeds evenly"
+);
+
+/// The Seeds of Seed Range `part`: `part * LEN .. (part + 1) * LEN`, contiguous and in order.
+fn seeds_of_range(part: usize) -> std::ops::Range<u64> {
+    let len = PINNED_SEEDS / (PARTS as u64);
+    let part = part as u64;
+    part * len..(part + 1) * len
+}
+
+/// What one Seed Range's Games gave, computed once per test process by `seed_range` (ADR-0040).
+struct SeedRangePlay {
+    /// One line per failed check, as the single 1,000-Seed test collected them.
+    failures: Vec<String>,
+    /// The most Actions of any Game of the range.
+    longest: usize,
+    /// The `digest_line` of every Seed of the range, in Seed order.
+    digests: Vec<String>,
+    /// The coverage counts of the range's Games, summed.
+    used: EffectsCoverage,
+}
+
+/// Plays every Seed of Seed Range `part` under `Checks::On` and checks each Game. Failures are
+/// collected as data, never raised, so the part test reports its own lines.
+fn play_seed_range(part: usize) -> SeedRangePlay {
     let ruleset = effects();
     let decks = effects_decks(&ruleset);
     let mut failures = Vec::new();
     let mut longest = 0;
     let mut digests = Vec::new();
-    let (mut triggered, mut auras, mut self_continuous) = (0_usize, 0_usize, 0_usize);
-    let mut choices = ChoiceUse::default();
-    for seed in 0..PINNED_SEEDS {
+    let mut used = EffectsCoverage::default();
+    for seed in seeds_of_range(part) {
         match self_play(&ruleset, &decks, Seed(seed), MAX_STEPS, Checks::On) {
             Ok(game) => {
-                let used = effect_use(&ruleset, &game);
-                triggered += usize::from(used.triggered_card_played);
-                auras += usize::from(used.aura_in_field);
-                self_continuous += usize::from(used.self_continuous_in_field);
-                choices.add(choice_use(&ruleset, &game));
+                used.add_game(&ruleset, &game);
                 if game.state.outcome().is_none() {
                     failures.push(format!("seed {seed}: the Game has no Terminal Outcome"));
                 }
@@ -540,58 +593,136 @@ fn effects_self_play_ends_every_game_over_1000_seeds_with_every_invariant_holdin
             )),
         }
     }
-    assert!(failures.is_empty(), "{}", failures.join("\n"));
+    SeedRangePlay {
+        failures,
+        longest,
+        digests,
+        used,
+    }
+}
+
+/// Each Seed Range is a pure function of its Seeds, played at most once per test process: the part
+/// test and the joining test both read it here, and whichever reaches a range first plays it while
+/// any other caller waits. Test scaffolding only; no engine state (ADR-0040).
+static SEED_RANGES: [OnceLock<SeedRangePlay>; PARTS] = [const { OnceLock::new() }; PARTS];
+
+fn seed_range(part: usize) -> &'static SeedRangePlay {
+    SEED_RANGES[part].get_or_init(|| play_seed_range(part))
+}
+
+/// The part tests assert, for every Game of their Seed Range, what the single 1,000-Seed test
+/// asserted: a Terminal Outcome, `TriggerCapRejections::Counted(0)` and no `FailureKind`.
+fn assert_seed_range_holds(part: usize) {
+    let play = seed_range(part);
+    assert!(
+        play.failures.is_empty(),
+        "Seeds {:?}:\n{}",
+        seeds_of_range(part),
+        play.failures.join("\n")
+    );
+}
+
+/// The part tests below are written by hand for 4 Seed Ranges: changing `PARTS` means renaming
+/// them (ADR-0040).
+const _: () = assert!(
+    PARTS == 4,
+    "the part tests are written for 4 Seed Ranges: add or remove part tests and rename them"
+);
+
+#[test]
+fn effects_self_play_ends_every_game_over_seeds_0_to_250_with_every_invariant_holding() {
+    assert_seed_range_holds(0);
+}
+
+#[test]
+fn effects_self_play_ends_every_game_over_seeds_250_to_500_with_every_invariant_holding() {
+    assert_seed_range_holds(1);
+}
+
+#[test]
+fn effects_self_play_ends_every_game_over_seeds_500_to_750_with_every_invariant_holding() {
+    assert_seed_range_holds(2);
+}
+
+#[test]
+fn effects_self_play_ends_every_game_over_seeds_750_to_1000_with_every_invariant_holding() {
+    assert_seed_range_holds(3);
+}
+
+#[test]
+fn the_effects_seed_ranges_cover_seeds_0_to_1000_once() {
+    let mut next = 0;
+    for part in 0..PARTS {
+        let seeds = seeds_of_range(part);
+        assert_eq!(
+            seeds.start, next,
+            "the Seed Range {part} starts where the last one ended"
+        );
+        assert!(
+            seeds.start < seeds.end,
+            "the Seed Range {part} is not empty"
+        );
+        next = seeds.end;
+    }
+    assert_eq!(
+        next, PINNED_SEEDS,
+        "the Seed Ranges end at the last pinned Seed"
+    );
+}
+
+/// The last step: the eight coverage counts summed over every Seed Range, and the Effects
+/// Self-Play Pin compared whole over the digest lines of all 1,000 Seeds in Seed order. It reads the
+/// Seed Ranges through the same cache as the part tests: it plays any range that no other test has
+/// started (usually range 0, and all of them under a name filter), and each range is played only
+/// once per process, by whichever test reaches it first.
+#[test]
+fn effects_self_play_covers_every_effect_use_and_matches_the_pin_over_1000_seeds() {
+    let plays: Vec<&SeedRangePlay> = (0..PARTS).map(seed_range).collect();
+    for (part, play) in plays.iter().enumerate() {
+        assert!(
+            play.failures.is_empty(),
+            "the Seeds {:?} have failures, listed by the part test for that Seed Range",
+            seeds_of_range(part)
+        );
+    }
+    let longest = plays.iter().map(|play| play.longest).max().unwrap_or(0);
+    let mut used = EffectsCoverage::default();
+    let mut digests = Vec::new();
+    for play in &plays {
+        used.add(play.used);
+        digests.extend(play.digests.iter().cloned());
+    }
     assert!(
         longest * 2 < MAX_STEPS,
         "the Step Cap of {MAX_STEPS} has no headroom over the longest Game ({longest} Actions)"
     );
 
-    // The decks play the effect cards, not only list them.
-    assert!(
-        triggered >= MIN_GAMES_PLAYING_A_TRIGGERED_CARD,
-        "only {triggered} Games played a card with a triggered effect"
-    );
-    assert!(
-        auras >= MIN_GAMES_WITH_AN_AURA_IN_THE_FIELD,
-        "only {auras} Games had an aura in the field"
-    );
-    assert!(
-        self_continuous >= MIN_GAMES_WITH_A_SELF_CONTINUOUS_CARD_IN_THE_FIELD,
-        "only {self_continuous} Games had a self-continuous card in the field"
+    // The decks play the effect cards, not only list them, and the Uniform Random Policy reaches
+    // every kind of Choice over the 1,000 Games (ADR-0026, ADR-0035). The summed counts are exactly
+    // the ones ADR-0046 measured before the split, so a broken sum over the Seed Ranges fails here
+    // and `Debug` names the count that differs. If the decks or the policy change on purpose, update
+    // the values with the pin.
+    assert_eq!(
+        used,
+        EffectsCoverage {
+            games_playing_a_triggered_card: 997,
+            games_with_an_aura_in_the_field: 770,
+            games_with_a_self_continuous_card_in_the_field: 819,
+            choices: ChoiceUse {
+                card_choices_by_controller: 706,
+                card_choices_by_opponent: 738,
+                option_choices_with_a_non_empty_option: 406,
+                option_choices_with_an_empty_option: 401,
+                card_choices_skipped: 95,
+            },
+        },
+        "the coverage counts over Seeds 0..1000 are not the ones of ADR-0046's table"
     );
 
-    // The Uniform Random Policy reaches every kind of Choice over the 1,000 Games (ADR-0035). A
-    // count of 0 means a swap of the shipped decks stopped reaching a card; change the swap, not
-    // the policy.
-    for (count, name) in [
-        (
-            choices.card_choices_by_controller,
-            "Card Choices answered by the controller",
-        ),
-        (
-            choices.card_choices_by_opponent,
-            "Card Choices answered by the opponent",
-        ),
-        (
-            choices.option_choices_with_a_non_empty_option,
-            "Option Choices answered with a non-empty option",
-        ),
-        (
-            choices.option_choices_with_an_empty_option,
-            "Option Choices answered with an empty option",
-        ),
-        (
-            choices.card_choices_skipped,
-            "Card Choices skipped for want of a candidate",
-        ),
-    ] {
-        assert!(count >= 1, "no Game of the 1,000 had {name}: {choices:?}");
-    }
-
-    // The same Games, one pass: their Game Records and Event Traces are the pinned ones.
+    // The same Games, played once: their Game Records and Event Traces are the pinned ones.
     if let Some(difference) = pin_difference(DIGESTS, &digests) {
         panic!(
-            "{difference}\nIf the change is deliberate, run: cargo test -p tcg-selfplay --test selfplay -- --ignored regenerate_effects_self_play_digests"
+            "{difference}\nIf the change is deliberate, run: cargo test -p tcg-selfplay --test selfplay -- --ignored regenerate_effects_self_play_digests\n(coverage so far: {used:?}, longest Game {longest} Actions)"
         );
     }
 }
