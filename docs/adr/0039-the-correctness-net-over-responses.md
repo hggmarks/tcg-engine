@@ -1,5 +1,7 @@
 # The correctness net over responses
 
+Amended by ADR-0045: the Duel Ruleset has the same net, with its own pin, counts and Golden Game, and the throughput table has a Duel row (ADR-0045's).
+
 Amended by ADR-0040: the Response 1,000-Seed test is split into Seed Ranges, one test each, plus a joining test; the Invariants, the coverage counts and the pin are the same, played once, and the `selfplay` binary no longer waits on one 140 s test.
 
 Self-play and a Golden Game now exercise Response Windows, the Stack and activated abilities on the shipped Response decks, under every Invariant of ADR-0020, ADR-0026 and ADR-0031 (ticket [36], #87, of the Responses roadmap #83). It is ADR-0035's net applied to the Response Ruleset. No new Invariant: the twelve existing ones cover Passes, pushes, Fizzles and Activates. The Uniform Random Policy, the Step Cap, `FailureKind`, the harness API and `MAX_STEPS` are unchanged, and nothing in `src/`, in the harness or under `rulesets/` changes (the PR touches no file under `rulesets/`). Coverage is counted in the tests from the Game Record and the Event Traces, as ADR-0026's `effect_use` and ADR-0035's `choice_use` are.
@@ -33,6 +35,8 @@ Self-play and a Golden Game now exercise Response Windows, the Stack and activat
 | Small | 196 (7,696) | 168 (6,586) | 20 (770) |
 | Effects | 116 (5,779) | 99 (4,936) | 12 (623) |
 | Response | 103 (7,814) | 83 (6,324) | 8 (631) |
+
+*(Amended by ADR-0045: the Duel Ruleset's row is in ADR-0045's table.)*
 
 Not optimised. The Small and Effects cells are the same code on the same Games as ADR-0035's table (190, 150, 18 and 110, 97, 12): the difference is the machine and noise. The Response Games are longer (75,929 Actions over 1,000 Games, against 49,880 for Effects: every attack opens a window and costs a Pass, and a response costs more), so Games per second fall while Actions per second with checks off are the highest of the three (7,814); with every check on they take 120 s per 1,000 Games (80 s for Effects), the observation checks scaling with the number of Actions (and their square, ADR-0031).
 

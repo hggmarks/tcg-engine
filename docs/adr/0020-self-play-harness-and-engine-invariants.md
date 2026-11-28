@@ -2,7 +2,9 @@
 
 Amended by ADR-0037: self-play also runs the Response Ruleset.
 
-Amended by ADR-0039: self-play on the Response Ruleset runs the 1,000 pinned Seeds with every Invariant and observation check, and has a Self-Play Pin of its own (`response-self-play-seeds-0-1000.digest`), so there are three pins.
+Amended by ADR-0039: self-play on the Response Ruleset runs the 1,000 pinned Seeds with every Invariant and observation check, and has a Self-Play Pin of its own (`response-self-play-seeds-0-1000.digest`), so there are three pins *(Amended by ADR-0045: four)*.
+
+Amended by ADR-0045: self-play on the Duel Ruleset runs the 1,000 pinned Seeds with every Invariant and observation check, and has a Self-Play Pin of its own (`duel-self-play-seeds-0-1000.digest`), so there are four pins.
 
 Amended by ADR-0031: at most one violation per Invariant becomes per (Invariant, Viewer), and `Checks` gains `EngineOnly`.
 
