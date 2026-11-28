@@ -1,21 +1,31 @@
-# Sample deck A for the Duel Ruleset: 40 monsters, at most 3 copies of each (the lower half of the
-# catalog three times, the higher half twice). Format: rulesets/formats.md.
+# Sample deck A for the Duel Ruleset: 40 cards, at most 3 copies of each: the 16 monsters of level 1
+# to 4 (26 cards, the lower half mostly twice), 6 monsters of level 5 to 6, 2 of level 7 to 8, and 6
+# spells (2 of each). Format: rulesets/formats.md.
 inputs:
   - input: main_deck
     cards:
       - { card: lantern_moth, count: 3 }
-      - { card: moss_toad,    count: 3 }
-      - { card: ash_sprite,   count: 3 }
-      - { card: dusk_raven,   count: 3 }
-      - { card: pebble_golem, count: 3 }
-      - { card: reed_stalker, count: 3 }
-      - { card: tide_scribe,  count: 3 }
-      - { card: bramble_wolf, count: 3 }
-      - { card: ember_fox,    count: 2 }
-      - { card: iron_beetle,  count: 2 }
-      - { card: gale_hawk,    count: 2 }
-      - { card: stone_sentry, count: 2 }
-      - { card: frost_warden, count: 2 }
-      - { card: quarry_bear,  count: 2 }
-      - { card: cinder_ogre,  count: 2 }
-      - { card: thorn_knight, count: 2 }
+      - { card: moss_toad, count: 2 }
+      - { card: ash_sprite, count: 2 }
+      - { card: dusk_raven, count: 2 }
+      - { card: pebble_golem, count: 2 }
+      - { card: reed_stalker, count: 2 }
+      - { card: tide_scribe, count: 2 }
+      - { card: bramble_wolf, count: 2 }
+      - { card: ember_fox, count: 2 }
+      - { card: iron_beetle, count: 1 }
+      - { card: gale_hawk, count: 1 }
+      - { card: stone_sentry, count: 1 }
+      - { card: frost_warden, count: 1 }
+      - { card: quarry_bear, count: 1 }
+      - { card: cinder_ogre, count: 1 }
+      - { card: thorn_knight, count: 1 }
+      - { card: ashen_minotaur, count: 2 }
+      - { card: tempest_roc, count: 2 }
+      - { card: obsidian_golem, count: 1 }
+      - { card: dune_wyrm, count: 1 }
+      - { card: abyss_leviathan, count: 1 }
+      - { card: sun_colossus, count: 1 }
+      - { card: breaking_bolt, count: 2 }
+      - { card: lucky_find, count: 2 }
+      - { card: mending_light, count: 2 }

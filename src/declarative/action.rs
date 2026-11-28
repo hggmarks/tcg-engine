@@ -130,6 +130,14 @@ pub enum Rejection {
         param: ParamName,
         card: CardInstanceId,
     },
+    /// The argument for `param` is a card that an earlier param, `first`, already holds: the card
+    /// params of an Action are distinct (ADR-0044). It applies to a Declared Action only, and
+    /// comes right after `UnknownCard` for the later param.
+    CardBoundTwice {
+        param: ParamName,
+        card: CardInstanceId,
+        first: ParamName,
+    },
     /// The card for `param` belongs to another Player than the one acting.
     NotCardOwner {
         param: ParamName,
@@ -302,6 +310,13 @@ impl fmt::Display for Rejection {
                 "the card instance {} for `{}` does not exist",
                 card.0,
                 param.as_str()
+            ),
+            Self::CardBoundTwice { param, card, first } => write!(
+                f,
+                "the card instance {} for `{}` is already the argument for `{}`",
+                card.0,
+                param.as_str(),
+                first.as_str()
             ),
             Self::NotCardOwner { param, card, owner } => write!(
                 f,

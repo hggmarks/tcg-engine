@@ -12,7 +12,7 @@ use tcg_engine::declarative::{
 use tcg_engine::player::PlayerId;
 use tcg_engine::random::Seed;
 use tcg_engine::ruleset::{Observations, Ruleset};
-use tcg_engine::ruleset_definition::{ActionId, FieldValue, PhaseId, StateName, ZoneId};
+use tcg_engine::ruleset_definition::{ActionId, FieldName, FieldValue, PhaseId, StateName, ZoneId};
 use tcg_selfplay::{self_play, Checks, FailureKind, SelfPlayGame};
 
 use crate::common::{declared, duel, duel_decks, edit, DUEL_DECK_A, DUEL_DECK_B, MAX_STEPS};
@@ -28,6 +28,25 @@ fn holds_action(game: &SelfPlayGame, id: &str) -> bool {
     })
 }
 
+/// Whether the record of `game` holds a tribute summon (not a set).
+fn holds_tribute_summon(game: &SelfPlayGame) -> bool {
+    ["tribute_summon_one", "tribute_summon_two"]
+        .iter()
+        .any(|id| holds_action(game, id))
+}
+
+/// Whether the record of `game` holds a tribute summon or a tribute set.
+fn holds_tribute(game: &SelfPlayGame) -> bool {
+    [
+        "tribute_summon_one",
+        "tribute_summon_two",
+        "tribute_set_one",
+        "tribute_set_two",
+    ]
+    .iter()
+    .any(|id| holds_action(game, id))
+}
+
 #[test]
 fn the_duel_sample_decks_are_legal() {
     let ruleset = duel();
@@ -37,6 +56,28 @@ fn the_duel_sample_decks_are_legal() {
         let deck = load_deck_list(ruleset.definition(), ruleset.catalog(), yaml)
             .unwrap_or_else(|error| panic!("deck {name} is not legal: {error:?}"));
         assert_eq!(deck.inputs().len(), 1);
+    }
+
+    // The main deck admits monsters and spells (ticket #99): both decks hold spells, and the
+    // validation accepted them.
+    let creation = ruleset
+        .create_game(&duel_decks(&ruleset), Seed(0))
+        .expect("the decks create a game");
+    for seat in 0..2 {
+        let spells = creation
+            .opening
+            .state
+            .cards()
+            .iter()
+            .filter(|card| card.owner() == PlayerId(seat))
+            .filter(|card| {
+                ruleset
+                    .catalog()
+                    .card(card.definition())
+                    .is_some_and(|definition| definition.card_type().as_str() == "spell")
+            })
+            .count();
+        assert!(spells > 0, "the deck of seat {seat} holds no spell");
     }
 
     // The same validation refuses a deck that is not legal, so the check above means something: a
@@ -63,6 +104,8 @@ fn duel_self_play_ends_every_game_over_seeds_0_to_100_with_every_invariant_holdi
     let mut longest = 0usize;
     // The Games that hold each action of the positions and the combat (ticket #98, ADR-0043).
     let (mut attacks, mut sets, mut changes) = (0usize, 0usize, 0usize);
+    // The Games that hold a tribute summon or set and a spell (ticket #99, ADR-0044).
+    let (mut tributes, mut spells) = (0usize, 0usize);
     for seed in 0..SEEDS {
         let game = self_play(&ruleset, &decks, Seed(seed), MAX_STEPS, Checks::On).unwrap_or_else(
             |failure| {
@@ -84,6 +127,8 @@ fn duel_self_play_ends_every_game_over_seeds_0_to_100_with_every_invariant_holdi
         attacks += usize::from(holds_action(&game, "attack"));
         sets += usize::from(holds_action(&game, "set_monster"));
         changes += usize::from(holds_action(&game, "change_position"));
+        tributes += usize::from(holds_tribute(&game));
+        spells += usize::from(holds_action(&game, "play_spell"));
         if outcome.is_drawn_game() {
             drawn += 1;
         }
@@ -101,10 +146,14 @@ fn duel_self_play_ends_every_game_over_seeds_0_to_100_with_every_invariant_holdi
     assert!(attacks > 0, "no Game holds an `attack`");
     assert!(sets > 0, "no Game holds a `set_monster`");
     assert!(changes > 0, "no Game holds a `change_position`");
+    // ... and a tribute summon or set and a spell, with the spells' Choices and triggers passing
+    // every Invariant.
+    assert!(tributes > 0, "no Game holds a tribute summon or set");
+    assert!(spells > 0, "no Game holds a `play_spell`");
     // Reported, not asserted: the Losses by reason (a drawn Game counts both), the drawn Games and
     // the longest Game, in Actions, and the Games holding each new action.
     println!(
-        "duel self-play, Seeds 0..{SEEDS}: {life_out} life_out losses, {deck_out} deck_out losses, {drawn} drawn Games, longest {longest} Actions; Games holding an attack {attacks}, a set {sets}, a position change {changes}"
+        "duel self-play, Seeds 0..{SEEDS}: {life_out} life_out losses, {deck_out} deck_out losses, {drawn} drawn Games, longest {longest} Actions; Games holding an attack {attacks}, a set {sets}, a position change {changes}, a tribute summon or set {tributes}, a spell {spells}"
     );
 }
 
@@ -193,6 +242,33 @@ fn replay_reproduces_a_duel_game_holding_a_fight_between_monsters() {
     assert_eq!(replayed, 3, "three Games hold a fight between monsters");
 }
 
+#[test]
+fn replay_reproduces_a_duel_game_holding_a_tribute_summon_and_a_spell() {
+    let ruleset = duel();
+    let decks = duel_decks(&ruleset);
+    // Games that hold a tribute summon or set and a spell, with its cost, its trigger and, for
+    // Breaking Bolt, its Choice, replay exactly: the full creation, every Event Trace and the final
+    // GameState.
+    let mut replayed = 0usize;
+    for seed in 0..SEEDS {
+        let game = self_play(&ruleset, &decks, Seed(seed), MAX_STEPS, Checks::On).expect("played");
+        if !(holds_tribute_summon(&game) && holds_action(&game, "play_spell")) {
+            continue;
+        }
+        let replay = ruleset
+            .replay(&game.record)
+            .expect("the record of a self-played Game replays");
+        assert_eq!(replay.creation, game.creation, "Seed {seed}: the creation");
+        assert_eq!(replay.traces, game.traces, "Seed {seed}: every Event Trace");
+        assert_eq!(replay.state, game.state, "Seed {seed}: the final GameState");
+        replayed += 1;
+        if replayed == 3 {
+            break;
+        }
+    }
+    assert_eq!(replayed, 3, "three Games hold a tribute summon and a spell");
+}
+
 fn viewer(seat: u32) -> Viewer {
     Viewer::Player(PlayerId(seat))
 }
@@ -231,10 +307,25 @@ fn observations_show_each_monsters_position() {
         action: ActionId::new(id),
         arguments,
     };
+    // The first card of the hand that can be normal summoned or set: a monster of level 4 or less
+    // (the hand may hold spells and monsters that need tributes since ticket #99).
     let first_in_hand = |state: &GameState, seat: u32| {
         state
             .zone(PlayerId(seat), &ZoneId::new("hand"))
-            .expect("the hand exists")[0]
+            .expect("the hand exists")
+            .iter()
+            .copied()
+            .find(|&card| {
+                let definition = state.card(card).expect("the card exists").definition();
+                matches!(
+                    ruleset
+                        .catalog()
+                        .card(definition)
+                        .and_then(|definition| definition.field(&FieldName::new("level"))),
+                    Some(FieldValue::Int(1..=4))
+                )
+            })
+            .expect("the hand holds a monster of level 4 or less")
     };
 
     // Both Viewers follow a Game from the Empty GameState: seat 0 summons, then seat 1 sets.

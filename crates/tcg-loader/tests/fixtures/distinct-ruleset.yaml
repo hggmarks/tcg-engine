@@ -1,0 +1,72 @@
+# A small ruleset for the distinct card parameter tests (ticket #99, ADR-0044): two Players, one card
+# type `unit` (an int field `power`, 5 on every card), three cards in each hand, and a Turn with a
+# Main phase. Its actions take two or three card params of the same zone, so one card could fill
+# several of them: `pair`, `triple`, and `pair_checked`, whose second param has a `where` no card
+# meets (to show the order of the checks). Format: rulesets/formats.md.
+meta: { id: distinct, version: 1 }
+
+parameters:
+  players: 2
+  starting_player: 0
+
+zones:
+  - { id: deck,  visibility: hidden, ordered: true }
+  - { id: hand,  visibility: owner,  ordered: false }
+  - { id: field, visibility: public, ordered: false }
+
+card_types:
+  - id: unit
+    fields:
+      - { name: name,  type: text }
+      - { name: power, type: int }
+    instance_state: []
+    effects: false
+
+inputs:
+  - { id: main_deck, card_types: [unit], size: 6, max_copies: 6, zone: deck }
+
+setup:
+  - draw: { player: each, from: deck, to: hand, count: 3 }
+
+turn:
+  phases:
+    - id: main
+      actions: [pair, triple, pair_checked, end_turn]
+    - id: end
+      automatic: []
+
+actions:
+  # Two cards of the hand, both put on the field.
+  - id: pair
+    params:
+      - { name: first,  zone: hand, card_type: unit }
+      - { name: second, zone: hand, card_type: unit }
+    effects:
+      - move: { card: { ref: first },  to: field }
+      - move: { card: { ref: second }, to: field }
+
+  # Three cards of the hand.
+  - id: triple
+    params:
+      - { name: first,  zone: hand, card_type: unit }
+      - { name: second, zone: hand, card_type: unit }
+      - { name: third,  zone: hand, card_type: unit }
+    effects:
+      - move: { card: { ref: first },  to: field }
+      - move: { card: { ref: second }, to: field }
+      - move: { card: { ref: third },  to: field }
+
+  # The second param's `where` never holds (every unit has a power of 5).
+  - id: pair_checked
+    params:
+      - { name: first, zone: hand, card_type: unit }
+      - name: second
+        zone: hand
+        card_type: unit
+        where: { eq: [{ ref: second.power }, 6] }
+    effects:
+      - move: { card: { ref: first },  to: field }
+      - move: { card: { ref: second }, to: field }
+
+  - id: end_turn
+    effects: [ { end_turn: {} } ]
