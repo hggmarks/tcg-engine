@@ -275,13 +275,14 @@ fn the_duel_direct_kill_golden_game_holds_a_two_tribute_summon_a_tie_damage_from
     // A tie: ATK 1700 against ATK 1700 sends the target and then the attacker to the Graveyard,
     // and no Player loses Life Points.
     let events = events_of(&played, &attack(0, CINDER_OGRE_0, CINDER_OGRE_1));
-    assert!(events.contains(&moved(CINDER_OGRE_1, 1, "monster_zone", "graveyard")));
-    assert!(events.contains(&moved(CINDER_OGRE_0, 0, "monster_zone", "graveyard")));
-    assert!(
-        !events
-            .iter()
-            .any(|event| matches!(event, Event::PlayerStateChanged { .. })),
-        "a tie costs neither Player Life Points: {events:?}"
+    assert_eq!(
+        events,
+        [
+            attacked(CINDER_OGRE_0),
+            moved(CINDER_OGRE_1, 1, "monster_zone", "graveyard"),
+            moved(CINDER_OGRE_0, 0, "monster_zone", "graveyard"),
+        ],
+        "a tie destroys the target and then the attacker, and costs neither Player Life Points"
     );
 
     // A kill by direct attack: the last Action takes seat 1 from 2,100 Life Points to -500 and
