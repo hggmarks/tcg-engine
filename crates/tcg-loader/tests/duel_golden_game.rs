@@ -101,8 +101,9 @@ fn direct_attack(player: u32, attacker: CardInstanceId) -> Action {
     action(player, "direct_attack", &[attacker])
 }
 
-/// Seat 0 sets its Quarry Bear and ends its Turn (it may not attack on the Game's first Turn),
-/// seat 1 only ends its own. Seat 0 sets its Pebble Golem; seat 1 summons its Reed Stalker and
+/// Every Turn that attacks goes to Battle first with `to_battle`. Seat 0 sets its Quarry Bear and
+/// ends its Turn (it may not attack on the Game's first Turn), seat 1 goes to Battle and ends its
+/// own without attacking. Seat 0 sets its Pebble Golem; seat 1 summons its Reed Stalker and
 /// attacks the set Quarry Bear with it: ATK 900 against DEF 1100, so no monster is destroyed and
 /// seat 1 loses the 200 difference. Seat 0 then summons its Abyss Leviathan with the Pebble Golem
 /// and the Quarry Bear as tributes, attacks the Reed Stalker with it (seat 1 loses 1,700) and ends

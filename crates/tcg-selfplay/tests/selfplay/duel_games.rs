@@ -126,7 +126,8 @@ struct DuelUse {
     /// `direct_attack` Actions.
     direct_attacks: usize,
     /// Cards that went from the Spell/Trap Zone to the Graveyard: a spell resolved by its own
-    /// trigger (ADR-0044).
+    /// trigger (ADR-0044). It also counts a `breaking_bolt` played with no Candidate: the spell
+    /// still moves to the Graveyard and only its effect is skipped.
     spells_resolved: usize,
     /// Games won on Life Points: exactly one Loss, for `life_out`.
     life_point_wins: usize,

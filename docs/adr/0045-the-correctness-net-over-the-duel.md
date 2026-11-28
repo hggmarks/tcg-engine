@@ -21,7 +21,7 @@ Self-play and a Golden Game now exercise the Duel Ruleset v3 on its shipped deck
 | `ties` | each `attack` Action whose trace holds a `CardMoved` to `graveyard` of the attacker (argument 0) **and** one of the target (argument 1) | 256 |
 | `higher_def_damage` | each `attack` Action whose trace holds a `PlayerStateChanged` of `life_points` for the Action's own Player and no `CardMoved` (the only branch that costs the attacker's owner Life Points without moving a card: the lower-ATK branch moves the attacker) | 2,100 |
 | `direct_attacks` | each `direct_attack` Action | 697 |
-| `spells_resolved` | each `CardMoved` from `spell_trap_zone` to `graveyard` in any trace (a spell's own trigger, ADR-0044) | 6,610 |
+| `spells_resolved` | each `CardMoved` from `spell_trap_zone` to `graveyard` in any trace (a spell's own trigger, ADR-0044); it also counts a `breaking_bolt` played with no Candidate, whose spell still moves to the Graveyard and whose effect is skipped | 6,610 |
 | `life_point_wins` | Games whose Terminal Outcome has exactly one Loss, for `life_out` | 915 |
 | `deck_out_wins` | Games whose Terminal Outcome has exactly one Loss, for `deck_out` | 85 |
 | `sets` | each `set_monster` Action | 8,744 |

@@ -157,7 +157,7 @@ The first condition that holds for a Player is their reason. If both Players los
 
 ## Not yet
 
-The v3 rules (`meta.version: 4`) are the fourth step of a face-up game of the Duel family. What they leave out: choosing several cards at once as a Choice, special summons, traps, quick-play and other kinds of spell, and nothing else of the Phase G roadmap (#94): the correctness net over these rules (the coverage counts, the 1,000-Seed net, the Duel pin and the Golden Game) is a test matter, recorded in ADR-0045, and changes no rule.
+The v3 rules (`meta.version: 4`) are the fourth step of a face-up game of the Duel family. What they leave out: choosing several cards at once as a Choice, special summons, traps, quick-play and other kinds of spell. Nothing else of the Phase G roadmap (#94) is left out: the correctness net over these rules (the coverage counts, the 1,000-Seed net, the Duel pin and the Golden Game) is a test matter, recorded in ADR-0045, and changes no rule.
 
 Face-down cards, flipping and traps are the successor roadmap's (Phase H), which may also revisit the Active Zone chosen here.
 
