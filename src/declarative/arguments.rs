@@ -2,7 +2,8 @@
 //! a Card Choice, which are the cards that fill one param (ADR-0034).
 //!
 //! Arguments bind to params by position (ADR-0015). The checks run in this order: the number of
-//! arguments, then for each param in order: the card exists, then it must fit one of the param's
+//! arguments, then for each param in order: the card exists, then no earlier param holds it (the
+//! card params are distinct, `CardBoundTwice`, ADR-0044), then it must fit one of the param's
 //! alternatives (ADR-0016). A card fits an alternative when, in this order, its owner is the
 //! acting Player (or, for `owner: opponent`, another Player), it is in the alternative's zone of
 //! its owner, its card type is the alternative's, and its `where` condition holds. A param with
@@ -97,6 +98,14 @@ impl BoundCards {
             .collect()
     }
 
+    /// The first param that holds `card`, if any.
+    fn param_holding(&self, card: CardInstanceId) -> Option<ParamName> {
+        self.cards
+            .iter()
+            .find(|(_, bound)| *bound == card)
+            .map(|(name, _)| name.clone())
+    }
+
     /// The card bound to `param`. Definition validation guarantees every ref names a param, so a
     /// missing one is an internal inconsistency.
     pub(super) fn card(&self, param: &ParamName) -> Result<CardInstanceId, Rejection> {
@@ -136,6 +145,14 @@ pub(super) fn bind(
             return Err(Rejection::UnknownCard {
                 param: param.name().clone(),
                 card,
+            });
+        }
+        // Card params are distinct (ADR-0044): a card an earlier param holds binds no other.
+        if let Some(first) = bound.param_holding(card) {
+            return Err(Rejection::CardBoundTwice {
+                param: param.name().clone(),
+                card,
+                first,
             });
         }
         bound = bind_param(ruleset, state, actor, &bound, param, card)?;
