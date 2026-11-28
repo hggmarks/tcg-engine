@@ -143,6 +143,8 @@ actions:
             - { gte: [{ ref: card.level }, 5] }
             - { lte: [{ ref: card.level }, 6] }
             - { eq: [{ ref: player.normal_summoned, player: active }, false] }
+            # States the rule: the tributes are 1 of the Monster Zone's at most 3 monsters, so this cannot fail
+            # in today's play (it matters if the zone could ever hold more than 3).
             - { lte: [{ sub: [{ count: { zone: monster_zone, player: active } }, 1] }, 2] }
       - { name: tribute, zone: monster_zone, card_type: monster }
     cost:
@@ -162,6 +164,8 @@ actions:
           and:
             - { gte: [{ ref: card.level }, 7] }
             - { eq: [{ ref: player.normal_summoned, player: active }, false] }
+            # States the rule: the tributes are 2 of the Monster Zone's at most 3 monsters, so this cannot fail
+            # in today's play (it matters if the zone could ever hold more than 3).
             - { lte: [{ sub: [{ count: { zone: monster_zone, player: active } }, 2] }, 2] }
       - { name: tribute_1, zone: monster_zone, card_type: monster }
       - { name: tribute_2, zone: monster_zone, card_type: monster }
@@ -185,6 +189,8 @@ actions:
             - { gte: [{ ref: card.level }, 5] }
             - { lte: [{ ref: card.level }, 6] }
             - { eq: [{ ref: player.normal_summoned, player: active }, false] }
+            # States the rule: the tributes are 1 of the Monster Zone's at most 3 monsters, so this cannot fail
+            # in today's play (it matters if the zone could ever hold more than 3).
             - { lte: [{ sub: [{ count: { zone: monster_zone, player: active } }, 1] }, 2] }
       - { name: tribute, zone: monster_zone, card_type: monster }
     cost:
@@ -204,6 +210,8 @@ actions:
           and:
             - { gte: [{ ref: card.level }, 7] }
             - { eq: [{ ref: player.normal_summoned, player: active }, false] }
+            # States the rule: the tributes are 2 of the Monster Zone's at most 3 monsters, so this cannot fail
+            # in today's play (it matters if the zone could ever hold more than 3).
             - { lte: [{ sub: [{ count: { zone: monster_zone, player: active } }, 2] }, 2] }
       - { name: tribute_1, zone: monster_zone, card_type: monster }
       - { name: tribute_2, zone: monster_zone, card_type: monster }
@@ -224,6 +232,8 @@ actions:
       - name: card
         zone: hand
         card_type: spell
+        # States the rule: a spell leaves the Spell/Trap Zone in the transition that plays it, so the zone
+        # is empty whenever this is read and the clause cannot fail in today's play.
         where: { lte: [{ count: { zone: spell_trap_zone, player: active } }, 2] }
     cost:
       - move: { card: { ref: card }, to: spell_trap_zone }

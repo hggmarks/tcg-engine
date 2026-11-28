@@ -28,6 +28,13 @@ fn holds_action(game: &SelfPlayGame, id: &str) -> bool {
     })
 }
 
+/// Whether the record of `game` holds a tribute summon (not a set).
+fn holds_tribute_summon(game: &SelfPlayGame) -> bool {
+    ["tribute_summon_one", "tribute_summon_two"]
+        .iter()
+        .any(|id| holds_action(game, id))
+}
+
 /// Whether the record of `game` holds a tribute summon or a tribute set.
 fn holds_tribute(game: &SelfPlayGame) -> bool {
     [
@@ -245,7 +252,7 @@ fn replay_reproduces_a_duel_game_holding_a_tribute_summon_and_a_spell() {
     let mut replayed = 0usize;
     for seed in 0..SEEDS {
         let game = self_play(&ruleset, &decks, Seed(seed), MAX_STEPS, Checks::On).expect("played");
-        if !(holds_tribute(&game) && holds_action(&game, "play_spell")) {
+        if !(holds_tribute_summon(&game) && holds_action(&game, "play_spell")) {
             continue;
         }
         let replay = ruleset
