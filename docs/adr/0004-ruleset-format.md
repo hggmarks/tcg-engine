@@ -4,6 +4,7 @@
 - Decision 3's typed-model names are amended by ADR-0007 (`Ruleset` becomes `RulesetDefinition`).
 - Amended by ADR-0028: the recorded open item on hidden information is decided, and the three Visibility values get their exact meaning (`public` every Viewer, `owner` its owner only, `hidden` nobody, its owner included).
 - Amended by ADR-0041: the ruleset also declares Player-State Schemas, a top-level `player_state` list (marked in decision 1).
+- Amended by ADR-0046: decision 2's "YAML" is YAML 1.2, read by `serde-saphyr`, in which the unquoted key `on` of a triggered Card Effect is the string `on` (YAML 1.1 reads it as `true`); the catalogs keep it unquoted, and a test pins it (marked in decision 2).
 - Date: 2026-10-23
 
 ## Context
@@ -31,6 +32,10 @@ Online multiplayer is a future goal, not a current requirement.
    - Dependency: cards depend on the ruleset, never the other way around.
 2. **Ruleset and cards are declarative data, not code.** Initial format:
    YAML, in a restricted subset (no anchors, no implicit typing).
+   *(Amended by ADR-0046: the YAML is version 1.2, as `serde-saphyr` reads it.
+   One spelling means something else in YAML 1.1 and is accepted on purpose:
+   the unquoted `on:` key of a triggered Card Effect, a string in 1.2 and the
+   boolean `true` in 1.1.)*
 3. **Files are never executed.** On load they are validated and converted
    into a typed model (`Ruleset`, `CardCatalog`, `DeckList`). The engine only
    knows this model. The file format is interchangeable.
